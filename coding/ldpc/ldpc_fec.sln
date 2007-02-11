@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ldpclib", "src\ldpclib.vcproj", "{FC384792-7C07-472F-BA2F-8E675ADF7A00}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple_coder", "demos\simple_coder.vcproj", "{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple_decoder", "demos\simple_decoder.vcproj", "{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "perf_tool", "demos\perf_tool.vcproj", "{990A0898-EA82-4B67-A29C-F3DBCEC143F9}"
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.0 = {FC384792-7C07-472F-BA2F-8E675ADF7A00}
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.0 = {FC384792-7C07-472F-BA2F-8E675ADF7A00}
+		{990A0898-EA82-4B67-A29C-F3DBCEC143F9}.0 = {FC384792-7C07-472F-BA2F-8E675ADF7A00}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{FC384792-7C07-472F-BA2F-8E675ADF7A00}.Debug.ActiveCfg = Debug|Win32
+		{FC384792-7C07-472F-BA2F-8E675ADF7A00}.Debug.Build.0 = Debug|Win32
+		{FC384792-7C07-472F-BA2F-8E675ADF7A00}.Release.ActiveCfg = Release|Win32
+		{FC384792-7C07-472F-BA2F-8E675ADF7A00}.Release.Build.0 = Release|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Debug.ActiveCfg = Debug|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Debug.Build.0 = Debug|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Release.ActiveCfg = Release|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Release.Build.0 = Release|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Debug.ActiveCfg = Debug|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Debug.Build.0 = Debug|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Release.ActiveCfg = Release|Win32
+		{2C0F6071-3236-4BB4-90CF-56BD4DCB30D9}.Release.Build.0 = Release|Win32
+		{990A0898-EA82-4B67-A29C-F3DBCEC143F9}.Debug.ActiveCfg = Debug|Win32
+		{990A0898-EA82-4B67-A29C-F3DBCEC143F9}.Debug.Build.0 = Debug|Win32
+		{990A0898-EA82-4B67-A29C-F3DBCEC143F9}.Release.ActiveCfg = Release|Win32
+		{990A0898-EA82-4B67-A29C-F3DBCEC143F9}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

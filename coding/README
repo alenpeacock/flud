@@ -1,0 +1,9 @@
+to build:
+1. descend into the ldpc directory: 'cd ldpc'
+2. build ldpc: 'make'
+3. come back up into this directory: 'cd ..'
+4. prepare build: './bootstrap'
+5. './configure'
+6. 'make'
+7. build python bindings: 'python setup.py build'
+8. as root, install python bindings: 'python setup.py install'

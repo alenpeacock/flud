@@ -1,0 +1,3 @@
+
+class FludException(Exception):
+	pass

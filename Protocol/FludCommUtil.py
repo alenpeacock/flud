@@ -1,0 +1,373 @@
+"""
+FludCommUtil.py (c) 2003-2006 Alen Peacock.  This program is distributed under
+the terms of the GNU General Public License (the GPL).
+
+Communications routines used by both client and server code.
+"""
+from twisted.web import client
+from twisted.internet import reactor, defer
+from twisted.python import failure
+import binascii, httplib, logging, os, stat, random, socket
+import inspect
+import FludCrypto
+from FludExceptions import FludException
+from FludCrypto import FludRSA
+
+"""
+Some constants used by the Flud Protocol classes
+"""
+fludproto_ver = '0.1'
+# XXX: when things timeout, bad news.  Unintuitive exceptions spewed.  Make this
+#      small and fix all issues.
+primitive_to = 3800	# default timeout for primitives
+kprimitive_to = primitive_to/2	# default timeout for kademlia primitives
+#kprimitive_to = 10	# default timeout for kademlia primitives
+transfer_to = 3600 # 10-hr limit on file transfers
+MAXTIMEOUTS = 5  # number of times to retry after connection timeout failure
+CONNECT_TO = 60
+CONNECT_TO_VAR = 5
+
+logger = logging.getLogger('flud.comm')
+
+class BadCASKeyException(failure.DefaultException):
+	pass
+
+class NotFoundException(failure.DefaultException):
+	pass
+
+class BadRequestException(failure.DefaultException):
+	pass
+
+
+i = 0
+"""
+Some utility functions used by both client and server.
+"""
+def updateNodes(client, config, nodes):
+	if isinstance(nodes, kData):
+		nodes = nodes.nodes()
+	if not isinstance(nodes, list) and not isinstance(nodes, tuple)\
+			and nodes != None:
+		raise TypeError("updateNodes must be called with node list, tuple,"
+				" or kData")
+	for i in nodes:
+		host = i[0]
+		port = i[1]
+		nID = i[2]
+		nKu = FludRSA.importPublicKey(i[3])
+		updateNode(client, config, host, port, nKu, nID)
+
+updateNodePendingGETID = {}
+def updateNode(client, config, host, port, nKu=None, nID=None):
+	"""
+	Updates this node's view of the given node.  This includes updating
+	the known-nodes record, trust, and routing table information
+	"""
+	def updateNodeFail(failure, host, port):
+		logging.getLogger('flud').log(logging.INFO,
+				"couldn't get nodeID from %s:%d: %s" % (host, port, failure))
+
+	def callUpdateNode(nKu, client, config, host, port, nID):
+		return updateNode(client, config, host, port, nKu, nID)
+
+	if isinstance(nID, long):
+		nID = "%064x" % nID
+
+	if nKu is None:
+		#print "updateNode, no nKu"
+		if nID is None:
+			d = client.sendGetID(host, port)
+			d.addCallback(callUpdateNode, client, config, host, port, nID)
+			d.addErrback(updateNodeFail, host, port)
+		else:
+			#print "updateNode, no nKu but got a nID"
+			if config.nodes.has_key(nID):
+				return updateNode(client, config, host, port, 
+						FludRSA.importPublicKey(config.nodes[nID]['Ku']), nID)
+			elif updateNodePendingGETID.has_key(nID):
+				pass
+			else:
+				#print "updateNode, sending GETID"
+				updateNodePendingGETID[nID] = True
+				d = client.sendGetID(host, port)
+				d.addCallback(callUpdateNode, client, config, host, port, nID)
+				d.addErrback(updateNodeFail, host, port)
+	elif isinstance(nKu, FludRSA):
+		#print "updateNode with nKu"
+		if updateNodePendingGETID.has_key(nID):
+			del updateNodePendingGETID[nID]
+		if nID == None:
+			nID = nKu.id()
+		elif nID != nKu.id():
+			raise ValueError("updateNode: given nID doesn't match given nKu."
+					" '%s' != '%s'" % (nID, nKu.id()))
+			# XXX: looks like an imposter -- instead of raising, mark host:port
+			# pair as bad (trust-- on host:port alone, since we don't know id).
+		if config.nodes.has_key(nID) == False:
+			config.addNode(nID, host, port, nKu)
+		# XXX: trust
+		# routing
+		node = (host, port, long(nID, 16), nKu.exportPublicKey()['n'])
+		replacee = config.routing.updateNode(node)
+		#logger.info("knownnodes now: %s" % config.routing.knownNodes())
+		#print "knownnodes now: %s" % config.routing.knownNodes()
+		if replacee != None:
+			logging.getLogger('flud').info(
+					"determining if replacement in ktable is needed")
+			s = SENDGETID(replacee[0], replacee[1])
+			s.addErrback(replaceNode, config.routing, replacee, node)
+	else:
+		#print "updateNode nKu=%s, type=%s" % (nKu, type(nKu))
+		logging.getLogger('flud').warn( 
+				"updateNode can't update without a public key or nodeID")
+		frame = inspect.currentframe()
+		# XXX: try/except here for debugging only
+		try:
+			stack = inspect.stack()
+			for i in stack:
+				print "from %s:%d" % (i[1], i[2])
+		except:
+			print "couldn't get stack trace"
+		raise ValueError("updateNode needs an nKu of type FludRSA"
+			" (received %s) or an nID of type long or str (received %s)" 
+			% (type(nKu), type(nID)))
+		# XXX: should really make it impossible to call without one of these...
+
+def replaceNode(error, routing, replacee, replacer):
+	routing.replaceNode(replacee, replacer)	
+	print "replaced node in ktable"
+
+def encode(d):
+	# XXX: deprecate this
+	"""
+	takes string data or a number and encodes it to a URL-friendly format
+	"""
+	if isinstance(d, int) or isinstance(d, long):
+		#return hex(d)	
+		return "%x" % d
+		#return binascii.b2a_base64(binascii.unhexlify("%x" %d)).replace('/','-')
+	if d == None:
+		return d
+	return binascii.hexlify(d)
+	#return binascii.b2a_base64(d).replace('/','-')
+
+	# XXX: should do base64 (or at least 32) encoding instead
+	# something like:
+	#if isinstance(d, int) or isinstance(d, long):
+	#	print "encoding number: %s" % d
+	#	d = '%s' % d
+	#else:
+	#	print "encoding string: %s" % d
+	#d1 = d.decode('hex')
+	#d2 = binascii.b2a_base64(d1)
+	#d3 = d2.replace('/','-')
+	#return d3
+
+	
+def decode(d):
+	# XXX: deprecate this
+	"""
+	takes URL-friendly string data and decodes it to a number 
+	"""
+	try:
+		return binascii.unhexlify(d)
+	except TypeError, t:
+		logging.getLogger('flud').log(logging.WARN, t.args[0])
+		return None
+
+	# XXX: should do base64 (or at least 32) encoding instead
+	# something like:
+	#e3 = d.replace('-','/')
+	#e2 = binascii.a2b_base64(e3)
+	#e1 = e2.encode('hex')
+	#return e1
+
+def requireParams(request, paramNames):
+	# Looks for the named parameters in request.  If found, returns
+	# a dict of param/value mappings.  If any named parameter is missing,
+	# raises an exception
+	params = {}
+	for i in paramNames:
+		try:
+			params[i] = request.args[i][0]
+		except:
+			raise Exception, "missing parameter '"+i+"'" #XXX: use cust Exc
+	return params
+
+def getCanonicalIP(IP):
+	# if IP is 'localhost' or '127.0.0.1', use the canonical local hostname.
+	# (this is mostly useful when multiple clients run on the same host)
+	# XXX: could use gethostbyname to get IP addy instead.
+	if IP == '127.0.0.1' or IP == 'localhost':
+		return socket.getfqdn()
+	else:
+		return socket.getfqdn(IP)
+
+def getPageFactory(url, contextFactory=None, *args, **kwargs):
+
+	def failedConnect(reason, factory):
+		try:
+			i = factory.status
+			return reason
+		except:
+			pass
+		#logger.warn("couldn't connect to %s:%d in getPageFactory: %s" 
+		#		% (factory.host, factory.port, reason))
+		#logger.warn("state of factory is %s" % factory)
+		#logger.warn("dir() of factory is %s" % dir(factory))
+		return reason
+
+	if len(url) >= 16384:
+		raise ValueError(
+				"Too much data sent: twisted server doesn't appear to"
+				" support urls longer than 16384")
+	scheme, host, port, path = client._parse(url)
+	factory = client.HTTPClientFactory(url, *args, **kwargs)
+	factory.deferred.addErrback(failedConnect, factory)
+	to = CONNECT_TO+random.randrange(2+CONNECT_TO_VAR)-CONNECT_TO_VAR
+	if scheme == 'https':
+		from twisted.internet import ssl
+		if contextFactory is None:
+			contextFactory = ssl.ClientContextFactory()
+		reactor.connectSSL(host, port, factory, contextFactory)
+	else:
+		reactor.connectTCP(host, port, factory, timeout=to)
+	return factory
+
+def downloadPageFactory(url, file, contextFactory=None, timeout=None, 
+		*args, **kwargs):
+	scheme, host, port, path = client._parse(url)
+	if timeout != None:
+		# XXX: do something like http://twistedmatrix.com/pipermail/twisted-python/2003-August/005504.html
+		pass
+	factory = client.HTTPDownloader(url, file, *args, **kwargs)
+	to = CONNECT_TO+random.randrange(2+CONNECT_TO_VAR)-CONNECT_TO_VAR
+	if scheme == 'https':
+		from twisted.internet import ssl
+		if contextFactory is None:
+			contextFactory = ssl.ClientContextFactory()
+		reactor.connectSSL(host, port, factory, contextFactory)
+	else:
+		reactor.connectTCP(host, port, factory, timeout=to)
+	return factory
+
+def fileUpload(host, port, selector, filename, form=(), headers={}):
+	"""
+	Performs a file upload via http.
+	host - webserver hostname
+	port - webserver listen port
+	selector - the request (relative URL)
+	filename - a file to upload.  The basename will be used as the filename
+	  on the form.  Type will be "application/octet-stream"
+	form (optional) - a list of pairs of name/value form elements 
+	  (param/values).
+	[hopefully, this method goes away in twisted-web2]
+	"""
+	# XXX: set timeout (based on filesize?)
+	port = int(port)
+	if filename == None:
+		filename = "/dev/null" # XXX: not portable -- need another way to send
+		                       # no file data.
+	file = os.path.basename(filename)
+	fd = os.open(filename, os.O_RDONLY)
+	file_length = os.fstat(fd)[stat.ST_SIZE]
+	#logger.info("upload file is %s, len=%d" % (filename, file_length))
+	rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
+	boundary = "---------------------------"+rand_bound
+	CRLF = '\r\n'
+
+	body_content_type = "application/octet-stream"
+	H = []  # stuff that goes above file data
+	T = []  # stuff that goes below file data
+	for (param, value) in form:
+		H.append('--' + boundary)
+		H.append('Content-Disposition: form-data; name="%s"' % param)
+		H.append('')
+		H.append(value)
+	H.append('--' + boundary)
+	H.append('Content-Disposition: form-data; name="filename"; filename="%s"' 
+			% file)
+	H.append('Content-Type: %s\n' % body_content_type)
+	H.append('')
+	file_headers = CRLF.join(H)
+
+	T.append('--'+boundary+'--')
+	T.append('')
+	T.append('')
+	file_trailer = CRLF.join(T)
+	
+	content_length = len(file_headers) + file_length + len(file_trailer)
+	
+	content_type = "multipart/form-data; boundary="+boundary
+	h = httplib.HTTPConnection(host, port) # XXX: blocking
+	h.putrequest('POST', selector)
+	for pageheader in headers:
+		h.putheader(pageheader, headers[pageheader])
+	h.putheader('Content-Type', content_type)
+	h.putheader('Content-Length', content_length)
+	h.endheaders()
+
+	h.send(file_headers)
+	# XXX: do this while loop instead of the one massive send (just need to test it)
+	#while True:
+	#	data = os.read(fd, 8192)
+	#	if data = "":
+	#		break
+	#	h.send(data)
+	#h.send(CRLF)
+	h.send(os.read(fd, file_length)+CRLF) # XXX: blocking
+	h.send(file_trailer)
+	os.close(fd)
+
+	return h
+
+class kData(object):
+	# XXX: nodeID is triple-redundant! It exists as a long in [2], as id() on
+	# the imported RSAkey [3], and then again as ['id'] in the dict in hex
+	# format!
+	def __init__(self, d):
+		if not isinstance(d, dict) or not d.has_key('k'):
+			raise ValueError(
+					"kData must be a dictionary with key 'k'")
+		self.d = d
+	def data(self):
+		return self.d
+	def nodes(self):
+		return self.d['k']
+	def id(self):
+		return self.d['id']
+	def __str__(self):
+		return self.d.__str__()+" # kData"
+
+class ImposterException(FludException):
+	pass
+
+class ErrDeferredList(defer.DeferredList):
+	"""
+	NewDeferredList acts just like DeferredList, except that if
+	*any* of the Deferreds in the DeferredList errback(), the NewDeferredList
+	also errback()s.  This is different from DeferredList(fireOnOneErrback=True)
+	in that if you use that method, you only know about the first failure,
+	and you won't learn of subsequent failures/success in the list
+	returnOne indicates whether the full result of the DeferredList should
+	be returned, or just the first result (or first error)
+	"""
+	def __init__(self, list, returnOne=False):
+		defer.DeferredList.__init__(self, list, consumeErrors=True)
+		self.returnOne = returnOne
+		self.addCallback(self.wrapResult)
+
+	def wrapResult(self, result):
+		#print "DEBUG: result= %s" % result
+		for i in result:
+			if i[0] == False:
+				if self.returnOne:
+					raise failure.DefaultException(i[1])
+				else:
+					raise failure.DefaultException(result)
+		if self.returnOne:
+			#print "DEBUG: returning %s" % str(result[0][1])
+			return result[0][1]
+		else:
+			#print "DEBUG: returning %s" % result
+			return result

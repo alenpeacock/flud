@@ -1,0 +1,323 @@
+	$Id: FAQ.txt,v 1.1 2006/07/16 06:05:05 alen Exp $
+	------------------------------------------
+	LDPC/LDGM Frequently Asked Questions (FAQ)
+		vincent.roca@inrialpes.fr
+	------------------------------------------
+
+
+1- General
+   1.1- What is the LDGM/LDPC codec useful for ?
+   1.2- Why is it called ``large block'' ?
+   1.3- I have my own content transfer tool, how can I use the codec ?
+   1.4- How can I best reduce memory requirements ?
+   1.5- How to use the pkt_canvas[] tables of BuildFecPacket/DecodeFecStep
+	during encoding/decoding ?
+   1.6- Is this codec patent free ?
+
+2- Performances
+   2.1- What encoding/decoding speed can I achieve ?
+   2.2- What is the decoding inefficiency ratio I can expect ?
+   2.3- What are the maximum memory requirements ?
+   2.4- What are the benefits of the external memory management callbacks
+
+3- Troubleshooting
+
+
+--------------------------------------------------------------------------------
+
+SECTION 1: General
+------------------
+
+1.1 What is the LDGM/LDPC codec useful for ?
+--------------------------------------------
+
+This codec is useful for all applications that transfer large amounts
+of data. Yet our codec only operates on so-called ``Packet Erasure Channels''
+(or PEC), i.e. channels that operate on packets (rather than bit streams),
+and where a packet arriving at the decoder is guaranteed to be error-free.
+But some of these packets may get lost (erased) by the channel.
+
+Simply speaking, transmissions over the Internet and LANs are examples of
+such PEC. Over the Internet packets may be dropped because of congestion
+problems. And on wireless LANs, packets may get corrupted by interferences
+and dropped after CRC check at the receiver. But the content of a UDP/IP
+packet given to the LDGM/LDPC decoder is guaranteed to be error-free.
+
+Distributed storage and distributed content distribution (e.g. within
+FEC enabled peer-to-peer systems) are other classes of applications that
+may take advantage of our LDGM/LDPC codec.
+
+
+1.2- Why is it called ``large block'' ?
+---------------------------------------
+
+This is the key feature of these codes. They can efficiently operate on
+source blocks that are much larger than can more traditional Reed-Solomon
+or Cauchy erasure codes. For instance a typical Reed-Solomon codec is
+limited to blocks of size less than 256 packets, whereas our LDGM codec
+easily operate on blocks of several tens or hundreds of thousands of
+packets. The only limit is the amount of physical memory available at
+the encoder or decoder. And with 1 kilobyte packets, it means blocks of
+several tens or hundreds of megabytes ! All objects (e.g. files) of
+size inferior to this threshold will be encoded optimally, within a single
+block.
+
+
+1.3- I have my own content transfer tool, how can I use the codec ?
+-------------------------------------------------------------------
+
+The LDGM codec has limitations in terms of block length (the number of
+packets more precisely) and even if it called a large block FEC codec,
+you'll have to split files that exceed a few 10,000s * packet_size
+bytes into several blocks... it makes the solution more complex but
+you have no choice here !
+
+Then each entity (sender and receiver) must agree on:
+
+- the blocking algorithm: several solutions are possible here, the
+  FLUTE document identifies what is probably the most efficient one
+  since it enables all blocks to have the same size (+ or - 1 byte). See:
+  http://www.inrialpes.fr/planete/people/roca/doc/draft-ietf-rmt-flute-07.txt
+  section: 5.1.2.3 Algorithm for Computing Source Block Structure
+  (I can send you an implementation of the algo, which will be available
+  in next release of MCL)
+
+- several FEC codec parameters: you won't find what you need in
+  the FLUTE doc (even if the EXT_FTI for FEC encoding ID 128 is not too
+  far from what we need). In MCL we are using the following format:
+  (see file mcl/src/alc/mcl_lct_hdr.cpp)
+
+
+ * With FEC Encoding ID 132 (for our LDGM/LDPC codec):
+ * see the draft-peltotalo-rmt-bb-fec-xor-pcm-rs-XX.txt I-D...
+ *      
+ *   0                   1                   2                   3
+ *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |   HET = 64    |     HEL       |                               |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+ *  |                         Object Length (bytes)                 |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |   FEC Instance ID             |    Encoding Symbol Length     |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                Max Source Block Length (max_k)                |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                Max Nb of Enc. Symbols (max_n)                 |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  .    FEC Instance ID-Specific Information (of variable size)    .
+ *  .          (in our case this is a 32 bit PRNG seed)             .
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+With this info plus the blocking algorithm, the receiver can deduce how
+many packets are in each block.
+
+Then each packet sent by the source must also include the appropriate
+of course the ID of the block and the ID of the packet in this block.
+This is the FEC Payload ID info (FPI), and here is the format
+(see file mcl/src/alc/mcl_alc_hdr.cpp):
+
+ * Add a FPI extension, using the provided hdr_infos.
+ *
+ * with FEC_ENCODING_ID_SMALL_LARGE_EXP_FEC and FEC_ENCODING_ID_LDPC_FEC:
+ *
+ * 0                   1                   2                   3
+ * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                      source block idf                         |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |F|                    encoding symbol idf                      |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * the F flag, if set, indicates that it is a FEC symbol
+
+We use a linear ID sequence space for all packets generated for a block,
+{0..k-1} are source packets, {k..n-1} are FEC packets. The "F" flag is
+not strictly speaking required, but it simplifies packet processing.
+
+So this is not a trivial task, but it's really worth the pain, especially
+as we are still improving the FEC codec, especially by reducing its
+inefficiency ratio (while keeping the API unchanged) !
+
+
+1.4- How can I best reduce memory requirements ?
+------------------------------------------------
+
+At the encoder, if the application does not need to store FEC packets, but
+can use an FEC packet as soon as it has been encoded, then, with LDGM
+Staircase you only need to keep a copy of the current FEC packet (of index i)
+and the previously produced FEC packet (of index i-1). Then, once packet i
+has been sent, free packet i-1 which will no longer be required. Packet i is
+required for producing packet i+1, and then can be free'ed, and so on.
+Warning, if you use another codec than LDGM Staircase, then you cannot
+apply this optimization!
+
+But not all applications can do that. So if your application needs to 
+remember all FEC packets produced, you have no choice, but this is required
+by your application, not by the LDGM codec!
+
+At the decoder, FEC packets received from the network can be free'd
+immediately after they have been passed to the LDPCFecSession::DecodeFecStep()
+function. They won't be used any more, neither by the LDGM codec, nor by
+your application (well, I think so).
+
+Read 1.5- now...
+
+
+1.5- How to use the pkt_canvas[] tables of BuildFecPacket/DecodeFecStep
+during encoding/decoding ? --------------------------------------------
+---------------------------
+
+Read 1.4- first.
+At the encoder, with the two kinds of applications mentioned in 1.4, the
+	void*	pkt_canvas[]; 
+argument of LDPCFecSession::BuildFecPacket() function, must have "n" entries,
+to store all source plus FEC packets. But it does not mean that you absolutely
+need to keep all FEC packets in memory, and with the optimized encoding
+application above, the application should set the pkt_canvas[] entries for
+no longer required FEC packets to NULL.
+
+At the decoder, the
+	void*	pkt_canvas[]; 
+argument of LDPCFecSession::DecodeFecStep() function, must have "k" entries,
+to store only source packets. FEC packets previously received or decoded
+are not required at all, and the codec remembers by other means they have
+been already processed.
+
+WARNING: this is a change compared to codecs up to version 1.3 included!
+	The pkt_canvas[] table had to be of size "n", not "k". Yet giving
+	a larger table will not create any problem to the codec, it's just
+	a waste of room.
+
+
+1.6- Is this codec patent free ?
+--------------------------------
+
+To the best of our knowledge, the basic encoding/decoding schemes do not
+infringe any IPR/patent. Yet there is always a risk that a company shows
+up and claims they hold IPRs. Only a tribunal can then decide, a posteriori,
+if this argument can be retained or not. So, as the LGPL License says:
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    Lesser General Public License for more details.
+
+If ever you think our codec infringes a patent, please let us know so
+that we can see how to address the problem!
+
+
+SECTION 2: Performances
+-----------------------
+
+
+2.1- What encoding/decoding speed can I achieve ?
+-------------------------------------------------
+
+With the LDPC_v1.5 codec version, on a Pentium IV/3.06GHz/Linux, and
+an object of 20,000 packets, each of size 1 kilobyte, producing 10,000
+parity packets (FEC ratio=1.5, or code rate=2/3), with LDGM Staircase,
+we achieved:
+
+encoding (considering FEC packets only):	 640.0 Mbps
+encoding (considering source+FEC packets):	1920.0 Mbps
+decoding:					 716.8 Mbps
+
+Just for comparison, with a Reed-Solomon codec, in an optimal
+configuration, we achieved:
+
+encoding (considering FEC packets only):	  21.5 Mbps
+encoding (considering source+FEC packets):	  64.4 Mbps
+decoding:					  52.3 Mbps
+
+In all cases, the CPU is 100% busy.
+(see the INRIA Research Report RR-5225 for more details).
+
+So the LDGM codec is compatible with all kinds of underlying networks.
+It is also means that this codec requires less processing power than a
+Reed-Solomon codec, a great advantage on lightweight hosts (PDAs,
+smart-phones).
+
+More to come soon...
+
+
+2.2- What is the decoding inefficiency ratio I can expect ?
+-----------------------------------------------------------
+
+This is a key aspect, which depends on the block size and FEC ratio
+parameters, and whether LDGM-Staircase or LDGM-Triangle is used.
+There is no predefined answer and this ratio can not be evavluated
+in advance. This is typically an experimental measure.
+
+
+2.3- What are the maximum memory requirements ?
+-----------------------------------------------
+
+Read 1.4- first.
+Memory is required both to store source and FEC packets, and to store
+the parity check matrix (plus the check nodes at the decoder).
+With an object of 20,000 packets, each of size 1 kilobyte, producing
+10,000 parity packets (FEC ratio=1.5, or code rate=2/3), with LDGM
+Staircase (LDPC_v1.4), we measured:
+
+Parity Check Matrix:	3 MB	(thanks to structures dedicated to its
+				 sparse nature)
+Other memory requirements at the encoder:
+			30 MB	(default)
+			20 MB	(the application encodes and sends FEC packets
+				 on the fly, then frees the packet buffer)
+Other memory requirements at the decoder:
+			25 MB
+
+(see the INRIA Research Report RR-5225 for more details).
+
+So source and FEC packet storage largely dominate memory requirements at
+both the encoder and decoder.
+
+If you __only__ use LDGM-Staircase, you should activate the
+OPTIMIZEFORMEMORY define in the src/ldpc_matrix_sparse.h file.
+
+If you __also use LDGM-Triangle, then you should not activate the
+OPTIMIZEFORMEMORY define (comment it) since it will cause severe performance
+degradations.
+
+By default, this define is not activated, as show below:
+/**
+ *  This define optimizes the memory consumption of matrices
+ *  (the matrix size is decreased by 1/6).
+ *  WARNING: with LDGM Triangle, the initialization time 
+ *  becomes quite important when activating this option!!!
+ *  In all other cases (LDGM, LDGM Staircase, LDPC) we
+ *  did not noticed any impact on init/encoding/decoding
+ *  times.
+ */
+//#define OPTIMIZEFORMEMORY
+
+The maximum memory requirements can also be significantly reduced
+by using a dedicated external memory mamnagement scheme, as explained
+in sectoin 2.4.
+
+
+2.4- What are the benefits of the external memory management callbacks
+----------------------------------------------------------------------
+
+In release 1.8, May 2005, a large number of callbacks have been added
+in addition to the already existing DecodedPkt_callback one.
+The full list is:
+	DecodedPkt_callback
+	AllocTmpBuffer_callback
+	GetData_callback
+	GetDataPtrOnly_callback
+	StoreData_callback
+	FreePkt_callback
+The idea is to have an external memory management scheme, that will
+allocate/free memory instead of the LDPC codec, e.g. for internal
+needs (e.g. for check node buffers and the various tables) or when
+a new packet is decoded.
+
+In MCLv3 (starting from release 2.99.6, May 2005), this feature is used
+by a virtual receive memory management scheme, that enables a receiver
+to decode objects whose size is an order of magnitude larger than the
+available physical memory (RAM) size. Therefore, the LDPC codec is no
+longer limited by the amount of RAM available in the host. Of course
+it means that disk I/Os are sometimes required, which reduces the codec
+speed. This is the downside of the technique.
+

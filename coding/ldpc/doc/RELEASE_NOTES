@@ -1,0 +1,142 @@
+	$Id: RELEASE_NOTES,v 1.1 2006/07/16 06:05:05 alen Exp $
+
+	----------------------------------------
+	LDGM Large Block FEC codec RELEASE NOTES
+	      vincent.roca@inrialpes.fr
+	    christoph.neumann@inrialpes.fr
+	----------------------------------------
+
+
+Notes for release LDPC_v1.8 - October 22nd, 2005.
+---------------------------------------------------
+
+This release brings the following improvements:
+- (small) performance improvements by re-writting large parts of the
+  LDPCFecSession class. The source code is more readable and the codec
+  efficiency is improved.
+- reduced the maximum stack needs during decoding for the same reason,
+  in particular by removing some parameters and variables.
+- many callbacks have been added to enable an external memory management
+  scheme. In particular, when used with a dedicated external virtual memory
+  management scheme (see mcl_v2.99.6 release), this codec can be used with
+  objects that are an order of magnitude larger than the available memory
+  (RAM) size.
+  Note that this system is by no means included in the FEC codec and must
+  be provided externally.
+  See MCLv3 release 2.99.6 for such a memory management system example.
+  Make sure EXTERNAL_MEMORY_MGMT_SUPPORT is defined in file src/ldpc_fec.h
+
+Several changes in the LDPCFecSession API (sorry in advance for the
+inconvenience):
+- argument "context_4_callback" is removed from DecodeFecStep() and moved
+  to SetCallbackFunctions() method. The benefit is (1) to be able to use it
+  also during encoding (new callback functions need it) and (2) to reduce
+  the process stack needs during decoding (was an issue since DecodeFecStep
+  is called recursively). The only limit is that the context_4_callback
+  remains unchanged during the whole FEC session.
+- added five new callback functions for an external memory management system.
+- context_4_callback is now the first argument of all callback functions,
+  including DecodedPkt_callback (it was not the case before).
+
+
+Nots for release LDPC_v1.7 - October 22nd, 2004.
+---------------------------------------------------
+
+This release brings the following improvements.
+- New improved decoding algorithm:
+  At a decoder, memory requirements have been reduced by an order of 
+  magnitude. As an example with a FEC expansion ratio of 5.0 and LDGM
+  Staircase memory consumption has been diveded by 1.8.
+  Decoding speeds are slightly better, but remains comparable to those
+  of previous versions.
+- Small bugfix: At session initialization a variable was not correctly
+  reseted, which could lead to problems if using and reinitializing
+  a FEC session several times.
+
+
+Notes for release LDPC_v1.6 - September 10th, 2004.
+---------------------------------------------------
+
+This release brings the following improvements.
+- New Triangle codec, for improved decoding with small FEC expansion ratios
+  (see the INRIA Research Report RR-5225 for more details on when to use it).
+- Intel IA-64 Itanium architectures are now supported (tested on Linux only).
+- By default, the "Optimized memory consumption of matrices" feature
+  mentioned for release LDPC_v1.5 is invalidated, because it impacts
+  LDGM-Triangle performances. If you only need LDGM-Staircase, then you
+  should re-activate it. See FAQ.TXT for detailed information.
+
+
+Notes for release LDPC_v1.5 - May 11th, 2004.
+-----------------------------------------------
+
+This is the fifth release. The improvements compared to version 1.4 are:
+- Optimized memory consumption of matrices:
+  The matrix size has been decreased by 1/6 without any performance penalty!
+- Largely (!) increased decoding speed:
+  Decoding time is now linear to the amount of source+FEC packets.  
+  For information, on a Pentium IV/3.06GHz/Linux host:
+  	decoding:        716.8 Mbps (compared to 227.8 Mbps in release 1.4)
+- Removed useless code:
+  The code has been optimized and all useless functions removed.
+
+
+Notes for release LDPC_v1.4 - March 31st, 2004.
+-----------------------------------------------
+
+This new release solved many inefficiencies concerning memory requirements.
+- Maximum memory requirements are now close to the optimum at the encoder
+  (i.e. all source packets with LDGM Staircase, in an optimal case, plus FEC
+  packets otherwise). At a decoder, memory requirements have been reduced
+  by an order of magnitude and close to the optimum with such codes (i.e.
+  between k*pkt_size and n*pkt_size).
+- FAQ now includes many useful information on how to efficiently use this
+  codec, and the expected performances. For information, on a
+  Pentium IV/3.06GHz/Linux host:
+	encoding (considering FEC packets only):         640.0 Mbps
+	encoding (considering source+FEC packets):      1920.0 Mbps
+	decoding:                                        227.8 Mbps
+ 
+
+Notes for release LDPC_v1.3 - February 27th, 2004.
+--------------------------------------------------
+
+This is the fourth release. The differences between version 1.3 and version
+1.2 are:
+- Random function Xrand48 replaced by ldpc_Xrand48, for UNIX/Windows 
+  interoperability.
+- FreeBSD port, ldpc should now compile and run under FreeBSD.
+- function BuildFecPacket now returns ldpc_error_status
+- Added perf_tool, for performance evaluation
+
+
+Notes for release LDPC_v1.2 - December 17th, 2003.
+--------------------------------------------------
+
+This is the third release. The only difference between version 1.2 and version
+1.1 is the license. Version 1.2 now follows both a GNU/LGPL license (INRIA's 
+code) and a new license (Radford Neal's code). This codec can now be used in 
+non-open source applications. A constraint, though, is to credit the authors
+and informed them of any modification made, as explained in the license text.
+Enjoy!
+
+
+Notes for release LDPC_v1.1 - November 24th, 2003.
+--------------------------------------------------
+
+This is the second release. Version 1.1 only includes LDGM (as in v1.0) and
+the new LDGM-staircase which largely improves the codec performances. There is
+still no LDPC. The API has only been very slightly changed compared to previous
+version. Encoding speed is around 236Mbps (PIII/1GHz), and decoding inefficiency
+on average of 7% (10,000 source packets, of size 1KB each, and 5,000 parity 
+packets) and pretty stable. These performances make it a realistic high 
+performance alternative to Reed-Solomon... Enjoy!
+    
+
+Notes for release LDPC_v1.0 - July 16, 2003.
+--------------------------------------------
+
+This is the first release. This codec is work in progress, currently only for 
+experimental use, and the API may change a bit in future releases. Version 1.0 
+only includes LDGM (no LDPC).
+

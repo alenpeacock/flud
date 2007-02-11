@@ -1,0 +1,38 @@
+flud backup, version 0.0.1-super-pre-alpha
+==========================================
+
+This is the first public release of flud backup.  The software is very much a
+work in progress, and major components of the architecture are not complete
+(such as the trust system).  A lot of other stuff is missing or broken (NAT
+traversal, sane support for large files, GUI, etc.).  But there should be
+enough here to run some interesting experiments.
+
+Installation
+============
+
+Before starting a flud node, you will need to build and install the ldpc libs
+and python wrappers contained in the flud/coding directory of this
+distribution.  Follow the directions in the flud/coding/README to perform this
+rite.
+
+Running
+=======
+
+To start up a flud node, enter the flud/ directory and do:
+$ python FludNode.py <bootstraphost> <bootstrapport>
+
+(if this is the first node in the flud network, you can omit the
+bootstraphost/port.  When the public flud network becomes more generally
+available, an alternate mechanism will be used to automatically find and use
+it)
+
+See http://www.flud.org/wiki/index.php/Testing_Utilities for instructions on
+running some of the test suites, as well as utilities to automatically spawn
+many instances of FludNode in your own private flud network.
+
+Feedback
+========
+
+All discussion, feedback, and bug reports should be directed to the flud-devel
+mailing list at flud-devel@flud.org (archive and subscriber information at
+http://flud.org/mailman/listinfo/flud-devel_flud.org).  

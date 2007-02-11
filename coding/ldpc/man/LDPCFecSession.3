@@ -1,0 +1,1585 @@
+.TH "LDPCFecSession" 3 "25 May 2005" "ldpc" \" -*- nroff -*-
+.ad l
+.nh
+.SH NAME
+LDPCFecSession \- 
+.SH SYNOPSIS
+.br
+.PP
+\fC#include <ldpc_fec.h>\fP
+.PP
+.SS "Public Member Functions"
+
+.in +1c
+.ti -1c
+.RI "\fBLDPCFecSession\fP ()"
+.br
+.ti -1c
+.RI "\fB~LDPCFecSession\fP ()"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBInitSession\fP (int nbDataPkt, int nbFecPkt, int pktSize, int flags=FLAG_BOTH, int leftDegree=3, int seed=1, \fBSessionType\fP codecType=TypeTRIANGLE)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBSetCallbackFunctions\fP (void *(*DecodedPkt_callback)(void *context, int	size, int	pkt_seqno), void *(*AllocTmpBuffer_callback)(void *context, int	size), void *(*GetData_callback)(void *context, void *pkt), void *(*GetDataPtrOnly_callback)(void *context, void *pkt), \fBldpc_error_status\fP(*StoreData_callback)(void *context, void *pkt), \fBldpc_error_status\fP(*FreePkt_callback)(void *context, void *pkt), void *context_4_callback=NULL)"
+.br
+.ti -1c
+.RI "void \fBEndSession\fP ()"
+.br
+.ti -1c
+.RI "bool \fBIsInitialized\fP ()"
+.br
+.ti -1c
+.RI "void \fBSetVerbosity\fP (int verb)"
+.br
+.ti -1c
+.RI "void \fBMoreAbout\fP (FILE *out)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBBuildFecPacket\fP (void *pkt_canvas[], int fec_index, void *fec_pkt)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBBuildFecPacketsPerCol\fP (void *pkt_canvas[], int pkt_index, int *(*built_parity_pkts), int *nb_built_parity_pkts)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBDecodeFecStep\fP (void *pkt_canvas[], void *new_pkt, int new_pkt_seqno, bool store_packet)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP \fBDecodeFecStep\fP (void *pkt_canvas[], void *new_pkt, int new_pkt_seqno)"
+.br
+.ti -1c
+.RI "bool \fBPacketAlreadyKnown\fP (void *pkt_canvas[], int new_pkt_seqno)"
+.br
+.ti -1c
+.RI "bool \fBIsDecodingComplete\fP (void *pkt_canvas[])"
+.br
+.in -1c
+.SS "Private Member Functions"
+
+.in +1c
+.ti -1c
+.RI "bool \fBIsDataPkt\fP (int pktSeqno)"
+.br
+.ti -1c
+.RI "bool \fBIsParityPkt\fP (int pktSeqno)"
+.br
+.ti -1c
+.RI "int \fBGetMatrixCol\fP (int pktSeqno)"
+.br
+.ti -1c
+.RI "int \fBGetPktSeqno\fP (int matrixCol)"
+.br
+.ti -1c
+.RI "void * \fBGetBuffer\fP (void *pkt)"
+.br
+.ti -1c
+.RI "void * \fBGetBufferPtrOnly\fP (void *pkt)"
+.br
+.ti -1c
+.RI "void \fBAddToPacket\fP (void *to, void *from)"
+.br
+.in -1c
+.SS "Private Attributes"
+
+.in +1c
+.ti -1c
+.RI "bool \fBm_initialized\fP"
+.br
+.ti -1c
+.RI "int \fBm_sessionFlags\fP"
+.br
+.ti -1c
+.RI "\fBSessionType\fP \fBm_sessionType\fP"
+.br
+.ti -1c
+.RI "int \fBm_verbosity\fP"
+.br
+.ti -1c
+.RI "unsigned int \fBm_pktSize\fP"
+.br
+.ti -1c
+.RI "unsigned int \fBm_pktSize32\fP"
+.br
+.ti -1c
+.RI "int \fBm_nbDataPkt\fP"
+.br
+.ti -1c
+.RI "int \fBm_nbFecPkt\fP"
+.br
+.ti -1c
+.RI "\fBmod2sparse\fP * \fBm_pchkMatrix\fP"
+.br
+.ti -1c
+.RI "int \fBm_leftDegree\fP"
+.br
+.ti -1c
+.RI "int * \fBm_nb_unknown_pkts_encoder\fP"
+.br
+.ti -1c
+.RI "void ** \fBm_checkValues\fP"
+.br
+.ti -1c
+.RI "int * \fBm_nbPkts_in_equ\fP"
+.br
+.ti -1c
+.RI "int \fBm_firstNonDecoded\fP"
+.br
+.ti -1c
+.RI "int * \fBm_nb_unknown_pkts\fP"
+.br
+.ti -1c
+.RI "int * \fBm_nbEqu_for_parity\fP"
+.br
+.ti -1c
+.RI "void ** \fBm_parity_pkt_canvas\fP"
+.br
+.ti -1c
+.RI "bool \fBm_triangleWithSmallFECRatio\fP"
+.br
+.ti -1c
+.RI "void *(* \fBm_decodedPkt_callback\fP )(void *context, int size, int pkt_seqno)"
+.br
+.ti -1c
+.RI "void *(* \fBm_allocTmpBuffer_callback\fP )(void *context, int size)"
+.br
+.ti -1c
+.RI "void *(* \fBm_getData_callback\fP )(void *context, void *pkt)"
+.br
+.ti -1c
+.RI "void *(* \fBm_getDataPtrOnly_callback\fP )(void *context, void *pkt)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP(* \fBm_storeData_callback\fP )(void *context, void *pkt)"
+.br
+.ti -1c
+.RI "\fBldpc_error_status\fP(* \fBm_freePkt_callback\fP )(void *context, void *pkt)"
+.br
+.ti -1c
+.RI "void * \fBm_context_4_callback\fP"
+.br
+.in -1c
+.SH "Constructor & Destructor Documentation"
+.PP 
+.SS "LDPCFecSession::LDPCFecSession ()"
+.PP
+LDPCFecSession Contructor and Destructor. 
+.PP
+.nf
+40 {
+41         memset(this, 0, sizeof(*this));
+42 }
+.fi
+.PP
+.SS "LDPCFecSession::~\fBLDPCFecSession\fP ()"
+.PP
+.nf
+49 {
+50         EndSession();
+51 }
+.fi
+.PP
+.SH "Member Function Documentation"
+.PP 
+.SS "void LDPCFecSession::AddToPacket (void * to, void * from)\fC [private]\fP"
+.PP
+Calculates the XOR sum of two packets: to = to + from. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIto\fP (IN/OUT) source packet 
+.br
+\fIfrom\fP (IN/OUT) packet added to the source packet
+.RE
+.PP
+
+.PP
+.nf
+455 {
+456         uintptr_t       offset;                 
+457 #if defined (__LP64__) || (__WORDSIZE == 64)
+458         // 64-bit machines
+459         for (offset = 0; offset < m_pktSize64; offset++) {
+460                 *(((uintptr_t*)to) + offset) ^= *(((uintptr_t*)from) + offset);
+461         }
+462         /* add the last 32 bits if needed */
+463         if ((m_pktSize64 << 1) < m_pktSize32) {
+464                 *(uint32_t*)(((uintptr_t*)to) + offset) ^= *(uint32_t*)(((uintptr_t*)from) + offset);
+465         }
+466 
+467 #else
+468 
+469         // 32-bit machines
+470         for (offset = 0; offset < m_pktSize32; offset++) {
+471                 *(((uintptr_t*)to) + offset) ^=  *(((uintptr_t*)from) + offset);
+472         }
+473 #endif
+474 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::BuildFecPacket (void * pkt_canvas[], int fec_index, void * fec_pkt)"
+.PP
+Build a new FEC packet. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN) Array of source DATA and FEC packets. This is a table of n pointers to buffers containing the source and FEC packets. 
+.br
+\fIfec_index\fP (IN) Index of FEC packet to build in {0.. n-k-1} range (!) 
+.br
+\fIfec_pkt\fP (IN-OUT) Pointer to the FEC packet buffer that will be built. This buffer MUST BE allocated before, but NOT cleared (memset(0)) since this function will do it. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.PP
+.nf
+485 {
+486         uintptr_t       *fec_buf;       // buffer for this FEC packet
+487         uintptr_t       *to_add_buf;    // buffer for the  data/FEC pkt to add
+488         mod2entry       *e;
+489         int seqno;
+490 
+491         ASSERT(fec_index >= 0);
+492         ASSERT(fec_index < m_nbFecPkt);
+493         ASSERT(fec_pkt != NULL);
+494         ASSERT(m_initialized);
+495         ASSERT(m_sessionFlags & FLAG_CODER);
+496 
+497         fec_buf = (uintptr_t*)GetBufferPtrOnly(fec_pkt);
+498         memset(fec_buf, 0, m_pktSize);  // reset buffer (security)
+499 
+500 #ifdef LDPC
+501         if (m_sessionType == TypeLDPC) {
+502                 // LDPC mode so we're encoding with gen matrix
+503                 for (int col = 0; col < m_nbDataPkt; col++) {
+504                         if (mod2dense_get(m_genMatrix, fec_index, col)) {
+505                                 to_add_buf = (uintptr_t *)
+506                                                 GetBuffer(pkt_canvas[col]);
+507                                 if (to_add_buf == NULL) {
+508                                         fprintf(stderr, 'LDPCFecSession::BuildFecPacket: FATAL ERROR, packet %d is not allocated!\n', col);
+509                                         return LDPC_ERROR;
+510                                 }
+511                                 AddToPacket(fec_buf, to_add_buf);
+512                         }
+513                 }
+514         } else
+515 #endif
+516         {
+517                 ASSERT(m_sessionType == TypeSTAIRS ||
+518                         m_sessionType == TypeTRIANGLE ||
+519                         m_sessionType == TypeLDGM);
+520                 e = mod2sparse_first_in_row(m_pchkMatrix, fec_index);
+521                 ASSERT(!mod2sparse_at_end(e));
+522                 while (!mod2sparse_at_end(e)) {
+523                         // fec_index in {0.. n-k-1} range, so this test is ok
+524                         if (e->col != fec_index) {
+525                                 // don't add fec_pkt to itself
+526                                 seqno = GetPktSeqno(e->col);
+527                                 to_add_buf = (uintptr_t*)
+528                                                 GetBuffer(pkt_canvas[seqno]);
+529                                 if (to_add_buf == NULL) {
+530                                         fprintf(stderr, 'LDPCFecSession::BuildFecPacket: FATAL ERROR, packet %d is not allocated!\n', seqno);
+531                                         return LDPC_ERROR;
+532                                 }
+533                                 AddToPacket(fec_buf, to_add_buf);
+534                         }
+535                         e = mod2sparse_next_in_row(e);
+536                 }
+537         }
+538 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+539         if (m_storeData_callback) {
+540                 m_storeData_callback(m_context_4_callback, fec_pkt);
+541         }
+542 #endif
+543 #ifdef DEBUG
+544         if (this->m_verbosity >= 1) {
+545                 printf('LDPCFecSession::BuildFecPacket: FEC packet seq=%d created\n',
+546                         fec_index);
+547         }
+548 #endif
+549         return LDPC_OK;
+550 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::BuildFecPacketsPerCol (void * pkt_canvas[], int pkt_index, int ** built_parity_pkts, int * nb_built_parity_pkts)"
+.PP
+Build a new FEC packet. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN) Array of source DATA and FEC packets. This is a table of n pointers to buffers containing the source and FEC packets. 
+.br
+\fIpkt_index\fP (IN) Index of column/packet. 
+.br
+\fIbuilt_parity_pkts\fP (OUT) 
+.br
+\fInb_built_parity_pkts\fP (OUT) 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.PP
+.nf
+562 {
+563 
+564         mod2entry       *e;
+565         uintptr_t       *data;
+566         uintptr_t       *fec_pkt;
+567 
+568         ASSERT(m_initialized);
+569         ASSERT(m_sessionFlags & FLAG_CODER);
+570 
+571         ASSERT(m_sessionType== TypeSTAIRS || m_sessionType == TypeTRIANGLE || m_sessionType== TypeLDGM);
+572 
+573         *nb_built_parity_pkts = 0;      
+574 #ifdef DEBUG
+575         if (this->m_verbosity >= 1) {
+576                 printf('LDPCFecSession::BuildFecPacketsPerCol: column=%d processed\n', pkt_index);
+577         }
+578 #endif
+579         e = mod2sparse_first_in_col(m_pchkMatrix, GetMatrixCol(pkt_index));
+580         ASSERT(!mod2sparse_at_end(e));
+581 
+582         while (!mod2sparse_at_end(e)) {
+583                 if (e->row != GetMatrixCol(pkt_index)) {
+584                         data = (uintptr_t*)pkt_canvas[pkt_index];
+585                         if (pkt_canvas[GetPktSeqno(e->row)] == NULL) {
+586                                 pkt_canvas[GetPktSeqno(e->row)] =
+587                                                 (char*)calloc(m_pktSize, 1);
+588                         }
+589                         fec_pkt = (uintptr_t*) pkt_canvas[GetPktSeqno(e->row)];
+590                 
+591                         if (data == NULL) {
+592                                 fprintf(stderr, 'LDPCFecSession::BuildFecPacket: FATAL ERROR, packet %d is not allocated!\n', pkt_index);
+593                                 return LDPC_ERROR;
+594                         }
+595                         AddToPacket(fec_pkt, data);
+596                         m_nb_unknown_pkts_encoder[e->row]--;
+597                         if (m_nb_unknown_pkts_encoder[e->row] == 1) {
+598                                 (*nb_built_parity_pkts)++;
+599                                 if (*nb_built_parity_pkts == 1) {
+600                                         *built_parity_pkts = (int*)
+601                                                 calloc(1,sizeof(int));
+602                                 } else {
+603                                         *built_parity_pkts = (int*)
+604                                                 realloc((void*) *built_parity_pkts, (*nb_built_parity_pkts)*sizeof(int));
+605                                 }
+606                                 *((*built_parity_pkts) + (*nb_built_parity_pkts) - 1) = e->row;                                         
+607                         }
+608                         
+609                 }               
+610                 e = mod2sparse_next_in_col(e);
+611         }
+612         
+613         /* Call recursively this function with new FEC packets as parameter*/
+614         int temp = *nb_built_parity_pkts;
+615         for (int i = 0; i < temp; i++) {
+616                 int     recursive_nb_built_parity_pkts = 0;
+617                 int     *recursive_built_parity_pkts = NULL;
+618 
+619                 BuildFecPacketsPerCol(pkt_canvas,
+620                                         *built_parity_pkts[i] + m_nbDataPkt,
+621                                         &recursive_built_parity_pkts,
+622                                         &recursive_nb_built_parity_pkts);
+623                 *built_parity_pkts = (int*) realloc((void*) *built_parity_pkts,((*nb_built_parity_pkts) + recursive_nb_built_parity_pkts)*sizeof(int));
+624                 for (int j = 0; j < recursive_nb_built_parity_pkts; j++) {
+625                         (*built_parity_pkts)[*nb_built_parity_pkts+j] =
+626                                                 recursive_built_parity_pkts[j];
+627                 }
+628                 *nb_built_parity_pkts = *nb_built_parity_pkts +
+629                                         recursive_nb_built_parity_pkts;
+630 
+631                 if (recursive_built_parity_pkts != NULL) {
+632                         free(recursive_built_parity_pkts);
+633                         recursive_built_parity_pkts = NULL;
+634                 }
+635         }
+636         return LDPC_OK;
+637 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::DecodeFecStep (void * pkt_canvas[], void * new_pkt, int new_pkt_seqno)"
+.PP
+Perform a new decoding step thanks to the newly received packet. Same as the other DecodeFecStep method, without the store_packet argument (prefered solution). 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN-OUT) Global array of received or rebuilt source packets (FEC packets need not be stored here). This is a table of k pointers to buffers. This array must be cleared (memset(0)) upon the first call to this function. It will be automatically updated, with pointers to packets received or decoded, by this function. 
+.br
+\fInew_pkt\fP (IN) Pointer to the buffer containing the new packet. 
+.br
+\fInew_pkt_seqno\fP (IN) New packet's sequence number in {0.. n-1} range. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.PP
+.nf
+807 {
+808         mod2entry       *e = NULL;      // entry ('1') in parity check matrix
+809         mod2entry       *delMe;         // temp: entry to delete in row/column
+810         void            *currChk;       // temp: pointer to Partial sum
+811         int             row;            // temp: current row value
+812         int             *CheckOfDeg1 = NULL; // table of check nodes of degree
+813                                         // one after the processing of new_pkt
+814         int             CheckOfDeg1_nb = 0; // number of entries in table
+815         int             CheckOfDeg1_listSize = 0; // size of the memory block
+816                                         // allocated for the table
+817 
+818         ASSERT(new_pkt);
+819         ASSERT(new_pkt_seqno >= 0);
+820         ASSERT(new_pkt_seqno < m_nbTotalPkt);
+821         ASSERT(m_initialized);
+822         ASSERT(m_sessionFlags & FLAG_DECODER);
+823 
+824         // Step 0: check if this is a fresh packet, otherwise return
+825         if ((mod2sparse_last_in_col(m_pchkMatrix, GetMatrixCol(new_pkt_seqno))->row < 0)
+826             || (IsDataPkt(new_pkt_seqno) && (pkt_canvas[new_pkt_seqno] != NULL))
+827             || (IsParityPkt(new_pkt_seqno) && (m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt] != NULL))) {
+828                 // Packet has already been processed, so skip it
+829 #ifdef DEBUG
+830                 if (this->m_verbosity >= 1) {
+831                         printf('LDPCFecSession::DecodeFecStep: %s packet %d already received or rebuilt, ignored\n',
+832                                 (IsDataPkt(new_pkt_seqno)) ? 'DATA' : 'FEC',
+833                                 new_pkt_seqno); }
+834 #endif
+835                 return LDPC_OK;
+836         }
+837 #ifdef DEBUG
+838         if (this->m_verbosity >= 1) {
+839                 printf('LDPCFecSession::DecodeFecStep: Processing NEW %s packet: seq=%d\n',
+840                         (IsDataPkt(new_pkt_seqno)) ? 'DATA' : 'FEC',
+841                         new_pkt_seqno);
+842         }
+843 #endif
+844         // First, make sure data is available for this new packet. Must
+845         // remain valid throughout this function...
+846         GetBuffer(new_pkt);
+847 
+848         // Step 1: Store the packet in a permanent array. It concerns only DATA
+849         // packets. FEC packets are only stored in permanent array, if we have
+850         // a memory gain by doing so (and not creating new partial sums)
+851         if (IsDataPkt(new_pkt_seqno)) {
+852                 // DATA packet
+853                 // There's no need to allocate anything, nor to call
+854                 // anything. It has already been done by the caller...
+855                 pkt_canvas[new_pkt_seqno] = new_pkt;
+856 #if 0
+857                 }
+858 #endif
+859         } else {
+860                 // Parity packet
+861                 // Check if parity packet should be stored or if partial
+862                 // sum should be stored
+863                 if (m_triangleWithSmallFECRatio) {
+864                         // In this case, the packet will never be stored into
+865                         // permanent array, but directly added to partial sum
+866                 } else {
+867                         // Check if parity packet should be stored or if
+868                         // partial sum should be stored
+869                         bool    store_parity = false;
+870                         for (e = mod2sparse_first_in_col(m_pchkMatrix,
+871                                             GetMatrixCol(new_pkt_seqno));
+872                             !mod2sparse_at_end(e);
+873                             e = mod2sparse_next_in_col(e))
+874                         {
+875                                 if (m_nb_unknown_pkts[e->row] > 2) {
+876                                         store_parity = true;
+877                                         break;
+878                                 }
+879                         }
+880                         if (store_parity) {
+881                                 // Parity packet will be stored in a permanent array
+882 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+883                                 if (m_allocTmpBuffer_callback != NULL) {
+884                                         m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt] =
+885                                                         m_allocTmpBuffer_callback(
+886                                                                 m_context_4_callback,
+887                                                                 m_pktSize);
+888                                 } else
+889 #endif
+890                                 {
+891                                         m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt] =
+892                                                         (void *)malloc(m_pktSize);
+893                                 }
+894                                 // copy the content...
+895                                 memcpy(GetBufferPtrOnly(m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt]),
+896                                         GetBufferPtrOnly(new_pkt), m_pktSize);
+897 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+898                                 // and store it permanently.
+899                                 if (m_storeData_callback) {
+900                                         m_storeData_callback(m_context_4_callback,
+901                                                         m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt]);
+902                                 }
+903 #endif
+904                         }
+905                         // else parity packet will only be added to partial sums
+906                 }
+907         }
+908 
+909         // Step 2: Inject the packet value in each equation it is involved
+910         // (if partial sum already exists or if partial sum should be created)
+911         for (e = mod2sparse_first_in_col(m_pchkMatrix, GetMatrixCol(new_pkt_seqno));
+912              !mod2sparse_at_end(e); ) {
+913                 // for a given row, ie for a given equation where this packet
+914                 // is implicated, do the following:
+915                 row = e->row;
+916                 m_nb_unknown_pkts[row]--;       // packet is known
+917                 currChk = m_checkValues[row];   // associated check
+918 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+919                 if (currChk != NULL) {
+920                         // make sure data is available
+921                         if (m_getData_callback != NULL) {
+922                                 m_getData_callback(m_context_4_callback, currChk);
+923                         }
+924                 }
+925 #endif
+926                 if (currChk == NULL &&
+927                     ((m_nb_unknown_pkts[row] == 1) || m_triangleWithSmallFECRatio)
+928                 ) {
+929                         // we need to allocate a PS (i.e. check node)
+930                         // and add pkt to it, because the parity packet
+931                         // won't be kept (keep_pkt == false), or it is the
+932                         // last missing packet of this equation, or because
+933                         // or some particular situation where it is non sense
+934                         // no to allocate a PS (m_triangleWithSmallFECRatio).
+935 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+936                         if (m_allocTmpBuffer_callback != NULL) {
+937                                 currChk = m_allocTmpBuffer_callback(
+938                                                         m_context_4_callback,
+939                                                         m_pktSize);
+940                         } else
+941 #endif
+942                         {
+943                                 currChk = (void*) calloc(m_pktSize32, 4);
+944                         }
+945                         if ((m_checkValues[row] = currChk) == NULL) {
+946                                 goto no_mem;
+947                         }
+948                 }
+949                 if (currChk != NULL) {
+950                         // there's a partial sum for this row...
+951                         if (m_nbPkts_in_equ[row] > 1) {
+952                                 // we can add the packet content to this PS
+953                                 AddToPacket(GetBufferPtrOnly(currChk),
+954                                             GetBufferPtrOnly(new_pkt));
+955                         }
+956                         // else this is useless, since new_pkt is the last
+957                         // pkt of this equation, and its value is necessary
+958                         // equal to the PS. Their sum must be 0 (we don't
+959                         // check it).
+960 
+961                         // remove the packet from the equation (this entry
+962                         // is now useless)
+963                         delMe = e;
+964                         e = mod2sparse_next_in_col(e);
+965                         mod2sparse_delete(m_pchkMatrix, delMe);
+966                         m_nbPkts_in_equ[row]--;
+967                         if (IsParityPkt(new_pkt_seqno)) {
+968                                 m_nbEqu_for_parity[new_pkt_seqno - m_nbDataPkt]--;
+969                         }
+970 
+971                         // Inject all permanently stored packets (DATA and parity)
+972                         // into partial sum
+973                         if (m_triangleWithSmallFECRatio == false)
+974                         {
+975                                 // Inject all permanently stored packets
+976                                 // (DATA and parity) into this partial sum.
+977                                 // Requires to scan the equation (ie row).
+978                                 mod2entry       *tmp_e; // curr pkt in this equ
+979                                 int             tmp_seqno;// corresponding seq no
+980                                 void            *tmp_pkt; // corresponding pkt pointer
+981 
+982                                 for (tmp_e = mod2sparse_first_in_row(m_pchkMatrix, row);
+983                                      !mod2sparse_at_end(tmp_e); ) {
+984 
+985                                         tmp_seqno = GetPktSeqno(tmp_e->col);
+986                                         //if (GetPktSeqno(r->col) >= m_nbDataPkt)
+987                                         if (IsParityPkt(tmp_seqno)) {
+988                                                 tmp_pkt = m_parity_pkt_canvas[tmp_seqno - m_nbDataPkt];
+989                                         } else {
+990                                                 // waiting for
+991                                                 // (m_nb_unknown_pkts[row] == 1)
+992                                                 // to add source packets is
+993                                                 // useless... it's even slower
+994                                                 // in that case!
+995                                                 tmp_pkt = pkt_canvas[tmp_seqno];
+996                                         }
+997                                         if (tmp_pkt != NULL) {
+998                                                 // add the packet content now
+999                                                 AddToPacket(
+1000                                                         GetBufferPtrOnly(currChk),
+1001                                                         GetBuffer(tmp_pkt));
+1002                                                 // delete the entry
+1003                                                 delMe = tmp_e;
+1004                                                 tmp_e =  mod2sparse_next_in_row(tmp_e);
+1005                                                 mod2sparse_delete(m_pchkMatrix, delMe);
+1006                                                 m_nbPkts_in_equ[row]--;
+1007                                                 if (IsParityPkt(tmp_seqno)) {
+1008                                                         m_nbEqu_for_parity[tmp_seqno - m_nbDataPkt]--;
+1009                                                         // check if we can delete
+1010                                                         // parity packet altogether
+1011                                                         if (m_nbEqu_for_parity[tmp_seqno - m_nbDataPkt] == 0) {
+1012 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1013                                                                 if (m_freePkt_callback != NULL) {
+1014                                                                         m_freePkt_callback(
+1015                                                                                 m_context_4_callback,
+1016                                                                                 tmp_pkt);
+1017                                                                 } else
+1018 #endif
+1019                                                                 {
+1020                                                                         free(tmp_pkt);
+1021                                                                 }
+1022                                                                 m_parity_pkt_canvas[tmp_seqno - m_nbDataPkt] = NULL;
+1023                                                         }
+1024                                                 }
+1025                                         } else {
+1026                                                 // this packet not yet known,
+1027                                                 // switch to next one in equ
+1028                                                 tmp_e =  mod2sparse_next_in_row(tmp_e);
+1029                                         }
+1030                                 }
+1031                         }
+1032 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1033                         // store the partial sum now we are sure it has been
+1034                         // completely updated
+1035                         if (m_storeData_callback != NULL) {
+1036                                 m_storeData_callback(m_context_4_callback,
+1037                                                         currChk);
+1038                         }
+1039 #endif
+1040                 } else {
+1041                         // here m_checkValues[row] is NULL, ie. the partial
+1042                         // sum has not been allocated
+1043                         e = mod2sparse_next_in_col(e);
+1044                 }
+1045                 if (m_nbPkts_in_equ[row] == 1) {
+1046                         // register this entry for step 3 since the packet
+1047                         // associated to this equation can now be decoded...
+1048                         if (CheckOfDeg1 == NULL) {
+1049                                 // allocate memory for the table first
+1050                                 CheckOfDeg1_listSize = 4;
+1051                                 if ((CheckOfDeg1 = (int*)
+1052                                                 calloc(CheckOfDeg1_listSize,
+1053                                                 sizeof(int*))) == NULL) {
+1054                                         goto no_mem;
+1055                                 }
+1056                         } else if (CheckOfDeg1_nb == CheckOfDeg1_listSize) {
+1057                                 // not enough size in table, add some more
+1058                                 CheckOfDeg1_listSize += 4;
+1059                                 if ((CheckOfDeg1 = (int*)realloc(CheckOfDeg1,
+1060                                                         CheckOfDeg1_listSize * sizeof(int*))) == NULL) {
+1061                                         goto no_mem;
+1062                                 }
+1063                         }
+1064                         CheckOfDeg1[CheckOfDeg1_nb++] = row;
+1065                 }
+1066         }
+1067 
+1068         // Step 3: Check if a new packet has been decoded and take appropriate
+1069         // measures ...
+1070         int     decoded_pkt_seqno;      // sequence number of decoded packet
+1071         //for (int i = 0; i < CheckOfDeg1_nb; i++) 
+1072         for (CheckOfDeg1_nb--; CheckOfDeg1_nb >= 0; CheckOfDeg1_nb--) {
+1073                 // get the index (ie row) of the partial sum concerned
+1074                 row = CheckOfDeg1[CheckOfDeg1_nb];
+1075                 if (m_nbPkts_in_equ[row] == 1) {
+1076                         // A new decoded packet is available...
+1077                         // NB: because of the recursion below, we need to
+1078                         // check that all equations mentioned in the
+1079                         // CheckOfDeg1 list are __still__ of degree 1.
+1080                         e = mod2sparse_first_in_row(m_pchkMatrix, row);
+1081                         ASSERT(!mod2sparse_at_end(e) &&
+1082                                 mod2sparse_at_end(e->right))
+1083                         decoded_pkt_seqno = GetPktSeqno(e->col);
+1084                         // remove the entry from the matrix
+1085                         currChk = m_checkValues[row];   // remember it
+1086                         m_checkValues[row] = NULL;
+1087                         m_nbPkts_in_equ[row]--;
+1088                         if (IsParityPkt(decoded_pkt_seqno)) {
+1089                                 m_nbEqu_for_parity[decoded_pkt_seqno - m_nbDataPkt]--;
+1090                         }
+1091                         mod2sparse_delete(m_pchkMatrix, e);
+1092 #ifdef DEBUG
+1093                         if (this->m_verbosity >= 1) {
+1094                                 printf('LDPCFecSession::DecodeFecStep: => REBUILT %s pkt %d\n',
+1095                                         (IsParityPkt(decoded_pkt_seqno)) ? 'FEC' : 'DATA',
+1096                                         decoded_pkt_seqno);
+1097                         }
+1098 #endif
+1099                         if (IsDataPkt(decoded_pkt_seqno)) {
+1100                                 // Data packet.
+1101                                 void    *decoded_pkt_dst;// temp variable used to store pkt
+1102 
+1103                                 // First copy it into a permanent packet.
+1104                                 // Call any required callback, or allocate memory, and
+1105                                 // copy the packet content in it.
+1106 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1107                                 if (this->m_decodedPkt_callback != NULL) {
+1108                                         decoded_pkt_dst =
+1109                                                 m_decodedPkt_callback(
+1110                                                         m_context_4_callback,
+1111                                                         m_pktSize,
+1112                                                         decoded_pkt_seqno);
+1113                                 } else
+1114 #endif
+1115                                 {
+1116                                         decoded_pkt_dst =
+1117                                                 (void *)malloc(m_pktSize);
+1118                                 }
+1119                                 if (decoded_pkt_dst == NULL) {
+1120                                         goto no_mem;
+1121                                 }
+1122                                 memcpy(GetBufferPtrOnly(decoded_pkt_dst),
+1123                                         GetBuffer(currChk), m_pktSize);
+1124 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1125                                 if (m_storeData_callback != NULL) {
+1126                                         m_storeData_callback(m_context_4_callback,
+1127                                                         decoded_pkt_dst);
+1128                                 }
+1129 #endif
+1130                                 // Free partial sum which is no longer used.
+1131                                 // It's important to free it before calling
+1132                                 // DecodeFecStep recursively to reduce max
+1133                                 // memory requirements.
+1134 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1135                                 if (m_freePkt_callback != NULL) {
+1136                                         m_freePkt_callback(m_context_4_callback,
+1137                                                         currChk);
+1138                                 } else
+1139 #endif
+1140                                 {
+1141                                         free(currChk);  
+1142                                 }
+1143                                 // And finally call this method recursively...
+1144                                 DecodeFecStep(pkt_canvas, decoded_pkt_dst,
+1145                                                 decoded_pkt_seqno);
+1146 
+1147                         } else {
+1148 
+1149                                 // Parity packet.
+1150                                 // Call this method recursively first...
+1151                                 DecodeFecStep(pkt_canvas, currChk, decoded_pkt_seqno);
+1152                                 // Then free the partial sum which is no longer needed.
+1153 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+1154                                 if (m_freePkt_callback != NULL) {
+1155                                         m_freePkt_callback(m_context_4_callback,
+1156                                                         currChk);
+1157                                 } else
+1158 #endif
+1159                                 {
+1160                                         free(currChk);  
+1161                                 }
+1162                         }
+1163                 }
+1164         }
+1165         if (CheckOfDeg1 != NULL) {
+1166                 free(CheckOfDeg1);
+1167         }
+1168         return LDPC_OK;
+1169 
+1170 no_mem:
+1171         fprintf(stderr, 'LDPCFecSession::DecodeFecStep: ERROR, out of memory!\n');
+1172         return LDPC_ERROR;
+1173 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::DecodeFecStep (void * pkt_canvas[], void * new_pkt, int new_pkt_seqno, bool store_packet)"
+.PP
+Perform a new decoding step thanks to the newly received packet. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN-OUT) Global array of received or rebuilt source packets (FEC packets need not be stored here). This is a table of k pointers to buffers. This array must be cleared (memset(0)) upon the first call to this function. It will be automatically updated, with pointers to packets received or decoded, by this function. 
+.br
+\fInew_pkt\fP (IN) Pointer to the buffer containing the new packet. 
+.br
+\fInew_pkt_seqno\fP (IN) New packet's sequence number in {0.. n-1} range. 
+.br
+\fIstore_packet\fP (IN) true if the function needs to allocate memory, copy the packet content in it, and call any required callback. This is typically done when this function is called recursively, for newly decoded packets, or under special circunstances (e.g. perftool). 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.PP
+.nf
+712 {
+713         void    *new_pkt_dst;   // temp variable used to store pkt
+714 
+715         ASSERT(new_pkt);
+716         ASSERT(new_pkt_seqno >= 0);
+717         ASSERT(new_pkt_seqno < m_nbTotalPkt);
+718         ASSERT(m_initialized);
+719         ASSERT(m_sessionFlags & FLAG_DECODER);
+720 
+721         // Fast path. If store packet is not set, then call directly
+722         // the full DecodeFecStep() method to avoid duplicate processing.
+723         if (store_packet == false) {
+724                 return(DecodeFecStep(pkt_canvas, new_pkt, new_pkt_seqno)); 
+725         }
+726         // Step 0: check if this is a fresh packet, otherwise return
+727         if ((mod2sparse_last_in_col(m_pchkMatrix, GetMatrixCol(new_pkt_seqno))->row < 0)
+728             || (IsDataPkt(new_pkt_seqno) && (pkt_canvas[new_pkt_seqno] != NULL))
+729             || (IsParityPkt(new_pkt_seqno) && (m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt] != NULL))) {
+730                 // Packet has already been processed, so skip it
+731 #ifdef DEBUG
+732                 if (this->m_verbosity >= 1) {
+733                         printf('LDPCFecSession::DecodeFecStep: %s packet %d already received or rebuilt, ignored\n',
+734                                 (IsDataPkt(new_pkt_seqno)) ? 'DATA' : 'FEC',
+735                                 new_pkt_seqno); }
+736 #endif
+737                 return LDPC_OK;
+738         }
+739         // Step 1: Store the packet in a permanent array if the caller wants it.
+740         // It concerns only DATA packets, since FEC packets are only stored in
+741         // permanent array if we have a memory gain by doing so, which will
+742         // be defined later on in the full DecodeFecStep() method.
+743         if (IsDataPkt(new_pkt_seqno)) {
+744                 ASSERT(store_packet);
+745                 // Call any required callback, or allocate memory, and
+746                 // copy the packet content in it.
+747                 // This is typically something which is done when this
+748                 // function is called recursively, for newly decoded
+749                 // packets.
+750                 if (this->m_decodedPkt_callback != NULL) {
+751                         new_pkt_dst = m_decodedPkt_callback(
+752                                                 m_context_4_callback,
+753                                                 m_pktSize,
+754                                                 new_pkt_seqno);
+755                 } else {
+756                         new_pkt_dst = (void *)malloc(m_pktSize);
+757                 }
+758                 if (new_pkt_dst == NULL) {
+759                         fprintf(stderr, 'LDPCFecSession::DecodeFecStep: ERROR, out of memory!\n');
+760                         return LDPC_ERROR;
+761                 }
+762                 // Copy data now
+763                 memcpy(GetBufferPtrOnly(new_pkt_dst), GetBuffer(new_pkt), m_pktSize);
+764 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+765                 if (m_storeData_callback != NULL) {
+766                         m_storeData_callback(m_context_4_callback,
+767                                         new_pkt_dst);
+768                 }
+769 #endif
+770         } else {
+771                 new_pkt_dst = new_pkt;
+772         }
+773         /* continue decoding with the full DecodeFecStep() method */
+774         return(DecodeFecStep(pkt_canvas, new_pkt_dst, new_pkt_seqno)); 
+775 }
+.fi
+.PP
+.SS "void LDPCFecSession::EndSession ()"
+.PP
+EndSession: Ends the LDPC session, cleans up everything. 
+.PP
+.nf
+305 {
+306         if (m_initialized) {
+307                 //m_initialized = false;
+308                 mod2sparse_free(m_pchkMatrix);
+309                 free(m_pchkMatrix);     /* mod2sparse_free does not free it! */
+310 #ifdef LDPC             
+311                 if (m_sessionType == TypeLDPC) {
+312                         mod2dense_free(m_genMatrix);
+313                         if (m_columnsOrder) {
+314                                 free(m_columnsOrder);
+315                         }
+316                         if (m_columnsIndex) {
+317                                 free(m_columnsIndex);
+318                         }
+319                 }
+320 #endif
+321                 if (m_checkValues != NULL) {
+322                         for (int i = 0; i < m_nbCheck; i++) {
+323                                 if (m_checkValues[i] != NULL) {
+324 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+325                                         if (m_freePkt_callback != NULL) {
+326                                                 m_freePkt_callback(m_context_4_callback,
+327                                                                    m_checkValues[i]);
+328                                         } else
+329 #endif
+330                                         {
+331                                                 free(m_checkValues[i]);
+332                                         }
+333                                 }
+334                         }
+335                         free(m_checkValues);
+336                 }
+337                 if (m_parity_pkt_canvas != NULL) {
+338                         for (int i = 0; i < m_nbCheck; i++) {
+339                                 if (m_parity_pkt_canvas[i] != NULL) {
+340 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+341                                         if (m_freePkt_callback != NULL) {
+342                                                 m_freePkt_callback(m_context_4_callback,
+343                                                                    m_parity_pkt_canvas[i]);
+344                                         } else
+345 #endif
+346                                         {
+347                                                 free(m_parity_pkt_canvas[i]);
+348                                         }
+349                                 }
+350                         }
+351                         free(m_parity_pkt_canvas);
+352                 }
+353                 if (m_nbPkts_in_equ) {
+354                         free(m_nbPkts_in_equ);
+355                 }
+356                 if (m_nbEqu_for_parity) {
+357                         free(m_nbEqu_for_parity);
+358                 }
+359                 if (m_nb_unknown_pkts) {
+360                         free(m_nb_unknown_pkts);
+361                 }
+362                 if (m_nb_unknown_pkts_encoder) {
+363                         free(m_nb_unknown_pkts_encoder);
+364                 }
+365         }
+366         // and now init everything!
+367         memset(this, 0, sizeof(*this));
+368 }
+.fi
+.PP
+.SS "void * LDPCFecSession::GetBuffer (void * pkt)\fC [inline, private]\fP"
+.PP
+Get the data buffer associated to a packet stored in the pkt_canvas[] / m_parity_pkt_canvas[] / m_checkValues[] tables. This function is usefull in EXTERNAL_MEMORY_MGMT_SUPPORT mode when a the Alloc/Get/Store/Free callbacks are used, but it does nothing in other mode. This is due to the fact that with these callbacks, the various canvas do not point to data buffers but to intermediate structures, and therefore accessing the associated buffer needs extra processing. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt\fP (IN) pointer stored in the various canvas 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+associated buffer
+.RE
+.PP
+
+.PP
+.nf
+535 {
+536 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+537         if (m_getData_callback) {
+538                 return (m_getData_callback(m_context_4_callback, pkt));
+539         } else
+540 #endif
+541                 return pkt;             // nothing to do here
+542 }
+.fi
+.PP
+.SS "void * LDPCFecSession::GetBufferPtrOnly (void * pkt)\fC [inline, private]\fP"
+.PP
+Same as GetBuffer, except that is call does not use the GetData_callback but on GetDataPtrOnly_callback. For instance, in EXTERNAL_MEMORY_MGMT_SUPPORT, it will not make sure that data is actually available and up-to-date, perhaps because this is a destination buffer in a memcpy that has just been allocated! 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt\fP (IN) pointer stored in the various canvas 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+associated buffer
+.RE
+.PP
+
+.PP
+.nf
+546 {
+547 #ifdef EXTERNAL_MEMORY_MGMT_SUPPORT
+548         if (m_getDataPtrOnly_callback) {
+549                 return (m_getDataPtrOnly_callback(m_context_4_callback, pkt));
+550         } else
+551 #endif
+552                 return pkt;             // nothing to do here
+553 }
+.fi
+.PP
+.SS "int LDPCFecSession::GetMatrixCol (int pktSeqno)\fC [private]\fP"
+.PP
+Packet sequence number to column index translation. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpktSeqno\fP (IN) packet sequence number in {O; n-1} range 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+corresponding column number in matrix
+.RE
+.PP
+
+.PP
+.nf
+646 {
+647         if (pktSeqno < m_nbDataPkt) {
+648                 /* source packet */
+649 #ifdef LDPC
+650                 if (m_sessionType == TypeLDPC) {
+651                         return m_columnsOrder[pktSeqno + m_nbFecPkt];
+652                 } else {
+653 #endif
+654                         return (pktSeqno + m_nbFecPkt);
+655 #ifdef LDPC
+656                 }
+657 #endif
+658         } else {
+659                 /* parity packet */
+660 #ifdef LDPC
+661                 if (m_sessionType == TypeLDPC) {
+662                         return m_columnsOrder[pktSeqno - m_nbDataPkt];
+663                 } else {
+664 #endif
+665                         return (pktSeqno - m_nbDataPkt);
+666 #ifdef LDPC
+667                 }
+668 #endif
+669         }
+670 }
+.fi
+.PP
+.SS "int LDPCFecSession::GetPktSeqno (int matrixCol)\fC [private]\fP"
+.PP
+Internal column index to packet sequence number translation. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fImatrixCol\fP (IN) column number in matrix 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+corresponding packet sequence number in {O; n-1} range
+.RE
+.PP
+
+.PP
+.nf
+679 {
+680         int colInOrder;
+681 
+682 #ifdef LDPC
+683         if (m_sessionType == TypeLDPC) {
+684                 colInOrder = m_columnsIndex[matrixCol];
+685         } else {
+686 #endif
+687                 colInOrder = matrixCol;
+688 #ifdef LDPC
+689         }
+690 #endif
+691         if (colInOrder < m_nbFecPkt) {
+692                 /* parity packet */
+693                 return (colInOrder + m_nbDataPkt);
+694         } else {
+695                 /* source packet */
+696                 return (colInOrder - m_nbFecPkt);
+697         }
+698 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::InitSession (int nbDataPkt, int nbFecPkt, int pktSize, int flags = \fCFLAG_BOTH\fP, int leftDegree = \fC3\fP, int seed = \fC1\fP, \fBSessionType\fP codecType = \fCTypeTRIANGLE\fP)"
+.PP
+InitSession: Initializes the LDPC session. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fInbDataPkt\fP (IN) number of DATA packets (i.e. k). 
+.br
+\fInbFecPkt\fP (IN) number of FEC packets (i.e. n-k). Be careful that n-k cannot be less than the left degree, otherwise an error is returned. 
+.br
+\fIpktSize\fP (IN) packet size in bytes. MUST BE multiple of 4. 
+.br
+\fIflags\fP (IN) session flags (FLAG_CODER, FLAG_DECODER, ...). 
+.br
+\fIleftDegree\fP (IN) number of check edges per packet (FEC constraints). 
+.br
+\fIseed\fP (IN) seed used to build the parity check matrix (H). 
+.br
+\fIcodecType\fP (IN) Type of codec algorithm and matrix to use. Can be on of TypeLDGM, TypeSTAIRS, TypeTRIANGLE, TypeLDPC 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.PP
+.nf
+66 {
+67         mod2entry       *e;
+68 
+69         m_initialized   = false;
+70         m_sessionFlags  = flags;
+71         m_sessionType   = codecType;
+72         m_pktSize       = pktSize;
+73         if ((pktSize % 4) != 0) {
+74                 fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: Packet size (%d bytes) IS NOT multiple of 4\n', pktSize);
+75                 return LDPC_ERROR;
+76         }
+77 #if defined (__LP64__) || (__WORDSIZE == 64)
+78         // pktSize is not necessarily a multiple of 8, but >> 3 will divide
+79         // it by 8 and keep the integral part automatically.
+80         m_pktSize64     = pktSize >> 3;
+81 #endif 
+82         m_pktSize32     = pktSize >> 2;
+83 
+84         m_nbDataPkt     = nbDataPkt;
+85         m_nbFecPkt      = nbFecPkt;
+86         m_leftDegree    = leftDegree;
+87         m_firstNonDecoded = 0;
+88 
+89         if (this->m_verbosity >= 1) {
+90                 if (m_sessionType == TypeLDGM) {
+91                         printf('Initializing LDGM FEC Session...\n - DATA packets = %d\n - FEC packets = %d\n - Packets size = %d\n - Edges per DATA pkt = %d\n', m_nbDataPkt, m_nbCheck, m_pktSize, m_leftDegree = leftDegree);
+92                 } else if (m_sessionType == TypeSTAIRS) {
+93                         printf('Initializing LDGM STAIRCASE FEC Session...\n - DATA packets = %d\n - FEC packets = %d\n - Packets size = %d\n - Edges per DATA pkt = %d\n', m_nbDataPkt, m_nbCheck, m_pktSize, m_leftDegree = leftDegree);
+94                 } else if (m_sessionType == TypeTRIANGLE) {
+95                         printf('Initializing LDGM TRIANGLE FEC Session...\n - DATA packets = %d\n - FEC packets = %d\n - Packets size = %d\n - Edges per DATA pkt = %d\n', m_nbDataPkt, m_nbCheck, m_pktSize, m_leftDegree = leftDegree);
+96                 } 
+97 #ifdef LDPC
+98                 else if (m_sessionType == TypeLDPC) {
+99                         printf('Initializing LDPC FEC Session...\n - DATA packets = %d\n - FEC packets = %d\n - Packets size = %d\n - Edges per DATA pkt = %d\n', m_nbDataPkt, m_nbCheck, m_pktSize, m_leftDegree = leftDegree);
+100                 }
+101 #endif
+102         }
+103 
+104         // generate parity check matrix... 
+105         if (this->m_verbosity >= 1) {
+106                 printf('Generating Parity Check Matrix (H)...');
+107         }
+108         m_pchkMatrix = CreatePchkMatrix(m_nbCheck, m_nbDataPkt + m_nbFecPkt, Evenboth, m_leftDegree, seed, false, m_sessionType, this->m_verbosity);
+109         if (m_pchkMatrix == NULL) {
+110                 fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: call to CreatePchkMatrix failed!\n');
+111                 return LDPC_ERROR;
+112         }
+113         if (this->m_verbosity >= 1) {
+114                 printf('Done!\n');
+115         }
+116 
+117 #ifdef LDPC
+118         if (m_sessionType == TypeLDPC) {
+119                 m_columnsOrder = (int*)calloc(m_nbTotalPkt, sizeof(int));
+120                 if (m_columnsOrder == NULL) {
+121                         fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: call to calloc failed for m_columnsOrder!\n');
+122                         return LDPC_ERROR;
+123                 }
+124                 if (this->m_verbosity >= 1) {
+125                         printf('Generating Generator Matrix (G)...');
+126                 }
+127 
+128                 m_genMatrix = CreateGenMatrix(m_pchkMatrix, m_columnsOrder);
+129 
+130                 m_columnsIndex = (int*)calloc(m_nbTotalPkt, sizeof(int));
+131                 if (m_columnsIndex == NULL) {
+132                         fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: call to calloc failed for m_columnsIndex!\n');
+133                         return LDPC_ERROR;
+134                 }
+135                 for (int i = 0; i < m_nbTotalPkt; i++) {
+136                         m_columnsIndex[m_columnsOrder[i]] = i;
+137                 }
+138 
+139                 if (this->m_verbosity >= 1) {
+140                         printf('Done!\n');
+141                 }
+142 
+143                 if (this->m_verbosity >= 2) {
+144                         printf('\n');
+145                         for (int i = 0; i < m_nbTotalPkt; i++) {
+146                                 printf('%d ', m_columnsOrder[i]);
+147                         }
+148                         printf('\n\nGen Matrix:\n');
+149                         mod2dense_print(stdout, m_genMatrix);
+150                         printf('\n');
+151                 }
+152         }
+153 #endif
+154 
+155         if (m_sessionFlags & FLAG_CODER) {
+156                 m_nb_unknown_pkts_encoder = (int*)calloc(m_nbCheck, sizeof(int));
+157                 if (m_nb_unknown_pkts_encoder == NULL) {
+158                         fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: call to calloc failed for m_nb_unknown_pkts_encoder!\n');
+159                         return LDPC_ERROR;
+160                 }
+161 
+162                 for (int row=0; row<m_nbCheck; row++) {
+163                         mod2entry *e;
+164                         for (e = mod2sparse_first_in_row(m_pchkMatrix, row);
+165                              !mod2sparse_at_end(e);
+166                              e = mod2sparse_next_in_row(e))
+167                         {
+168                                 m_nb_unknown_pkts_encoder[row]++;
+169                         }
+170                 }
+171         } else {
+172                 m_nb_unknown_pkts_encoder = NULL;
+173         }
+174 
+175         if (m_sessionFlags & FLAG_DECODER) {
+176                 // allocate all internal tables
+177                 if (((m_checkValues     = (void**)calloc(m_nbCheck, sizeof(void*))) == NULL) ||
+178                     ((m_nbPkts_in_equ = (int*)calloc(m_nbCheck, sizeof(int))) == NULL) ||
+179                     ((m_nb_unknown_pkts = (int*)calloc(m_nbCheck, sizeof(int))) == NULL) ||
+180                     ((m_nbEqu_for_parity = (int*)calloc(m_nbCheck, sizeof(int))) == NULL) ||
+181                     ((m_parity_pkt_canvas = (void**)calloc(m_nbCheck, sizeof(void*))) == NULL)) {
+182                         fprintf(stderr, 'LDPCFecSession::InitSession: ERROR: call to calloc failed for m_parity_pkt_canvas!\n');
+183                         return LDPC_ERROR;
+184                 }
+185                 // and update the various tables now
+186                 for (int row = 0; row < m_nbCheck; row++) {
+187                         for (e = mod2sparse_first_in_row(m_pchkMatrix, row);
+188                              !mod2sparse_at_end(e);
+189                              e = mod2sparse_next_in_row(e))
+190                         {
+191                                 m_nbPkts_in_equ[row]++;
+192                                 m_nb_unknown_pkts[row]++;
+193                         }
+194                 }
+195                 for (int seq = m_nbDataPkt; seq < m_nbTotalPkt; seq++) {
+196                         for (e = mod2sparse_first_in_col(m_pchkMatrix,
+197                                                     GetMatrixCol(seq));
+198                              !mod2sparse_at_end(e);
+199                              e = mod2sparse_next_in_col(e))
+200                         {
+201                                 m_nbEqu_for_parity[seq - m_nbDataPkt]++;
+202                         }
+203                 }
+204         } else {
+205                 // CODER session
+206                 m_checkValues = NULL;
+207                 m_nbPkts_in_equ = NULL;
+208                 m_nb_unknown_pkts = NULL;
+209                 m_nbEqu_for_parity = NULL;
+210                 m_parity_pkt_canvas = NULL;
+211         }
+212         if ((m_sessionType == TypeTRIANGLE) && ((m_nbTotalPkt/m_nbDataPkt) < 2.0)) {
+213                 m_triangleWithSmallFECRatio = true;
+214         } else {
+215                 m_triangleWithSmallFECRatio = false;
+216         }
+217 #ifdef DEBUG
+218         if (this->m_verbosity >= 2) {
+219                 printf('Pchk Matrix:\n');
+220                 mod2sparse_print(stdout, m_pchkMatrix);
+221         }
+222 #endif
+223         m_initialized = true;
+224         //printf('Pchk Matrix:\n');
+225         //mod2sparse_print(stdout, m_pchkMatrix);
+226         return LDPC_OK;
+227 }
+.fi
+.PP
+.SS "bool LDPCFecSession::IsDataPkt (int pktSeqno)\fC [inline, private]\fP"
+.PP
+Return true if this is a DATA source packet. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpktSeqno\fP (IN) packet sequence number in {O; n-1} range 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+true if DATA packet, false if parity packet
+.RE
+.PP
+
+.PP
+.nf
+522 {
+523         return ((pktSeqno < m_nbDataPkt) ? true : false);
+524 }
+.fi
+.PP
+.SS "bool LDPCFecSession::IsDecodingComplete (void * pkt_canvas[])"
+.PP
+IsDecodingComplete: Checks if all DATA packets have been received/rebuilt. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN) Array of received/rebuilt source packets. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+TRUE if all DATA packets have been received or decoded. 
+.RE
+.PP
+
+.PP
+.nf
+1217 {
+1218         if (!m_initialized) {
+1219                 fprintf(stderr, 'LDPCFecSession::IsDecodingComplete: ERROR: LDPC Session is NOT initialized!\n');
+1220                 return false;
+1221         }
+1222 
+1223         for (int i = m_firstNonDecoded; i < m_nbDataPkt; i++) {
+1224                 if (pkt_canvas[i] == NULL) {
+1225                         /* not yet decoded! */
+1226                         m_firstNonDecoded = i;  /* remember for next time */
+1227                         return false;
+1228                 }
+1229         }
+1230         return true;
+1231 }
+.fi
+.PP
+.SS "bool LDPCFecSession::IsInitialized ()\fC [inline]\fP"
+.PP
+IsInitialized: Check if the LDPC session has been initialized. 
+.PP
+\fBReturns:\fP
+.RS 4
+TRUE if the session is ready and initialized, FALSE if not. 
+.RE
+.PP
+
+.PP
+.nf
+516 {
+517         return m_initialized;
+518 }
+.fi
+.PP
+.SS "bool LDPCFecSession::IsParityPkt (int pktSeqno)\fC [inline, private]\fP"
+.PP
+Return true if this is a parity (AKA FEC) packet. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpktSeqno\fP (IN) packet sequence number in {O; n-1} range 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+true if parity packet, false if parity packet
+.RE
+.PP
+
+.PP
+.nf
+528 {
+529         return ((pktSeqno < m_nbDataPkt) ? false : true);
+530 }
+.fi
+.PP
+.SS "void LDPCFecSession::MoreAbout (FILE * out)"
+.PP
+Prints version number and copyright information about this codec. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIout\fP (IN) FILE handle where the string should be written. 
+.RE
+.PP
+
+.PP
+.nf
+388 {
+389         fprintf(out, 'LDPC/LDGM large block FEC codec - Version 1.8-pre, May 25th, 2005\n');
+390         fprintf(out, '  Copyright (c) 2002-2005 INRIA - All rights reserved\n');
+391         fprintf(out, '  Authors: C. Neumann, V. Roca, J. Laboure\n');
+392         fprintf(out, '  This codec contains code from R. Neal:\n');
+393         fprintf(out, '  Copyright (c) 1995-2003 by Radford M. Neal\n');
+394         fprintf(out, '  See the associated LICENCE.TXT file for licence information\n');
+395         switch (m_sessionType) {
+396         case TypeLDGM:
+397                 fprintf(out, '  LDPC/LDGM codec mode\n');
+398                 break;
+399         case TypeSTAIRS:
+400                 fprintf(out, '  LDPC/LDGM Staircase codec mode\n');
+401                 break;
+402         case TypeTRIANGLE:
+403                 fprintf(out, '  LDPC/LDGM Triangle codec mode\n');
+404                 break;
+405 #ifdef LDPC
+406         case TypeLDPC:
+407                 fprintf(out, '  LDPC codec mode\n');
+408                 break;
+409 #endif
+410         }
+411 }
+.fi
+.PP
+.SS "bool LDPCFecSession::PacketAlreadyKnown (void * pkt_canvas[], int new_pkt_seqno)"
+.PP
+PacketAlreadyKnown: Returns true if the packet has already been received or decoded (i.e. if it is already known), false otherwise. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIpkt_canvas\fP (IN) Array of received/rebuilt source packets. 
+.br
+\fInew_pkt_seqno\fP (IN) New packet's sequence number in {0.. n-1} range. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+TRUE if this packet has already been received or decoded. 
+.RE
+.PP
+
+.PP
+.nf
+1184 {
+1185         if ((mod2sparse_last_in_col(m_pchkMatrix, GetMatrixCol(new_pkt_seqno))->row < 0)
+1186             || (IsDataPkt(new_pkt_seqno) && (pkt_canvas[new_pkt_seqno] != NULL))
+1187             || (IsParityPkt(new_pkt_seqno) && (m_parity_pkt_canvas[new_pkt_seqno - m_nbDataPkt] != NULL))) {
+1188                 // No entry in the column associated to this packet.
+1189                 // Means packet has already been processed, so skip it.
+1190 #ifdef DEBUG
+1191                 if (this->m_verbosity >= 1) {
+1192                         printf('LDPCFecSession::PacketAlreadyKnown: %s packet %d already received or rebuilt\n',
+1193                                 (new_pkt_seqno < m_nbDataPkt) ? 'DATA' : 'FEC',
+1194                                 new_pkt_seqno);
+1195                 }
+1196 #endif
+1197                 return true;
+1198         } else {
+1199 #ifdef DEBUG
+1200                 if (this->m_verbosity >= 1) {
+1201                         printf('LDPCFecSession::PacketAlreadyKnown: %s packet %d not received or rebuilt\n',
+1202                                 (new_pkt_seqno < m_nbDataPkt) ? 'DATA' : 'FEC',
+1203                                 new_pkt_seqno);
+1204                 }
+1205 #endif
+1206                 return false;
+1207         }
+1208 }
+.fi
+.PP
+.SS "\fBldpc_error_status\fP LDPCFecSession::SetCallbackFunctions (void *(*)(void *context, int	size, int	pkt_seqno) DecodedPkt_callback, void *(*)(void *context, int	size) AllocTmpBuffer_callback, void *(*)(void *context, void *pkt) GetData_callback, void *(*)(void *context, void *pkt) GetDataPtrOnly_callback, \fBldpc_error_status\fP(*)(void *context, void *pkt) StoreData_callback, \fBldpc_error_status\fP(*)(void *context, void *pkt) FreePkt_callback, void * context_4_callback = \fCNULL\fP)"
+.PP
+SetCallbackFunctions: Set the various callback functions for this session.
+.PP
+.IP "\(bu" 2
+The DecodedPkt callback function is called each time a DATA packet is decoded by the \fBDecodeFecStep()\fP function. What this function does is application-dependant, but it must return a pointer to a data buffer, left uninitialized, of the appropriate size. In EXTERNAL_MEMORY_MGMT_SUPPORT mode, this function returns an opaque packet pointer. The associated buffer, where actual data will be stored, must be retrieved via the GetData callback.
+.PP
+.PP
+In EXTERNAL_MEMORY_MGMT_SUPPORT mode, the following callbacks are defined:
+.IP "\(bu" 2
+The AllocTmpBuffer callback is called each time a temporary buffer is required by the system, e.g. to store a partial sum (check node). This function returns a packet pointer, and accessing the data buffer requires a call to the GetData callback. The associated data buffer MUST be initialized to '0' by the callback.
+.IP "\(bu" 2
+The GetData callback is called each time the data associated to a packet must be read. What this function does is application-dependant.
+.IP "\(bu" 2
+The StoreData callback is called each time a packet's buffer has been updated and must be stored reliably by the memory mgmt system. What this function does is application-dependant.
+.IP "\(bu" 2
+The FreePkt callback is called each time a packet (or temporary buffer) is no longer required and can be free'd by the memory mgmt system.
+.PP
+.PP
+All callback functions require an opaque context parameter, that is the same parameter as the one given to \fBDecodeFecStep()\fP.
+.PP
+\fBParameters:\fP
+.RS 4
+\fIDecodedPkt_callback\fP (IN) Pointer to an application's callback. Given the size of a newly created DATA packet and its sequence number, this function enables the callee to allocate a packet structure. This function returns a pointer to the data buffer allocated or to the packet in EXTERNAL_MEMORY_MGMT_SUPPORT mode. This callback is never called when decoding a FEC packet!
+.br
+\fIAllocTmpBuffer_callback\fP (IN) Pointer to an application's callback. Valid in EXTERNAL_MEMORY_MGMT_SUPPORT mode. Given the desired buffer size, this function allocates a packet that will contain a buffer of appropriate size and initialized to '0'.
+.br
+\fIGetData_callback\fP (IN) Pointer to an application's callback. Valid in EXTERNAL_MEMORY_MGMT_SUPPORT mode. Given the packet pointer, this function returns the data buffer, after making sure that this latter is available and up-to-date.
+.br
+\fIGetDataPtrOnly_callback\fP (IN) Pointer to an application's callback. Valid in EXTERNAL_MEMORY_MGMT_SUPPORT mode. Same as GetData_callback, except that no check is made to make sure data is available and up-to-date. It makes sense when buffer has just been allocated before, for instance because this is a destination buffer in a memcpy() syscall.
+.br
+\fIStoreData_callback\fP (IN) Pointer to an application's callback. Valid in EXTERNAL_MEMORY_MGMT_SUPPORT mode. Given the packet pointer, this function stores data reliably in the memory mgmt system.
+.br
+\fIFreePkt_callback\fP (IN) Pointer to an application's callback. Valid in EXTERNAL_MEMORY_MGMT_SUPPORT mode. This function will be called with a packet pointer, so that the external memory mgmt system can free the associated buffer.
+.br
+\fIcontext_4_callback\fP (IN) Pointer to context that will be passed to the callback function (if any). This context is not interpreted by this function.
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Completion status (LDPC_OK or LDPC_ERROR). 
+.RE
+.PP
+
+.SS "void LDPCFecSession::SetVerbosity (int verb)"
+.PP
+Set the verbosity level. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIverb\fP (IN) new verbosity level (0: no trace, 1: all traces) 
+.RE
+.PP
+
+.PP
+.nf
+377 {
+378         this->m_verbosity = verb;
+379 }
+.fi
+.PP
+.SH "Member Data Documentation"
+.PP 
+.SS "void*(* \fBLDPCFecSession::m_allocTmpBuffer_callback\fP)(void *context, int size)\fC [private]\fP"
+.PP
+.SS "void** \fBLDPCFecSession::m_checkValues\fP\fC [private]\fP"
+.PP
+.SS "void* \fBLDPCFecSession::m_context_4_callback\fP\fC [private]\fP"
+.PP
+.SS "void*(* \fBLDPCFecSession::m_decodedPkt_callback\fP)(void *context, int size, int pkt_seqno)\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_firstNonDecoded\fP\fC [private]\fP"
+.PP
+.SS "\fBldpc_error_status\fP(* \fBLDPCFecSession::m_freePkt_callback\fP)(void *context, void *pkt)\fC [private]\fP"
+.PP
+.SS "void*(* \fBLDPCFecSession::m_getData_callback\fP)(void *context, void *pkt)\fC [private]\fP"
+.PP
+.SS "void*(* \fBLDPCFecSession::m_getDataPtrOnly_callback\fP)(void *context, void *pkt)\fC [private]\fP"
+.PP
+.SS "bool \fBLDPCFecSession::m_initialized\fP\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_leftDegree\fP\fC [private]\fP"
+.PP
+.SS "int* \fBLDPCFecSession::m_nb_unknown_pkts\fP\fC [private]\fP"
+.PP
+.SS "int* \fBLDPCFecSession::m_nb_unknown_pkts_encoder\fP\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_nbDataPkt\fP\fC [private]\fP"
+.PP
+.SS "int* \fBLDPCFecSession::m_nbEqu_for_parity\fP\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_nbFecPkt\fP\fC [private]\fP"
+.PP
+.SS "int* \fBLDPCFecSession::m_nbPkts_in_equ\fP\fC [private]\fP"
+.PP
+.SS "void** \fBLDPCFecSession::m_parity_pkt_canvas\fP\fC [private]\fP"
+.PP
+.SS "\fBmod2sparse\fP* \fBLDPCFecSession::m_pchkMatrix\fP\fC [private]\fP"
+.PP
+.SS "unsigned int \fBLDPCFecSession::m_pktSize\fP\fC [private]\fP"
+.PP
+.SS "unsigned int \fBLDPCFecSession::m_pktSize32\fP\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_sessionFlags\fP\fC [private]\fP"
+.PP
+.SS "\fBSessionType\fP \fBLDPCFecSession::m_sessionType\fP\fC [private]\fP"
+.PP
+.SS "\fBldpc_error_status\fP(* \fBLDPCFecSession::m_storeData_callback\fP)(void *context, void *pkt)\fC [private]\fP"
+.PP
+.SS "bool \fBLDPCFecSession::m_triangleWithSmallFECRatio\fP\fC [private]\fP"
+.PP
+.SS "int \fBLDPCFecSession::m_verbosity\fP\fC [private]\fP"
+.PP
+
+
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for ldpc from the source code.

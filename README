@@ -1,11 +1,9 @@
-flud backup, version 0.0.1-super-pre-alpha
+flud backup, svn snapshot 
 ==========================================
 
-This is the first public release of flud backup.  The software is very much a
-work in progress, and major components of the architecture are not complete
-(such as the trust system).  A lot of other stuff is missing or broken (NAT
-traversal, sane support for large files, GUI, etc.).  But there should be
-enough here to run some interesting experiments.
+This is an svn snapshot of flud backup.  The software is very much a
+work in progress, and major components of the architecture are not complete.
+But there should be enough here to run some interesting experiments.
 
 Installation
 ============

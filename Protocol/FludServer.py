@@ -2,7 +2,7 @@
 FludServer.py (c) 2003-2006 Alen Peacock.  This program is distributed under
 the terms of the GNU General Public License (the GPL).
 
-flud server ops
+flud server operations
 """
 
 from twisted.web import server, resource, client

@@ -104,8 +104,10 @@ class LocalClientFactory(ClientFactory):
 	def clientConnectionLost(self, connector, reason):
 		#print "connection lost: %s" % reason
 		print
-		for i in reactor.threadpool.threads:
-			i._Thread__stop() # XXX: hack, but all we've got againts raw_input
+		if reactor.threadpool:
+			for i in reactor.threadpool.threads:
+				# XXX: hack, but all we've got against raw_input
+				i._Thread__stop() 
 		reactor.stop()
 
 	def clientReady(self, instance):

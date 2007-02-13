@@ -79,7 +79,7 @@ def promptUser(factory):
 			# list stored files
 			master = listMeta(factory.config)
 			for i in master:
-				if not isinstance(master[i],dict):
+				if not isinstance(master[i], dict):
 					print "%s: %s" % (i, fencode(master[i]))
 		elif commandkey == 'putm':
 			# store master metadata

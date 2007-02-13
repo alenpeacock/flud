@@ -1091,11 +1091,16 @@ class FilePanel(wx.SplitterWindow):
 
 		self.tree = DirCheckboxCtrl(self, -1, dir="/") 
 		
+		# XXX: fludrules.init should be in config
 		self.fludrules = self.getFludHome()+"/fludrules.init"
 		if not os.path.isfile(self.fludrules):
 			# XXX: do the other first time stuff (email encrypted credentials,
 			#      etc.)
-			parent.SetMessage("Welcome. This appears to be the first time you've run flud. We've automatically selected some files for backup.  You can make changes by selecting/deselecting files and directories. When you are done, simply close this window.")
+			parent.SetMessage("Welcome. This appears to be the first"
+				" time you've run flud. We've automatically selected some"
+				" files for backup.  You can make changes by"
+				" selecting/deselecting files and directories. When you are"
+				" done, simply close this window.")
 			src = open('fludrules.init', 'r')
 			dst = open(self.fludrules, 'w')
 			filerules = src.read()
@@ -1111,6 +1116,7 @@ class FilePanel(wx.SplitterWindow):
 					rulestates[r] = value
 			self.tree.setStates(rulestates)
 
+		# XXX: fludfile.conf should be in config
 		self.fludfiles = self.getFludHome()+"/fludfile.conf"
 		if os.path.isfile(self.fludfiles):
 			file = open(self.fludfiles, 'r')
@@ -1154,6 +1160,7 @@ class FilePanel(wx.SplitterWindow):
 class FludNotebook(wx.Notebook):
 	def __init__(self, parent, id=-1, pos=wx.DefaultPosition, 
 			size=wx.DefaultSize, style=wx.NB_BOTTOM|wx.NO_BORDER):
+		self.parent = parent
 		wx.Notebook.__init__(self, parent, id, pos, style=style)
 		self.filePanel = FilePanel(self, 
 				searchButtonAction=parent.searchButtonAction)
@@ -1165,6 +1172,9 @@ class FludNotebook(wx.Notebook):
 
 	def shutdown(self, event):
 		self.filePanel.shutdown(event)
+
+	def SetMessage(self, msg):
+		self.parent.SetMessage(msg)
 
 
 class FludLogoPanel(wx.Panel):

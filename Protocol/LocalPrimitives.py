@@ -1,6 +1,6 @@
 """
 LocalPrimitives.py (c) 2003-2006 Alen Peacock.  This program is distributed
-under the terms of the GNU General Public License (the GPL).
+under the terms of the GNU General Public License (the GPL), version 2.
 
 Protocol for talking to a flud node locally (from client code -- command line,
 GUI, etc).

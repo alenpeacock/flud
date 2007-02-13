@@ -4,7 +4,7 @@ from fencode import *
 
 """
 BlockFile.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
-terms of the GNU General Public License (the GPL).
+terms of the GNU General Public License (the GPL), version 2.
 
 Implements accounting information for block data.  The interface for BlockFiles
 matches that of normal file objects (read, seek, write, tell, close).  A

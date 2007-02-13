@@ -1,3 +1,10 @@
+"""
+FludCrypto.py (c) 2003-2006 Alen Peacock.  This program is distributed under
+the terms of the GNU General Public License (the GPL), version 2.
+
+Provides FludRSA (an enhanced RSA.RSAobj), as well as convenience functions
+for creating hashes, finding hash collisions, etc.
+"""
 
 import binascii
 import operator
@@ -6,14 +13,6 @@ import time
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA, pubkey
 from Crypto.Util.randpool import RandomPool
-
-"""
-FludCrypto.py (c) 2003-2006 Alen Peacock.  This program is distributed under
-the terms of the GNU General Public License (the GPL).
-
-Provides FludRSA (an enhanced RSA.RSAobj), as well as convenience functions
-for creating hashes, finding hash collisions, etc.
-"""
 
 class FludRSA(RSA.RSAobj):
 	"""

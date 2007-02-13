@@ -1,6 +1,6 @@
 """
 ClientPrimitives.py (c) 2003-2006 Alen Peacock.  This program is distributed
-under the terms of the GNU General Public License (the GPL).
+under the terms of the GNU General Public License (the GPL), verison 2.
 
 Primitive client storage protocol
 """

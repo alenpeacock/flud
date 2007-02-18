@@ -104,8 +104,9 @@ class LocalClientFactory(ClientFactory):
 	def clientConnectionFailed(self, connector, reason):
 		print "connection failed: %s" % reason
 		print
-		for i in reactor.threadpool.threads:
-			i._Thread__stop()
+		if reactor.threadpool:
+			for i in reactor.threadpool.threads:
+				i._Thread__stop()
 		reactor.stop()
 
 	def clientConnectionLost(self, connector, reason):

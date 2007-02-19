@@ -8,18 +8,9 @@ from fencode import *
 from FludCrypto import *
 
 from Protocol.LocalClient import *
+from FludClient import CheckboxState
 
 CHECKTIME=5
-
-# XXX: remove.  this is in FludClient.py (need to extract commonality)
-class CheckboxState:
-	(UNSELECTED, SELECTED, SELECTEDCHILD, SELECTEDPARENT, EXCLUDED,
-			EXCLUDEDCHILD) = range(6)
-		    
-	def offset(oldstate, newstate):
-		return newstate - oldstate
-	offset = staticmethod(offset)
-
 
 class FludScheduler:
 
@@ -53,13 +44,11 @@ class FludScheduler:
 	# these are a fallback, method when those aren't present, and are fine for
 	# testing.
 	def fileChangedStat(self, file, fileChangeTime=None):
-		#print "checking %s" % file
 		if os.path.isfile(file) or os.path.isdir(file):
 			mtime = os.stat(file)[stat.ST_MTIME]
 			if not fileChangeTime:
 				fileChangeTime = self.fileChangeTime
 			if mtime > fileChangeTime:
-				#print "CHANGED"
 				return True
 		return False
 
@@ -72,10 +61,15 @@ class FludScheduler:
 
 	# Change these to point to something other than the xxxStat() methods
 	def fileChanged(self, file, fileChangeTime=None):
+		"""
+		>>> now = time.time()
+		>>> f1 = tmpfile.mktemp()
+		>>> 
+		"""
 		return self.fileChangedStat(file, fileChangeTime)
 
-	def filesChanged(self, file, fileChangeTime=None):
-		return self.filesChangedStat(file, fileChangeTime)
+	def filesChanged(self, files, fileChangeTime=None):
+		return self.filesChangedStat(files, fileChangeTime)
 
 	def checkConfig(self):
 		# check config file to see if it has changed, then reparse it
@@ -101,37 +95,41 @@ class FludScheduler:
 		return False
 
 	def checkFilesystem(self):
-		self.toCheck = set()
-		self.checkedFiles = set()
-		self.changedFiles = set()
+		checkedFiles = set()
+		changedFiles = set()
 
 		def checkList(list):
 			#print "checkList: %s" % list
-			#print "checkedFiles: %s" % self.checkedFiles
+			#print "checkedFiles: %s" % checkedFiles
 			for entry in list:
-				if entry not in self.checkedFiles and \
+				# XXX: if entry is in manifest, and its mtime is not earlier
+				# than the time used by fileChanged, skip it (add 'and' clause)
+				if entry not in checkedFiles and \
 						entry not in self.fileconfigExcluded:
 					if os.path.isdir(entry):
-						print "dir %s" % entry
+						#print "dir %s" % entry
 						dirfiles = [os.path.join(entry, i) 
 								for i in os.listdir(entry)]
-						self.checkedFiles.update([entry,])
+						checkedFiles.update([entry,])
 						checkList(dirfiles)
 					elif self.fileChanged(entry):
 						if os.path.isfile(entry):
-							print "file %s changed" % entry
+							changedFiles.update([entry,])
+							#print "file %s changed" % entry
 						else:
 							print "entry ?? %s ?? changed" % entry
-					self.changedFiles.update([entry,])
-					self.checkedFiles.update([entry,])
+					checkedFiles.update([entry,])
 
 		checkList(self.fileconfigSelected)
 		self.fileChangeTime = time.time()
+		return changedFiles
 
 	def run(self):
 		print "run"
 		self.checkConfig()
-		self.checkFilesystem()
+		changedFiles = self.checkFilesystem()
+		print "%s changed" % changedFiles
+		# XXX: store everything in changedFiles, before scheduling run again
 		reactor.callLater(CHECKTIME, self.run)
 
 def main():
@@ -150,7 +148,6 @@ def main():
 	reactor.callLater(1, scheduler.run)
 
 	reactor.run()
-
 
 if __name__ == '__main__':
 	main()

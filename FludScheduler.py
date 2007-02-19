@@ -40,9 +40,9 @@ class FludScheduler:
 
 	# The file[s]ChangeStat are the worst possible way to detect file changes.
 	# Much more efficient to use inotify/dnotify/fam/gamin/etc., as well as
-	# more correct (no way to detect cp -A, for example, with stat).  But,
-	# these are a fallback, method when those aren't present, and are fine for
-	# testing.
+	# more correct (no way to detect cp -a or -p, for example, with stat).
+	# But, these are a fallback method when those aren't present, and are fine
+	# for testing.
 	def fileChangedStat(self, file, fileChangeTime=None):
 		if os.path.isfile(file) or os.path.isdir(file):
 			mtime = os.stat(file)[stat.ST_MTIME]

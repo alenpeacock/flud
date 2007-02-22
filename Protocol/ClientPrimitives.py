@@ -265,6 +265,7 @@ class AggregateStore:
 	def __init__(self, nKu, node, host, port, filename):
 		tarfilename = node.config.clientdir+"/"+nKu.id()+'-'+host+'-'\
 				+str(port)+".tar"
+		loggerstoragg.debug("tarfile name is %s" % tarfilename)
 		if not os.path.exists(tarfilename) \
 				or not aggDeferredMap.has_key(tarfilename):
 			loggerstoragg.debug("creating tarfile %s to append %s" 

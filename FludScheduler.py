@@ -8,7 +8,7 @@ from fencode import *
 from FludCrypto import *
 
 from Protocol.LocalClient import *
-from FludClient import CheckboxState
+from FludClient import CheckboxState  # XXX: CheckboxState belongs elsewhere?
 
 CHECKTIME=5
 

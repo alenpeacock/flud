@@ -4,6 +4,7 @@ import FludCrypto
 from Protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
+from fencode import fencode
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -111,6 +112,7 @@ def generateTestData():
 		f.write(FludCrypto.generateRandom(1024))
 	f.close()
 	filekey = FludCrypto.hashfile(fname)
+	filekey = fencode(int(filekey, 16))
 	filename = os.path.join("/tmp",filekey)
 	os.rename(fname,filename)
 

@@ -1,5 +1,6 @@
 import os, stat, sys, tarfile, tempfile
 from FludCrypto import hashstream
+from fencode import fencode
 
 """
 TarfileUtils.py (c) 2003-2006 Alen Peacock.  This program is distributed under
@@ -121,9 +122,12 @@ def verifyHashes(tarball):
 			if (size % tarfile.BLOCKSIZE) > 0:
 				blocks += 1
 			digest = hashstream(f, size)
+			digest = fencode(int(digest,16))
 			if name == digest:
+				#print "%s == %s" % (name, digest)
 				digests.append(name)
 			else:
+				#print "%s != %s" % (name, digest)
 				f.close()
 				return []
 			f.seek((blocks * tarfile.BLOCKSIZE) - size + f.tell())

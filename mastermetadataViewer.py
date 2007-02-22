@@ -40,6 +40,7 @@ if __name__ == "__main__":
 	f = os.open(fname, os.O_RDONLY)
 	data = os.read(f,1280000)
 	os.close(f)
+	print "data is '%s'" % data
 	data = fdecode(data)
 	for i in data:
 		if isinstance(data[i],dict):

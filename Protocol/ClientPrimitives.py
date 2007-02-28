@@ -5,9 +5,8 @@ under the terms of the GNU General Public License (the GPL), verison 2.
 Primitive client storage protocol
 """
 
-from twisted.web import client
+from twisted.web import http, client
 from twisted.internet import reactor, threads, defer, error
-from twisted.protocols import http
 from twisted.python import failure
 from FludCrypto import FludRSA
 import FludCrypto

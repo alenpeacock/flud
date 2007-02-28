@@ -8,7 +8,7 @@ flud server operations
 from twisted.web import server, resource, client
 from twisted.web.resource import Resource
 from twisted.internet import reactor, threads, defer
-from twisted.protocols import http
+from twisted.web import http
 from twisted.python import threadable, failure
 from FludCrypto import FludRSA
 import FludCrypto

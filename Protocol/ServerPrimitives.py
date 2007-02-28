@@ -9,7 +9,7 @@ import binascii, time, os, stat, httplib, gc, re, sys, logging, sets, tarfile
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import reactor, threads, defer
-from twisted.protocols import http
+from twisted.web import http
 from twisted.python import failure
 from FludCrypto import FludRSA
 import FludCrypto

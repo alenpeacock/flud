@@ -129,7 +129,7 @@ class FludScheduler:
 		self.checkConfig()
 		changedFiles = self.checkFilesystem()
 		print "%s changed" % changedFiles
-		# XXX: store everything in changedFiles, before scheduling run again
+		# XXX: store files listed in changedFiles before scheduling run again
 		reactor.callLater(CHECKTIME, self.run)
 
 def main():

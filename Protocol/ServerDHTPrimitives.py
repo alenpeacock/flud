@@ -6,9 +6,8 @@ Primitive server DHT protocol
 """
 
 from twisted.web.resource import Resource
-from twisted.web import server, resource, client
+from twisted.web import server, resource, http, client
 from twisted.internet import reactor, defer
-from twisted.protocols import http
 from twisted.python import failure
 from FludCrypto import FludRSA
 import FludCrypto

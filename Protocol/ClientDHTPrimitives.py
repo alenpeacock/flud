@@ -5,9 +5,8 @@ under the terms of the GNU General Public License (the GPL), version 2.
 Primitive client DHT protocol
 """
 import time, os, stat, httplib, sys, random, logging
-from twisted.web import client
+from twisted.web import http, client
 from twisted.internet import reactor, threads, defer
-from twisted.protocols import http
 from twisted.python import failure
 import inspect, pdb
 import ConnectionQueue

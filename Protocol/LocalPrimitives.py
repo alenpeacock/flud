@@ -9,7 +9,8 @@ GUI, etc).
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import protocol, reactor, threads, defer
-from twisted.protocols import basic, smtp
+from twisted.protocols import basic
+from twisted.mail import smtp
 from twisted.python import failure
 from FludCrypto import FludRSA
 from Crypto.Cipher import AES

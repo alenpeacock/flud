@@ -10,26 +10,42 @@ from FludCrypto import *
 from Protocol.LocalClient import *
 from FludClient import CheckboxState  # XXX: CheckboxState belongs elsewhere?
 
-CHECKTIME=5
+CHECKTIME=60
 
 class FludScheduler:
 
 	def __init__(self, config, factory):
 		self.config = config
 		self.factory = factory
-		self.configfile = None
-		self.configfileMTime = 0
+		
+		self.fileconfigfile = None
+		self.fileconfigfileMTime = 0
 		self.fileChangeTime = 0
 
-	def readConfig(self, mtime=None):
-		print "reading configfile"
-		file = open(self.configfile, 'r')
+		self.fileconfigSelected = set()
+		self.fileconfigExcluded = set()
+		
+		self.readMasterMetadata()
+
+	def readMasterMetadata(self):
+		f = open(os.path.join(self.config.metadir, self.config.metamaster), 'r')
+		data = f.read()
+		f.close()
+		if data:
+			self.mastermetadata = fdecode(data)
+		else:
+			self.mastermetadata = {}
+
+	def readFileConfig(self, mtime=None):
+		print "reading FileConfig"
+		file = open(self.fileconfigfile, 'r')
 		self.fileconfig = eval(file.read())
 		file.close()
 		if mtime:
-			self.configfileMTime = mtime
+			self.fileconfigfileMTime = mtime
 		else:
-			self.configfileMTime = os.stat(self.configfile)[stat.ST_MTIME]
+			self.fileconfigfileMTime = os.stat(
+					self.fileconfigfile)[stat.ST_MTIME]
 
 		self.fileconfigSelected = set([f for f in self.fileconfig 
 				if self.fileconfig[f] == CheckboxState.SELECTED 
@@ -71,26 +87,28 @@ class FludScheduler:
 	def filesChanged(self, files, fileChangeTime=None):
 		return self.filesChangedStat(files, fileChangeTime)
 
-	def checkConfig(self):
+	def checkFileConfig(self):
 		# check config file to see if it has changed, then reparse it
-		if not self.configfile:
+		if not self.fileconfigfile:
 			# first time through
-			print "checking configfile (initial)"
+			print "checking fileconfigfile (initial)"
 			if os.environ.has_key('FLUDHOME'):
 				fludhome = os.environ['FLUDHOME']
-			else:
+			elif os.environ.has_key('HOME'):
 				fludhome = os.environ['HOME']+"/.flud"
+			else:
+				fludhome = ".flud"
 			# XXX: fludfile.conf should be in config
-			self.configfile = os.path.join(fludhome, "fludfile.conf")
-			if os.path.isfile(self.configfile):
-				self.readConfig()
+			self.fileconfigfile = os.path.join(fludhome, "fludfile.conf")
+			if os.path.isfile(self.fileconfigfile):
+				self.readFileConfig()
 				return True
 			else:
-				print "no configfile to read"
-		elif os.path.isfile(self.configfile):
-			if self.fileChanged(self.configfile, self.configfileMTime):
-				print "configfile changed"
-				self.readConfig(mtime)
+				print "no fileconfigfile to read"
+		elif os.path.isfile(self.fileconfigfile):
+			if self.fileChanged(self.fileconfigfile, self.fileconfigfileMTime):
+				print "fileconfigfile changed"
+				self.readFileConfig(mtime)
 				return True
 		return False
 
@@ -105,7 +123,11 @@ class FludScheduler:
 				# XXX: if entry is in manifest, and its mtime is not earlier
 				# than the time used by fileChanged, skip it (add 'and' clause)
 				if entry not in checkedFiles and \
-						entry not in self.fileconfigExcluded:
+						entry not in self.fileconfigExcluded and\
+						entry not in self.mastermetadata:
+					# XXX: 'not in self.mastermetadata' isn't really right --
+					# what we want is 'file mod time > last backup time', but
+					# backuptime isn't currently stored in mastermetadata.
 					if os.path.isdir(entry):
 						#print "dir %s" % entry
 						dirfiles = [os.path.join(entry, i) 
@@ -124,13 +146,27 @@ class FludScheduler:
 		self.fileChangeTime = time.time()
 		return changedFiles
 
+	def storeFiles(self, changedFiles):
+		# XXX: store files listed in changedFiles before scheduling run again
+		for f in changedFiles:
+			# XXX: need to get a deferred out of factory for this, make a
+			# proper DeferredList to return
+			reactor.callFromThread(self.factory.sendPUTF, f)
+		# XXX: fake deferred return needs to go away
+		d = defer.Deferred()
+		reactor.callLater(0, d.callback, True)
+		return d
+
+	def restartCheckTimer(self, v):
+		reactor.callLater(CHECKTIME, self.run)
+
 	def run(self):
 		print "run"
-		self.checkConfig()
+		self.checkFileConfig()
 		changedFiles = self.checkFilesystem()
 		print "%s changed" % changedFiles
-		# XXX: store files listed in changedFiles before scheduling run again
-		reactor.callLater(CHECKTIME, self.run)
+		d = self.storeFiles(changedFiles)
+		d.addBoth(self.restartCheckTimer)
 
 def main():
 	config = FludConfig()

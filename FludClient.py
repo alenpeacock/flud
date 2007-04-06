@@ -8,6 +8,7 @@ FludClient provides a GUI Client for interacting with FludNode.
 import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
+import wx.lib.editor.editor
 
 
 mimeMgr = wx.MimeTypesManager()
@@ -1091,7 +1092,7 @@ class FilePanel(wx.SplitterWindow):
 
 		self.tree = DirCheckboxCtrl(self, -1, dir="/") 
 		
-		# XXX: fludrules.init should be in config
+		# XXX: fludrules.init path should be in config
 		self.fludrules = self.getFludHome()+"/fludrules.init"
 		if not os.path.isfile(self.fludrules):
 			# XXX: do the other first time stuff (email encrypted credentials,
@@ -1116,7 +1117,7 @@ class FilePanel(wx.SplitterWindow):
 					rulestates[r] = value
 			self.tree.setStates(rulestates)
 
-		# XXX: fludfile.conf should be in config
+		# XXX: fludfile.conf path should be in config
 		self.fludfiles = self.getFludHome()+"/fludfile.conf"
 		if os.path.isfile(self.fludfiles):
 			file = open(self.fludfiles, 'r')
@@ -1156,6 +1157,25 @@ class FilePanel(wx.SplitterWindow):
 			self.tree.SetDimensions(0, 0, w, h)
 		event.Skip()
 
+class SchedulePanel(wx.Panel):
+	def __init__(self, parent):
+		wx.Panel.__init__(self, parent, -1)
+		self.Bind(wx.EVT_SIZE, self.OnSize)
+
+	def OnSize(self, event):
+		w,h = self.GetClientSizeTuple()
+		event.Skip()
+
+class FeedbackPanel(wx.Panel):
+	def __init__(self, parent):
+		wx.Panel.__init__(self, parent, -1)
+		self.Bind(wx.EVT_SIZE, self.OnSize)
+		editor = wx.lib.editor.editor.Editor(parent, -1)
+
+	def OnSize(self, event):
+		w,h = self.GetClientSizeTuple()
+		event.Skip()
+
 
 class FludNotebook(wx.Notebook):
 	def __init__(self, parent, id=-1, pos=wx.DefaultPosition, 
@@ -1165,9 +1185,9 @@ class FludNotebook(wx.Notebook):
 		self.filePanel = FilePanel(self, 
 				searchButtonAction=parent.searchButtonAction)
 		self.AddPage(self.filePanel, "Select Files")
-		self.schedulePanel = wx.Panel(self)
+		self.schedulePanel = SchedulePanel(self)
 		self.AddPage(self.schedulePanel, "Backup Schedule")
-		self.feedbackPanel = wx.Panel(self)
+		self.feedbackPanel = FeedbackPanel(self)
 		self.AddPage(self.feedbackPanel, "Feedback")
 
 	def shutdown(self, event):

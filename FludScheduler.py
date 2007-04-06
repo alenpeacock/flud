@@ -147,11 +147,12 @@ class FludScheduler:
 		return changedFiles
 
 	def storeFiles(self, changedFiles):
-		# XXX: store files listed in changedFiles before scheduling run again
 		for f in changedFiles:
 			# XXX: need to get a deferred out of factory for this, make a
 			# proper DeferredList to return
 			reactor.callFromThread(self.factory.sendPUTF, f)
+		# XXX: store files listed in changedFiles before scheduling run again
+		#      (before doing the callback below)
 		# XXX: fake deferred return needs to go away
 		d = defer.Deferred()
 		reactor.callLater(0, d.callback, True)

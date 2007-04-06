@@ -18,6 +18,8 @@ from fencode import *
 
 from LocalPrimitives import *
 
+logger = logging.getLogger("flud.local.client")
+
 opTimeout = 1200
 VALIDOPS = LocalProtocol.commands.keys() + ['AUTH', 'DIAG']
 
@@ -26,6 +28,7 @@ class LocalClient(LineReceiver):
 	auth=False
 	
 	def connectionMade(self):
+		logger.debug("connection est.")
 		self.auth=False
 		self.sendLine("AUTH?")
 
@@ -42,31 +45,42 @@ class LocalClient(LineReceiver):
 		if not self.auth:
 			if command == "AUTH" and status == '?':
 				# got challenge, send response
+				logger.debug("got AUTH challenge, sending response")
 				echallenge = data
 				self.sendLine("AUTH:"+self.factory.answerChallenge(echallenge))
 				return
 			elif command == "AUTH" and status == ':':
 				# response accepted, authenticated
+				logger.debug("AUTH challenge accepted, success")
 				self.auth = True
 				self.factory.clientReady(self)
 				#print "authenticated"
 			else:
 				if command == "AUTH" and status == "!":
+					logger.warn("authentication failed (is FLUDHOME set"
+						" correctly?)")
 					print "authentication failed (is FLUDHOME set correctly?)"
 				else:
+					logger.warn("unknown message received before being"
+							" authenticated:")
+					logger.warn("  %s : %s" % (command, status))
 					print "unknown message received before being authenticated:"
 					print "  %s : %s" % (command, status)
 				self.factory.setDie()
 		elif command == "DIAG":
 			if data[:4] == "NODE":
+				logger.debug("DIAG NODE")
 				data = eval(data[4:])
 				for i in data:
 					petID = "%064x" % i[2]
 					petID = petID[:24]+"..."
 					print "%s:%d %s" % (i[0], i[1], petID)
 				print "%d known nodes" % len(data)
+				d = self.factory.pending['NODE'].pop('pending')
+				d.callback(True)
 				return
 			if data[:4] == "BKTS":
+				logger.debug("DIAG BKTS")
 				data = eval(data[4:])
 				print "-------------------------"
 				for i in data:
@@ -75,17 +89,30 @@ class LocalClient(LineReceiver):
 						for k in i[bucket]:
 							id = "%064x" % k[2]
 							print "  %s:%d %s..." % (k[0],k[1],id[:12])
+				d = self.factory.pending['BKTS'].pop('pending')
+				d.callback(True)
 				return
 			elif status == ':':
-				self.factory.pending[data[:4]][data] = True
+				logger.debug("DIAG %s: success" % data[:4])
+				d = self.factory.pending[data[:4]].pop(data)
+				d.callback(True)
 			elif status == "!":
-				self.factory.pending[data[:4]][data] = False
+				logger.debug("DIAG %s: failure" % data[:4])
+				d = self.factory.pending[data[:4]].pop(data)
+				d.callback(False)
 		elif status == ':':
-			self.factory.pending[command][data] = True
+			logger.debug("%s: success" % command)
+			d = self.factory.pending[command].pop(data)
+			d.callback(True)
 		elif status == "!":
-			self.factory.pending[command][data] = False
+			logger.debug("%s: failure" % command)
+			d = self.factory.pending[command].pop(data)
+			d.callback(False)
+		# can make the above callbacks send better than True, False (could send
+		# command, data, so that chain gets info about what event this is)
 		if command != 'AUTH' and command != 'DIAG' and \
 				not None in self.factory.pending[command].values():
+			logger.debug("convenience print for %s done" % command)
 			print "%s done at %s" % (command, time.ctime())
 
 
@@ -97,13 +124,13 @@ class LocalClientFactory(ClientFactory):
 		self.messageQueue = []
 		self.client = None
 		self.die = False
-		self.pending = {'PUTF': {}, 'GETF': {}, 'FNDN': {}, 
-			'STOR': {}, 'RTRV': {}, 'VRFY': {}, 'FNDV': {}, 
-			'CRED': {}, 'GETM': {}, 'PUTM': {} }
+		self.pending = {'PUTF': {}, 'CRED': {}, 'GETI': {}, 'GETF': {}, 
+				'FNDN': {}, 'STOR': {}, 'RTRV': {}, 'VRFY': {}, 'FNDV': {}, 
+				'CRED': {}, 'GETM': {}, 'PUTM': {}, 'NODE': {}, 'BKTS': {}}
 
 	def clientConnectionFailed(self, connector, reason):
 		print "connection failed: %s" % reason
-		print
+		logger.warn("connection failed: %s" % reason)
 		if reactor.threadpool:
 			for i in reactor.threadpool.threads:
 				i._Thread__stop()
@@ -112,106 +139,195 @@ class LocalClientFactory(ClientFactory):
 
 	def clientConnectionLost(self, connector, reason):
 		#print "connection lost: %s" % reason
-		print
+		logger.debug("connection lost: %s" % reason)
 		if reactor.threadpool:
 			for i in reactor.threadpool.threads:
 				# XXX: hack, but all we've got against raw_input
+				logger.debug("calling _Thread__stop() on %s" % i)
 				i._Thread__stop() 
 		if reactor.running:
 			reactor.stop()
 
 	def clientReady(self, instance):
 		self.client = instance
+		logger.debug("client ready, sending [any] queued msgs")
 		for i in self.messageQueue:
 			self._sendMessage(i)
 
 	def _sendMessage(self, msg):
 		if self.client:
+			logger.debug("sending msg")
 			self.client.sendLine(msg)
 		else:
+			logger.debug("queueing msg")
 			self.messageQueue.append(msg)
 	
 	def answerChallenge(self, echallenge):
+		logger.debug("answering challenge")
 		echallenge = (fdecode(echallenge),)
 		challenge = self.config.Kr.decrypt(echallenge)
 		return challenge
 
 	def expire(self, pending, key):
 		if pending.has_key(fname):
+			logger.debug("timing out operation for %s" % key)
 			print "timing out operation for %s" % key
 			pending.pop(key)
 	
 	def addFile(self, type, fname):
+		logger.debug("addFile %s %s" % (type, fname))
 		if not self.pending[type].has_key(fname):
-			self.pending[type][fname] = None
+			d = defer.Deferred()
+			self.pending[type][fname] = d
 			self._sendMessage(type+"?"+fname)
-
+			return d
+		else:
+			return self.pending[type][fname]
+			
 	def sendPING(self, host, port):
+		logger.debug("sendPING")
 		print "ping not yet implemented in FludLocalClient"
 		pass
 
 	def sendPUTF(self, fname):
+		logger.debug("sendPUTF %s" % fname)
 		if os.path.isdir(fname):
 			dirlist = os.listdir(fname)
+			dlist = []
 			for i in dirlist:
-				self.sendPUTF(os.path.join(fname,i))
+				dlist.append(self.sendPUTF(os.path.join(fname,i)))
+			dl = defer.DeferredList(dlist)
+			return dl
 		elif not self.pending['PUTF'].has_key(fname):
-			self.pending['PUTF'][fname] = None
+			d = defer.Deferred()
+			self.pending['PUTF'][fname] = d
 			self._sendMessage("PUTF?"+fname)
 			#reactor.callLater(opTimeout, self.expire, self.pendingPUTF, fname)
+			return d
 	
 	def sendCRED(self, passphrase, email):
-		self._sendMessage("CRED?"
-				+fencode((self.config.Ku.encrypt(passphrase)[0], email)))
+		logger.debug("sendCRED")
+		if not self.pending['CRED'].has_key(passphrase+email):
+			d = defer.Deferred()
+			self.pending['CRED'][passphrase+email] = d
+			self._sendMessage("CRED?"
+					+fencode((self.config.Ku.encrypt(passphrase)[0], email)))
+			return d
+		else:
+			return self.pending['CRED'][passphrase+email]
 	
 	def sendGETI(self, fID):
-		if not self.pendingi['GETI'].has_key(fID):
-			self.pending['GETI'][fID] = None
+		logger.debug("sendGETI")
+		if not self.pending['GETI'].has_key(fID):
+			d = defer.Deferred()
+			self.pending['GETI'][fID] = d
 			self._sendMessage("GETI?"+fID)
+			return d
+		else:
+			return self.pending['GETI'][fID]
 
 	def sendGETF(self, fname):
+		logger.debug("sendGETF")
 		master = listMeta(self.config)
 		if master.has_key(fname):
-			self.addFile("GETF",fname)
+			return self.addFile("GETF",fname)
 		elif fname[-1:] == os.path.sep:
+			dlist = []
 			for name in master:
 				if fname == name[:len(fname)]:
-					self.addFile("GETF",name)
+					dlist.append(self.addFile("GETF",name))
+			dl = defer.DeferredList(dlist)
+			return dl
 
 	def sendFNDN(self, nID):
+		logger.debug("sendFNDN")
 		if not self.pending['FNDN'].has_key(nID):
-			self.pending['FNDN'][nID] = None
+			d = defer.Deferred()
+			self.pending['FNDN'][nID] = d
 			self._sendMessage("FNDN?"+nID)
+			return d
+		else:
+			return self.pending['FNDN'][nID]
 	
 	def sendGETM(self):
-		self._sendMessage("GETM?")
+		logger.debug("sendGETM")
+		if not self.pending['GETM'].has_key('pending'):
+			d = defer.Deferred()
+			self.pending['GETM']['pending'] = d
+			self._sendMessage("GETM?")
+			return d
+		else:
+			return self.pending['GETM']['pending']
 
 	def sendPUTM(self):
-		self._sendMessage("PUTM?")
+		logger.debug("sendPUTM")
+		if not self.pending['PUTM'].has_key('pending'):
+			d = defer.Deferred()
+			self.pending['PUTM']['pending'] = d
+			self._sendMessage("PUTM?")
+			return d
+		else:
+			return self.pending['PUTM']['pending']
 
 	def sendDIAGNODE(self):
-		self._sendMessage("DIAG?NODE")
+		logger.debug("sendDIAGNODE")
+		if not self.pending['NODE'].has_key('pending'):
+			d = defer.Deferred()
+			self.pending['NODE']['pending'] = d
+			self._sendMessage("DIAG?NODE")
+			return d
+		else:
+			return self.pending['NODE']['pending']
 
 	def sendDIAGBKTS(self):
-		self._sendMessage("DIAG?BKTS")
+		logger.debug("sendDIAGBKTS")
+		if not self.pending['BKTS'].has_key('pending'):
+			d = defer.Deferred()
+			self.pending['BKTS']['pending'] = d
+			self._sendMessage("DIAG?BKTS")
+			return d
+		else:
+			return self.pending['BKTS']['pending']
 
 	def sendDIAGSTOR(self, command):
-		self.pending['STOR'][command] = None
-		self._sendMessage("DIAG?"+command)
+		logger.debug("sendDIAGSTOR")
+		if not self.pending['STOR'].has_key(command):
+			d = defer.Deferred()
+			self.pending['STOR'][command] = d
+			self._sendMessage("DIAG?STOR "+command)
+			return d
+		else:
+			return self.pending['STOR'][command]
 
 	def sendDIAGRTRV(self, command):
-		self.pending['RTRV'][command] = None
-		print "DRTRV pending '%s'" % command
-		self._sendMessage("DIAG?"+command)
+		logger.debug("sendDIAGRTRV")
+		if not self.pending['RTRV'].has_key(command):
+			d = defer.Deferred()
+			self.pending['RTRV'][command] = d
+			self._sendMessage("DIAG?RTRV "+command)
+			return d
+		else:
+			return self.pending['RTRV'][command]
 
 	def sendDIAGVRFY(self, command):
-		self.pending['VRFY'][command] = None
-		self._sendMessage("DIAG?"+command)
+		logger.debug("sendDIAGVRFY")
+		if not self.pending['VRFY'].has_key(command):
+			d = defer.Deferred()
+			self.pending['VRFY'][command] = d
+			self._sendMessage("DIAG?VRFY "+command)
+			return d
+		else:
+			return self.pending['VRFY'][command]
 
 	def sendDIAGFNDV(self, val):
+		logger.debug("sendDIAGFNDV")
 		if not self.pending['FNDV'].has_key(val):
-			self.pending['FNDV'][val] = None
+			d = defer.Deferred()
+			self.pending['FNDV'][val] = d
 			self._sendMessage("FNDV?"+val)
+			return d
+		else:
+			return self.pending['FNDV'][val]
 
 	def setDie(self):
 		self.die = True
@@ -225,8 +341,4 @@ def listMeta(config):
 	else:
 		master = fdecode(master)
 	return master
-
-def printHelp(helpDict):
-	for i in helpDict:
-		print "%s:\t %s" % (i, helpDict[i])
 

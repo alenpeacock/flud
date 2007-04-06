@@ -4,6 +4,11 @@ under the terms of the GNU General Public License (the GPL), version 2.
 
 Protocol for talking to a flud node locally (from client code -- command line,
 GUI, etc).
+
+Each command in the local protocol begins with 4 bytes designating the type of
+command.  These are followed by a status byte, which is either '?'=request,
+':'=success response, or '!'=failure response.  Arguments to the command follow
+the status byte.
 """
 
 from twisted.web.resource import Resource
@@ -165,6 +170,7 @@ class LocalProtocol(basic.LineReceiver):
 			d.addErrback(self.sendFailure, command, data)
 	
 	def sendSuccess(self, resp, command, data, prepend=None):
+		logger.debug("SUCCESS! "+command+":"+data)
 		print "SUCCESS! "+command+":"+data #+" ("+str(resp)+")"
 		if prepend:
 			data = command+" "+data
@@ -179,6 +185,8 @@ class LocalProtocol(basic.LineReceiver):
 			print sys.exec_info()
 
 	def sendFailure(self, err, command, data, prepend=None):
+		logger.debug("FAILED! %s!%s (%s)" 
+				% (command, data, err.getErrorMessage())) 
 		print "FAILED! "+command+"!"+data +" ("+err.getErrorMessage()+")" 
 		if prepend:
 			data = command+" "+data
@@ -190,6 +198,7 @@ class LocalProtocol(basic.LineReceiver):
 		self.serviceQueue(command)
 
 	def lineReceived(self, line):
+		logger.debug("lineReceived: '%s'" % line)
 		# commands: AUTH, PUTF, GETF, VRFY
 		# status: ? = request, : = successful response, ! = failed response
 		command = line[0:4]
@@ -199,26 +208,32 @@ class LocalProtocol(basic.LineReceiver):
 		if not self.authenticated and command == "AUTH":
 			if status == '?':
 				# asked for AUTH challenge to be sent.  send it
+				logger.debug("AUTH challenge requested, sending")
 				echallenge = self.factory.sendChallenge()
 				self.transport.write("AUTH?"+echallenge+"\r\n")
 			elif status == ':' and self.factory.challengeAnswered(data):
 				# sent AUTH response and it passed
+				logger.debug("AUTH challenge successful")
 				self.authenticated = True
 				self.transport.write("AUTH:\r\n")
 			elif status == ':':
+				logger.debug("AUTH challenge failed")
 				self.transport.write("AUTH!\r\n")
 		elif command == "DIAG":
 			if data == "NODE":
+				logger.debug("DIAG NODE")
 				self.transport.write("DIAG:NODE"+
 						str(self.factory.config.routing.knownExternalNodes())+
 						"\r\n")
 			elif data == "BKTS":
+				logger.debug("DIAG BKTS")
 				self.transport.write("DIAG:BKTS"+
 						str(self.factory.config.routing.kBuckets)+
 						"\r\n")
 			else:
 				dcommand = data[:4]
 				ddata = data[5:]
+				logger.debug("DIAG %s %s" % (dcommand, ddata))
 				self.commands[dcommand][CONCURR] += 1
 				d = self.doOp(dcommand, ddata)
 				d.addCallback(self.sendSuccess, dcommand, ddata, "DIAG")
@@ -228,12 +243,13 @@ class LocalProtocol(basic.LineReceiver):
 			# maximum concurrent ops, do the operation.  Otherwise, put it on
 			# the queue to be serviced when current ops finish.  Response is
 			# sent back to client when deferreds fire.
-			logger.info("local client sent %s" % command)
 			if self.commands[command][CONCURR] >= self.commands[command][MAX]:
 				#print "putting %s on the queue" % line
+				logger.info("received %s request, enqueuing" % command)
 				self.commands[command][QUEUE].insert(0, data)
 			else:
 				#print "doing %s" % line
+				logger.info("received %s request, executing" % command)
 				print self.commands[command]
 				self.commands[command][CONCURR] += 1
 				d = self.doOp(command, data)

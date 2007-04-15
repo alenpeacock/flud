@@ -15,16 +15,20 @@ from FludCrypto import *
 
 from Protocol.LocalClient import *
 
-def callFactory(func, commands):
+# places where we are printing msgs to stdout need to instead put msgs in a
+# buffer, to be printed when promptUser returns (i.e., down in the promptLoop()
+# function).
+
+def callFactory(func, commands, msgs):
 	# since we can't call factory methods from the promptUser thread, we
 	# use this as a convenience to put those calls back in the event loop
-	reactor.callFromThread(doFactoryMethod, func, commands)
+	reactor.callFromThread(doFactoryMethod, func, commands, msgs)
 
-def doFactoryMethod(func, commands):
+def doFactoryMethod(func, commands, msgs):
 	d = func()
-	d.addCallback(printResult, '%s succeeded' % commands)
-	d.addErrback(printResult, '%s failed' % commands)
-	#return d
+	d.addCallback(queueResult, msgs, '%s succeeded' % commands)
+	d.addErrback(queueResult, msgs, '%s failed' % commands)
+	return d
 
 def promptUser(factory):
 	helpDict = {}
@@ -65,27 +69,27 @@ def promptUser(factory):
 		# ping a host
 		# format: 'ping host port'
 		func = lambda: factory.sendPING(commands[1], commands[2])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'putf':
 		# store a file
 		# format: 'putf canonicalfilepath'
 		func = lambda: factory.sendPUTF(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'getf':
 		# retrieve a file
 		# format: 'getf canonicalfilepath'
 		func = lambda: factory.sendGETF(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'geti':
 		# retrieve a file by CAS ID
 		# format: 'geti fencoded_CAS_ID'
 		func = lambda: factory.sendGETI(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'fndn':
 		# find a node (or the k-closest nodes)
 		# format: 'fndn hexIDstring'
 		func = lambda: factory.sendFNDN(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'list':
 		# list stored files
 		master = listMeta(factory.config)
@@ -94,10 +98,10 @@ def promptUser(factory):
 				print "%s: %s" % (i, fencode(master[i]))
 	elif commandkey == 'putm':
 		# store master metadata
-		callFactory(factory.sendPUTM, commands)
+		callFactory(factory.sendPUTM, commands, factory.msgs)
 	elif commandkey == 'getm':
 		# retrieve master metadata
-		callFactory(factory.sendGETM, commands)
+		callFactory(factory.sendGETM, commands, factory.msgs)
 		d = factory.sendGETM()
 	elif commandkey == 'cred':
 		# send encrypted private credentials to an email address
@@ -105,15 +109,15 @@ def promptUser(factory):
 		func = lambda: factory.sendCRED(
 				command[len(commands[0])+1:-len(commands[-1])-1], 
 				commands[-1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 		
 	# the following are diagnostic operations, debug-only utility
 	elif commandkey == 'node':
 		# list known nodes
-		callFactory(factory.sendDIAGNODE, commands)
+		callFactory(factory.sendDIAGNODE, commands, factory.msgs)
 	elif commandkey == 'buck':
 		# show k-buckets
-		callFactory(factory.sendDIAGBKTS, commands)
+		callFactory(factory.sendDIAGBKTS, commands, factory.msgs)
 	elif commandkey == 'stat':
 		# show pending actions
 		print factory.pending
@@ -131,25 +135,25 @@ def promptUser(factory):
 			# XXX: delete this file when the command finishes
 		commands[1] = "%s,%s" % (storcommands[0], storcommands[1])
 		func = lambda: factory.sendDIAGSTOR(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'rtrv':
 		# retrive a block from a given node. format: 'rtrv host:port,fname'
 		func = lambda: factory.sendDIAGRTRV(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'vrfy':
 		# verify a block on a given node.
 		# format: 'vrfy host:port:offset-length,fname'
 		func = lambda: factory.sendDIAGVRFY(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 	elif commandkey == 'fndv':
 		# try to retrieve a value from the DHT
 		# format: 'fndv key'
 		func = lambda: factory.sendDIAGFNDV(commands[1])
-		callFactory(func, commands)
+		callFactory(func, commands, factory.msgs)
 
 
-def printResult(r, msg):
-	print "RESULT: %s: %s" % (r, msg)
+def queueResult(r, l, msg):
+	l.append((r, msg))
 
 def printHelp(helpDict):
 	helpkeys = helpDict.keys()
@@ -170,6 +174,10 @@ def promptLoop(r, factory):
 				factory.pending[c].pop(i)
 			else:
 				print "%s on %s pending" % (c, i)
+
+	while len(factory.msgs) > 0:
+		(r, m) = factory.msgs.pop()
+		print "-- %s:\n%s\n" % (m, r) 
 
 	if factory.quit:
 		reactor.stop()
@@ -195,6 +203,7 @@ def main():
 
 	factory = LocalClientFactory(config)
 	factory.quit = False
+	factory.msgs = []
 	
 	if len(sys.argv) == 2:
 		config.clientport = int(sys.argv[1])

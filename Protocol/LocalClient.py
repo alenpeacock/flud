@@ -23,6 +23,8 @@ logger = logging.getLogger("flud.local.client")
 opTimeout = 1200
 VALIDOPS = LocalProtocol.commands.keys() + ['AUTH', 'DIAG']
 
+# XXX: print commands should either be raised, or put on factory.msgs
+
 class LocalClient(LineReceiver):
 	MAX_LENGTH = 300000
 	auth=False
@@ -71,49 +73,48 @@ class LocalClient(LineReceiver):
 			if data[:4] == "NODE":
 				logger.debug("DIAG NODE")
 				data = eval(data[4:])
+				result = ""
 				for i in data:
 					petID = "%064x" % i[2]
 					petID = petID[:24]+"..."
-					print "%s:%d %s" % (i[0], i[1], petID)
-				print "%d known nodes" % len(data)
+					result += "%s:%d %s\n" % (i[0], i[1], petID)
+				result += "%d known nodes\n" % len(data)
 				d = self.factory.pending['NODE'].pop('pending')
-				d.callback(True)
+				d.callback(result)
 				return
 			if data[:4] == "BKTS":
 				logger.debug("DIAG BKTS")
 				data = eval(data[4:])
-				print "-------------------------"
+				result = ""
 				for i in data:
 					for bucket in i:
-						print "Bucket %s:" % bucket
+						result += "Bucket %s:\n" % bucket
 						for k in i[bucket]:
 							id = "%064x" % k[2]
-							print "  %s:%d %s..." % (k[0],k[1],id[:12])
+							result += "  %s:%d %s...\n" % (k[0],k[1],id[:12])
 				d = self.factory.pending['BKTS'].pop('pending')
-				d.callback(True)
+				d.callback(result)
 				return
 			elif status == ':':
 				logger.debug("DIAG %s: success" % data[:4])
 				d = self.factory.pending[data[:4]].pop(data)
-				d.callback(True)
+				d.callback(data)
 			elif status == "!":
 				logger.debug("DIAG %s: failure" % data[:4])
 				d = self.factory.pending[data[:4]].pop(data)
-				d.callback(False)
+				d.errback(data)
 		elif status == ':':
 			logger.debug("%s: success" % command)
 			d = self.factory.pending[command].pop(data)
-			d.callback(True)
+			d.callback(data)
 		elif status == "!":
 			logger.debug("%s: failure" % command)
 			d = self.factory.pending[command].pop(data)
-			d.callback(False)
-		# can make the above callbacks send better than True, False (could send
-		# command, data, so that chain gets info about what event this is)
+			d.errback(data)
 		if command != 'AUTH' and command != 'DIAG' and \
 				not None in self.factory.pending[command].values():
-			logger.debug("convenience print for %s done" % command)
-			print "%s done at %s" % (command, time.ctime())
+			logger.debug("%s done at %s" % (command, time.ctime()))
+			#print "%s done at %s" % (command, time.ctime())
 
 
 class LocalClientFactory(ClientFactory):
@@ -171,7 +172,7 @@ class LocalClientFactory(ClientFactory):
 	def expire(self, pending, key):
 		if pending.has_key(fname):
 			logger.debug("timing out operation for %s" % key)
-			print "timing out operation for %s" % key
+			#print "timing out operation for %s" % key
 			pending.pop(key)
 	
 	def addFile(self, type, fname):

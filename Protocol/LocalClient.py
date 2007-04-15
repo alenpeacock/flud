@@ -102,7 +102,7 @@ class LocalClient(LineReceiver):
 			elif status == "!":
 				logger.debug("DIAG %s: failure" % data[:4])
 				d = self.factory.pending[data[:4]].pop(data)
-				d.errback(data)
+				d.errback(failure.DefaultException(data))
 		elif status == ':':
 			logger.debug("%s: success" % command)
 			d = self.factory.pending[command].pop(data)
@@ -110,7 +110,7 @@ class LocalClient(LineReceiver):
 		elif status == "!":
 			logger.debug("%s: failure" % command)
 			d = self.factory.pending[command].pop(data)
-			d.errback(data)
+			d.errback(failure.DefaultException(data))
 		if command != 'AUTH' and command != 'DIAG' and \
 				not None in self.factory.pending[command].values():
 			logger.debug("%s done at %s" % (command, time.ctime()))

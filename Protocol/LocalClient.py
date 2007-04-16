@@ -35,6 +35,7 @@ class LocalClient(LineReceiver):
 		self.sendLine("AUTH?")
 
 	def lineReceived(self, line):
+		logger.debug("received line '%s'" % line)
 		command = line[0:4]
 		if not command in VALIDOPS:
 			print "error: invalid command op ('%s')-- "\
@@ -76,10 +77,11 @@ class LocalClient(LineReceiver):
 				result = ""
 				for i in data:
 					petID = "%064x" % i[2]
-					petID = petID[:24]+"..."
-					result += "%s:%d %s\n" % (i[0], i[1], petID)
+					netID = "%s:%d" % (i[0], i[1])
+					petID = petID[:(75-len(netID))]+"..."
+					result += "%s %s\n" % (netID, petID)
 				result += "%d known nodes\n" % len(data)
-				d = self.factory.pending['NODE'].pop('pending')
+				d = self.factory.pending['NODE'].pop('')
 				d.callback(result)
 				return
 			if data[:4] == "BKTS":
@@ -91,8 +93,10 @@ class LocalClient(LineReceiver):
 						result += "Bucket %s:\n" % bucket
 						for k in i[bucket]:
 							id = "%064x" % k[2]
-							result += "  %s:%d %s...\n" % (k[0],k[1],id[:12])
-				d = self.factory.pending['BKTS'].pop('pending')
+							netID = "%s:%d" % (k[0], k[1])
+							result += "  %s %s...\n" \
+									% (netID,id[:72-len(netID)])
+				d = self.factory.pending['BKTS'].pop('')
 				d.callback(result)
 				return
 			elif status == ':':
@@ -109,8 +113,12 @@ class LocalClient(LineReceiver):
 			d.callback(data)
 		elif status == "!":
 			logger.debug("%s: failure" % command)
-			d = self.factory.pending[command].pop(data)
-			d.errback(failure.DefaultException(data))
+			if self.factory.pending.has_key(command):
+				d = self.factory.pending[command].pop(data)
+				d.errback(failure.DefaultException(data))
+			else:
+				print "failed command '%s' not in pending?" % command
+				print "pending is: %s" % self.factory.pending
 		if command != 'AUTH' and command != 'DIAG' and \
 				not None in self.factory.pending[command].values():
 			logger.debug("%s done at %s" % (command, time.ctime()))
@@ -132,22 +140,10 @@ class LocalClientFactory(ClientFactory):
 	def clientConnectionFailed(self, connector, reason):
 		print "connection failed: %s" % reason
 		logger.warn("connection failed: %s" % reason)
-		if reactor.threadpool:
-			for i in reactor.threadpool.threads:
-				i._Thread__stop()
-		if reactor.running:
-			reactor.stop()
 
 	def clientConnectionLost(self, connector, reason):
 		#print "connection lost: %s" % reason
 		logger.debug("connection lost: %s" % reason)
-		if reactor.threadpool:
-			for i in reactor.threadpool.threads:
-				# XXX: hack, but all we've got against raw_input
-				logger.debug("calling _Thread__stop() on %s" % i)
-				i._Thread__stop() 
-		if reactor.running:
-			reactor.stop()
 
 	def clientReady(self, instance):
 		self.client = instance
@@ -157,10 +153,10 @@ class LocalClientFactory(ClientFactory):
 
 	def _sendMessage(self, msg):
 		if self.client:
-			logger.debug("sending msg")
+			logger.debug("sending msg '%s'" % msg)
 			self.client.sendLine(msg)
 		else:
-			logger.debug("queueing msg")
+			logger.debug("queueing msg '%s'" % msg)
 			self.messageQueue.append(msg)
 	
 	def answerChallenge(self, echallenge):
@@ -252,43 +248,44 @@ class LocalClientFactory(ClientFactory):
 	
 	def sendGETM(self):
 		logger.debug("sendGETM")
-		if not self.pending['GETM'].has_key('pending'):
+		if not self.pending['GETM'].has_key(''):
 			d = defer.Deferred()
-			self.pending['GETM']['pending'] = d
+			self.pending['GETM'][''] = d
+			logger.debug("GETM[pending]=%s" % d)
 			self._sendMessage("GETM?")
 			return d
 		else:
-			return self.pending['GETM']['pending']
+			return self.pending['GETM']['']
 
 	def sendPUTM(self):
 		logger.debug("sendPUTM")
-		if not self.pending['PUTM'].has_key('pending'):
+		if not self.pending['PUTM'].has_key(''):
 			d = defer.Deferred()
-			self.pending['PUTM']['pending'] = d
+			self.pending['PUTM'][''] = d
 			self._sendMessage("PUTM?")
 			return d
 		else:
-			return self.pending['PUTM']['pending']
+			return self.pending['PUTM']['']
 
 	def sendDIAGNODE(self):
 		logger.debug("sendDIAGNODE")
-		if not self.pending['NODE'].has_key('pending'):
+		if not self.pending['NODE'].has_key(''):
 			d = defer.Deferred()
-			self.pending['NODE']['pending'] = d
+			self.pending['NODE'][''] = d
 			self._sendMessage("DIAG?NODE")
 			return d
 		else:
-			return self.pending['NODE']['pending']
+			return self.pending['NODE']['']
 
 	def sendDIAGBKTS(self):
 		logger.debug("sendDIAGBKTS")
-		if not self.pending['BKTS'].has_key('pending'):
+		if not self.pending['BKTS'].has_key(''):
 			d = defer.Deferred()
-			self.pending['BKTS']['pending'] = d
+			self.pending['BKTS'][''] = d
 			self._sendMessage("DIAG?BKTS")
 			return d
 		else:
-			return self.pending['BKTS']['pending']
+			return self.pending['BKTS']['']
 
 	def sendDIAGSTOR(self, command):
 		logger.debug("sendDIAGSTOR")

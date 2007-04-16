@@ -27,7 +27,7 @@ def callFactory(func, commands, msgs):
 def doFactoryMethod(func, commands, msgs):
 	d = func()
 	d.addCallback(queueResult, msgs, '%s succeeded' % commands)
-	d.addErrback(queueResult, msgs, '%s failed' % commands)
+	d.addErrback(queueError, msgs, '%s failed' % commands)
 	return d
 
 def promptUser(factory):
@@ -102,7 +102,6 @@ def promptUser(factory):
 	elif commandkey == 'getm':
 		# retrieve master metadata
 		callFactory(factory.sendGETM, commands, factory.msgs)
-		d = factory.sendGETM()
 	elif commandkey == 'cred':
 		# send encrypted private credentials to an email address
 		# format: 'cred passphrase emailaddress'
@@ -150,10 +149,16 @@ def promptUser(factory):
 		# format: 'fndv key'
 		func = lambda: factory.sendDIAGFNDV(commands[1])
 		callFactory(func, commands, factory.msgs)
+	elif command != "":
+		reactor.callFromThread(queueError, None, factory.msgs, 
+				"illegal command '%s'" % command)
 
 
 def queueResult(r, l, msg):
 	l.append((r, msg))
+
+def queueError(r, l, msg):
+	l.append((None, msg))
 
 def printHelp(helpDict):
 	helpkeys = helpDict.keys()
@@ -176,15 +181,24 @@ def promptLoop(r, factory):
 				print "%s on %s pending" % (c, i)
 
 	while len(factory.msgs) > 0:
+		# this prints in reverse order, perhaps pop() all into a new list,
+		# reverse, then print
 		(r, m) = factory.msgs.pop()
-		print "-- %s:\n%s\n" % (m, r) 
+		if r:
+			print "<- %s:\n%s" % (m, r) 
+		else:
+			print "<- %s" % m
 
 	if factory.quit:
 		reactor.stop()
 	else:
 		d = threads.deferToThread(promptUser, factory)
-		d.addCallback(promptLoop, factory)
+		d.addCallback(promptLoopDelayed, factory)
 		d.addErrback(err)
+
+def promptLoopDelayed(r, factory):
+	# give the reactor loop time to fire any quick cbs/ebs
+	reactor.callLater(0.1, promptLoop, r, factory)
 
 def err(r):
 	print "bah!: %s" % r

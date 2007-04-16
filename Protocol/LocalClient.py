@@ -114,8 +114,15 @@ class LocalClient(LineReceiver):
 		elif status == "!":
 			logger.debug("%s: failure" % command)
 			if self.factory.pending.has_key(command):
-				d = self.factory.pending[command].pop(data)
-				d.errback(failure.DefaultException(data))
+				if not self.factory.pending[command].has_key(data):
+					print "data key is '%s'" % data
+					print "pending is '%s'" % self.factory.pending[command]
+					if len(self.factory.pending[command]):
+						d = self.factory.pending[command].popitem()
+						d.errback(failure.DefaultException(data))
+				else:
+					d = self.factory.pending[command].pop(data)
+					d.errback(failure.DefaultException(data))
 			else:
 				print "failed command '%s' not in pending?" % command
 				print "pending is: %s" % self.factory.pending
@@ -204,14 +211,14 @@ class LocalClientFactory(ClientFactory):
 	
 	def sendCRED(self, passphrase, email):
 		logger.debug("sendCRED")
-		if not self.pending['CRED'].has_key(passphrase+email):
+		key = fencode((self.config.Ku.encrypt(passphrase)[0], email))
+		if not self.pending['CRED'].has_key(key):
 			d = defer.Deferred()
-			self.pending['CRED'][passphrase+email] = d
-			self._sendMessage("CRED?"
-					+fencode((self.config.Ku.encrypt(passphrase)[0], email)))
+			self.pending['CRED'][key] = d
+			self._sendMessage("CRED?"+key)
 			return d
 		else:
-			return self.pending['CRED'][passphrase+email]
+			return self.pending['CRED'][key]
 	
 	def sendGETI(self, fID):
 		logger.debug("sendGETI")

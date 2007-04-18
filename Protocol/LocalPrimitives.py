@@ -171,7 +171,6 @@ class LocalProtocol(basic.LineReceiver):
 	
 	def sendSuccess(self, resp, command, data, prepend=None):
 		logger.debug("SUCCESS! "+command+":"+data)
-		print "SUCCESS! "+command+":"+data #+" ("+str(resp)+")"
 		if prepend:
 			data = command+" "+data
 			ncommand = prepend
@@ -187,13 +186,13 @@ class LocalProtocol(basic.LineReceiver):
 	def sendFailure(self, err, command, data, prepend=None):
 		logger.debug("FAILED! %s!%s (%s)" 
 				% (command, data, err.getErrorMessage())) 
-		print "FAILED! "+command+"!"+data +" ("+err.getErrorMessage()+")" 
 		if prepend:
 			data = command+" "+data
 			ncommand = prepend
 		else:
 			ncommand = command
-		self.transport.write(ncommand+"!"+data+"\r\n")
+		errmsg = err.getErrorMessage().replace('!','_')
+		self.transport.write(ncommand+"!"+errmsg+"!"+data+"\r\n")
 		self.commands[command][CONCURR] -= 1
 		self.serviceQueue(command)
 

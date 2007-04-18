@@ -104,14 +104,16 @@ class LocalClient(LineReceiver):
 				d = self.factory.pending[data[:4]].pop(data)
 				d.callback(data)
 			elif status == "!":
+				errmsg, data = data.split('!',1)
 				logger.debug("DIAG %s: failure" % data[:4])
 				d = self.factory.pending[data[:4]].pop(data)
-				d.errback(failure.DefaultException(data))
+				d.errback(failure.DefaultException(errmsg))
 		elif status == ':':
 			logger.debug("%s: success" % command)
 			d = self.factory.pending[command].pop(data)
 			d.callback(data)
 		elif status == "!":
+			errmsg, data = data.split('!',1)
 			logger.debug("%s: failure" % command)
 			if self.factory.pending.has_key(command):
 				if not self.factory.pending[command].has_key(data):
@@ -119,10 +121,10 @@ class LocalClient(LineReceiver):
 					print "pending is '%s'" % self.factory.pending[command]
 					if len(self.factory.pending[command]):
 						d = self.factory.pending[command].popitem()
-						d.errback(failure.DefaultException(data))
+						d.errback(failure.DefaultException(errmsg))
 				else:
 					d = self.factory.pending[command].pop(data)
-					d.errback(failure.DefaultException(data))
+					d.errback(failure.DefaultException(errmsg))
 			else:
 				print "failed command '%s' not in pending?" % command
 				print "pending is: %s" % self.factory.pending
@@ -190,8 +192,10 @@ class LocalClientFactory(ClientFactory):
 			
 	def sendPING(self, host, port):
 		logger.debug("sendPING")
-		print "ping not yet implemented in FludLocalClient"
-		pass
+		d = defer.Deferred()
+		d.errback(failure.DefaultException(
+			"ping not yet implemented in FludLocalClient"))
+		return d
 
 	def sendPUTF(self, fname):
 		logger.debug("sendPUTF %s" % fname)

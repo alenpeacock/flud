@@ -158,7 +158,7 @@ def queueResult(r, l, msg):
 	l.append((r, msg))
 
 def queueError(r, l, msg):
-	l.append((None, msg))
+	l.append((r.getErrorMessage(), msg))
 
 def printHelp(helpDict):
 	helpkeys = helpDict.keys()

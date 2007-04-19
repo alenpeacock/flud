@@ -450,12 +450,12 @@ class SENDkFINDNODE(REQUEST):
 	def _gotResponse(self, response, factory, node, host, port, key):
 		logger.debug("kfindnode._gotResponse()")
 		self._checkStatus(factory.status, response, host, port)
-		nID = long(eval(response)['id'], 16)
+		response = eval(response)
+		nID = long(respose['id'], 16)
 		updateNode(node.client, node.config, host, port, None, nID)
-		res = kData(eval(response))
+		res = kData(response)
 		updateNodes(node.client, node.config, res)
 		return res
-		#return kData(eval(response))
 
 	def _checkStatus(self, status, response, host, port):
 		logger.debug("kfindnode._checkStatus()")

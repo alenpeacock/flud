@@ -60,6 +60,7 @@ def promptUser(factory):
 	helpDict['vrfy'] = "verify a block on a given node:"\
 			" 'vrfy host:port:offset-length,fname'"
 	helpDict['fndv'] = "retrieve a value from the DHT: 'fndv hexkey'"
+	helpDict['dlet'] = "delete from the stor: '[XXX]'"
 	if commandkey == 'exit' or commandkey == 'quit':
 		#reactor.callFromThread(reactor.stop)
 		factory.quit = True
@@ -142,8 +143,11 @@ def promptUser(factory):
 	elif commandkey == 'vrfy':
 		# verify a block on a given node.
 		# format: 'vrfy host:port:offset-length,fname'
+		logger.debug("vrfy(%s)" % commands[1])
 		func = lambda: factory.sendDIAGVRFY(commands[1])
 		callFactory(func, commands, factory.msgs)
+	elif commandkey == 'dlet':
+		print "not yet implemented"
 	elif commandkey == 'fndv':
 		# try to retrieve a value from the DHT
 		# format: 'fndv key'
@@ -155,10 +159,15 @@ def promptUser(factory):
 
 
 def queueResult(r, l, msg):
+	logger.debug("got result %s" % msg)
 	l.append((r, msg))
 
 def queueError(r, l, msg):
-	l.append((r.getErrorMessage(), msg))
+	logger.debug("got error %s" % msg)
+	if r:
+		l.append((r.getErrorMessage(), msg))
+	else:
+		l.append((None, msg))
 
 def printHelp(helpDict):
 	helpkeys = helpDict.keys()
@@ -183,9 +192,9 @@ def promptLoop(r, factory):
 	while len(factory.msgs) > 0:
 		# this prints in reverse order, perhaps pop() all into a new list,
 		# reverse, then print
-		(r, m) = factory.msgs.pop()
-		if r:
-			print "<- %s:\n%s" % (m, r) 
+		(errmsg, m) = factory.msgs.pop()
+		if errmsg:
+			print "<- %s:\n%s" % (m, errmsg) 
 		else:
 			print "<- %s" % m
 

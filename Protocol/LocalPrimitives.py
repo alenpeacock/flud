@@ -171,12 +171,12 @@ class LocalProtocol(basic.LineReceiver):
 	
 	def sendSuccess(self, resp, command, data, prepend=None):
 		logger.debug("SUCCESS! "+command+":"+data)
+		#logger.debug("response: '%s'" % (resp,))
 		if prepend:
-			data = command+" "+data
-			ncommand = prepend
+			w = "%s:%s %s:%s\r\n" % (prepend, command, fencode(resp), data)
 		else:
-			ncommand = command
-		self.transport.write(ncommand+":"+data+"\r\n")
+			w = "%s:%s:%s\r\n" % (command, fencode(resp), data)
+		self.transport.write(w)
 		self.commands[command][CONCURR] -= 1
 		try:
 			self.serviceQueue(command)
@@ -184,15 +184,14 @@ class LocalProtocol(basic.LineReceiver):
 			print sys.exec_info()
 
 	def sendFailure(self, err, command, data, prepend=None):
-		logger.debug("FAILED! %s!%s (%s)" 
-				% (command, data, err.getErrorMessage())) 
+		logger.debug("FAILED! %s!%s" % (command, data)) 
+		errmsg = err.getErrorMessage()
 		if prepend:
-			data = command+" "+data
-			ncommand = prepend
+			w = "%s!%s %s!%s\r\n" % (prepend, command, errmsg, data)
 		else:
-			ncommand = command
-		errmsg = err.getErrorMessage().replace('!','_')
-		self.transport.write(ncommand+"!"+errmsg+"!"+data+"\r\n")
+			w = "%s!%s!%s\r\n" % (command, errmsg, data)
+		logger.debug("sending %s" % w)
+		self.transport.write(w)
 		self.commands[command][CONCURR] -= 1
 		self.serviceQueue(command)
 

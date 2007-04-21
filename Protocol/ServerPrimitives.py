@@ -545,13 +545,13 @@ class VERIFY(ROOT):
 						
 	def _sendVerify(self, request, filekey, offset, length, reqKu):
 		fname = self.config.storedir+filekey
-		loggervrfy.debug("reading file data from %s" % fname)
+		loggervrfy.debug("request for %s" % fname)
 		if os.path.exists(fname):
-			loggervrfy.debug("looking in regular blockfile")
+			loggervrfy.debug("looking in regular blockfile for %s" % fname)
 			f = BlockFile.open(fname, 'rb')
 		else:
 			# check for tarball for originator
-			loggervrfy.debug("checking tarball")
+			loggervrfy.debug("checking tarball for %s" % fname)
 			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
 			if os.path.exists(tarball):
 				loggervrfy.debug("looking in tarball...")
@@ -582,6 +582,7 @@ class VERIFY(ROOT):
 			msg = "Not found: not storing %s" % filekey
 			request.setResponseCode(http.NOT_FOUND, msg)
 			return msg
+
 		# make sure request is reasonable	
 		fsize = os.stat(fname)[stat.ST_SIZE]
 		if offset > fsize or (offset+length) > fsize:

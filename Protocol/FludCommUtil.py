@@ -44,12 +44,10 @@ i = 0
 Some utility functions used by both client and server.
 """
 def updateNodes(client, config, nodes):
-	if isinstance(nodes, kData):
-		nodes = nodes.nodes()
-	if not isinstance(nodes, list) and not isinstance(nodes, tuple)\
-			and nodes != None:
+	if nodes and not isinstance(nodes, list) and not isinstance(nodes, tuple):
 		raise TypeError("updateNodes must be called with node list, tuple,"
-				" or kData")
+				" or kData dict")
+	logger.debug("updateNodes(%s)" % nodes)
 	for i in nodes:
 		host = i[0]
 		port = i[1]
@@ -320,24 +318,6 @@ def fileUpload(host, port, selector, filename, form=(), headers={}):
 	os.close(fd)
 
 	return h
-
-class kData(object):
-	# XXX: nodeID is triple-redundant! It exists as a long in [2], as id() on
-	# the imported RSAkey [3], and then again as ['id'] in the dict in hex
-	# format!
-	def __init__(self, d):
-		if not isinstance(d, dict) or not d.has_key('k'):
-			raise ValueError(
-					"kData must be a dictionary with key 'k'")
-		self.d = d
-	def data(self):
-		return self.d
-	def nodes(self):
-		return self.d['k']
-	def id(self):
-		return self.d['id']
-	def __str__(self):
-		return self.d.__str__()+" # kData"
 
 class ImposterException(FludException):
 	pass

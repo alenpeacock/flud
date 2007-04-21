@@ -561,16 +561,19 @@ class SENDVERIFY(REQUEST):
 		return deferred
 
 	def _getSendVerify(self, response, nKu, host, port, factory):
+		loggervrfy.debug("got vrfy response")
 		if eval(factory.status) == http.OK:
 			loggervrfy.info("received SENDVERIFY response")
 			updateNode(self.node.client, self.config, host, port, nKu)
 			return response
 		else:
 			# XXX: updateNode
+			loggervrfy.debug("received non-OK SENDVERIFY response")
 			raise failure.DefaultException("SENDVERIFY FAILED: "
 					+"server sent status "+factory.status+", '"+response+"'")
 
 	def _errSendVerify(self, err, nKu, host, port, factory, url, headers):
+		loggervrfy.debug("got vrfy err")
 		if err.check('twisted.internet.error.TimeoutError') or \
 				err.check('twisted.internet.error.ConnectionLost'):
 			#print "VERIFY request error: %s" % err.__class__.__name__

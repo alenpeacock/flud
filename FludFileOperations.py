@@ -187,7 +187,7 @@ class StoreFile:
 	# 4b: compare hashlists (locally encrypted vs. DHT -- if available).
 	#     for lhash, dhash in zip(segHashesLocal, segHashesDHT):
 	def _checkForExistingFileMetadata(self, storedMetadata):
-		if storedMetadata == None or isinstance(storedMetadata, kData):
+		if storedMetadata == None or isinstance(storedMetadata, dict):
 			logger.info("metadata doesn't yet exist, storing all data")
 			d = self._storeBlocks(storedMetadata)
 			#d = self._storeBlocksSKIP(storedMetadata)
@@ -328,7 +328,6 @@ class StoreFile:
 		#      Should go to _storeFileErr instead, eh?
 		if isinstance(kdata, str):
 			logger.err("str kdata=%s" % kdata)
-		kdata = kdata.data()
 		#if len(kdata['k']) > 1:
 		#	#logger.debug("type kdata: %s" % type(kdata))
 		#	#logger.debug("kdata=%s" % kdata)
@@ -558,7 +557,6 @@ class RetrieveFile:
 		return dl
 
 	def _retrieveBlock(self, kdata, block, id):
-		kdata = kdata.data()
 		#print type(kdata)
 		#print kdata
 		#if len(kdata['k']) > 1:
@@ -797,7 +795,7 @@ class RetrieveMasterIndex:
 
 	def _foundCAS(self, CAS):
 		# 2. oldmaster = kfindval(CAS)
-		if isinstance(CAS, kData):
+		if isinstance(CAS, dict):
 			return defer.fail(ValueError("couldn't find CAS key"))
 		CAS = fdecode(CAS)
 		d = RetrieveFile(self.node, CAS).deferred

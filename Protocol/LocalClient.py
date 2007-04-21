@@ -71,9 +71,13 @@ class LocalClient(LineReceiver):
 					print "  %s : %s" % (command, status)
 				self.factory.setDie()
 		elif command == "DIAG":
-			if data[:4] == "NODE":
+			subcommand = data[:4]
+			data = data[5:]
+			if subcommand == "NODE":
 				logger.debug("DIAG NODE")
-				data = eval(data[4:])
+				# XXX: make NODE pass in fencoded data instead of eval'ing, so
+				# that its like everyone else
+				data = eval(data)
 				result = ""
 				for i in data:
 					petID = "%064x" % i[2]
@@ -84,9 +88,11 @@ class LocalClient(LineReceiver):
 				d = self.factory.pending['NODE'].pop('')
 				d.callback(result)
 				return
-			if data[:4] == "BKTS":
+			if subcommand == "BKTS":
 				logger.debug("DIAG BKTS")
-				data = eval(data[4:])
+				# XXX: make BKTS pass in fencoded data instead of eval'ing, so
+				# that its like everyone else
+				data = eval(data)
 				result = ""
 				for i in data:
 					for bucket in i:
@@ -100,20 +106,22 @@ class LocalClient(LineReceiver):
 				d.callback(result)
 				return
 			elif status == ':':
-				logger.debug("DIAG %s: success" % data[:4])
-				d = self.factory.pending[data[:4]].pop(data)
-				d.callback(data)
+				response, data = data.split(status, 1)
+				logger.debug("DIAG %s: success" % subcommand)
+				d = self.factory.pending[subcommand].pop(data)
+				d.callback(fdecode(response))
 			elif status == "!":
-				errmsg, data = data.split('!',1)
-				logger.debug("DIAG %s: failure" % data[:4])
-				d = self.factory.pending[data[:4]].pop(data)
-				d.errback(failure.DefaultException(errmsg))
+				response, data = data.split(status, 1)
+				logger.debug("DIAG %s: failure" % subcommand)
+				d = self.factory.pending[subcommand].pop(data)
+				d.errback(failure.DefaultException(response))
 		elif status == ':':
+			response, data = data.split(status, 1)
 			logger.debug("%s: success" % command)
 			d = self.factory.pending[command].pop(data)
-			d.callback(data)
+			d.callback(fdecode(response))
 		elif status == "!":
-			errmsg, data = data.split('!',1)
+			response, data = data.split(status, 1)
 			logger.debug("%s: failure" % command)
 			if self.factory.pending.has_key(command):
 				if not self.factory.pending[command].has_key(data):
@@ -121,17 +129,16 @@ class LocalClient(LineReceiver):
 					print "pending is '%s'" % self.factory.pending[command]
 					if len(self.factory.pending[command]):
 						d = self.factory.pending[command].popitem()
-						d.errback(failure.DefaultException(errmsg))
+						d.errback(failure.DefaultException(response))
 				else:
 					d = self.factory.pending[command].pop(data)
-					d.errback(failure.DefaultException(errmsg))
+					d.errback(failure.DefaultException(response))
 			else:
 				print "failed command '%s' not in pending?" % command
 				print "pending is: %s" % self.factory.pending
 		if command != 'AUTH' and command != 'DIAG' and \
 				not None in self.factory.pending[command].values():
 			logger.debug("%s done at %s" % (command, time.ctime()))
-			#print "%s done at %s" % (command, time.ctime())
 
 
 class LocalClientFactory(ClientFactory):

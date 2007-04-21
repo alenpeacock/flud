@@ -91,7 +91,7 @@ class kFindNode:
 		kclosest = self.node.config.routing.findNode(key)
 		#logger.debug("local kclosest: %s" % kclosest)
 		localhost = getCanonicalIP('localhost')
-		kd = kData({'id': self.node.config.nodeID, 'k': kclosest})
+		kd = {'id': self.node.config.nodeID, 'k': kclosest}
 		d = self.updateLists(kd, key, localhost, self.node.config.port,
 				long(self.node.config.nodeID, 16))
 		d.addErrback(self.errkfindnode, key, localhost, self.node.config.port)
@@ -109,29 +109,25 @@ class kFindNode:
 		logger.info("FN: received kfindnode %s response from %s:%d" 
 				% (self.abbrv, host, port))
 		self.debugpath.append("FN: rec. resp from %s:%d" % (host, port))
-		if not isinstance(response, kData):
+		if not isinstance(response, dict):
+			# a data value is being returned from findval
+			# XXX: moved this bit into findval and call parent for the rest
 			if response == None:
-				print "Eeeeeiiiiiii!! key=%s, %s:%d, x=%d" % (self.abbrvkey,
-						host, port, x)
-			# if we found the value data, return it
-			#print "response was not kData: %s" % ('%s' % response)[:100]
-			return defer.succeed(fencode(response))
-			#return defer.succeed("AAAAR!  "+fencode(response))
-			#result['k'] = (response, )
-			#kd = kData({'id': self.node.config.nodeID, 'k': result})
-			#return defer.succeed(kd)
-		if len(response.nodes()) == 1 and response.nodes()[0][2] == key:
+				logger.warn("got None from key=%s, %s:%d, x=%d, this usually"
+						" means that the host replied None to a findval query" 
+						% (key, host, port, x))
+			# if we found the fencoded value data, return it
+			return defer.succeed(response)
+		logger.debug("updateLists(%s)" % response)
+		if len(response['k']) == 1 and response['k'][0][2] == key:
 			# if we've found the key, don't keep making queries.
 			logger.debug("FN: %s:%d found key %s" % (host, port, key))
 			self.debugpath.append("FN: %s:%d found key %s" % (host, port, key))
-			#print "%s found at %s:%d (%d queries)" % (self.abbrvkey, response.nodes()[0][0], response.nodes()[0][1], x)
-			if response.nodes()[0] not in self.kclosest:
-				self.kclosest.insert(0,response.nodes()[0])
+			if response['k'][0] not in self.kclosest:
+				self.kclosest.insert(0,response['k'][0])
 				self.kclosest = self.kclosest[:FludkRouting.k]
 			return defer.succeed(response)
-			#return fencode(response['k'][0])
 
-		response = response.data()
 		#for i in response['k']:
 		#	print "   res: %s:%d" % (i[0], i[1])
 		id = long(response['id'], 16)
@@ -246,7 +242,7 @@ class kFindNode:
 		#	if result['k'][0][2] == key:
 		#		#print "key matched!"
 		#		result['k'] = (result['k'][0],)
-		return kData(result)
+		return result
 
 	def errkfindnode(self, failure, key, host, port, raiseException=True):
 		logger.info("kFindNode %s request to %s:%d failed -- %s" % (self.abbrv,
@@ -272,7 +268,7 @@ class kStore(kFindNode):
 		self.deferred = d
 
 	def store(self, knodes):
-		knodes = knodes.data()['k']
+		knodes = knodes['k']
 		if len(knodes) < 1:
 			raise RuntimeError("can't complete kStore -- no nodes")
 		dlist = []
@@ -332,7 +328,7 @@ class kFindValue(kFindNode):
 		return d
 
 	def _handleFindVal(self, response, host, port):
-		if not isinstance(response, kData):
+		if not isinstance(response, dict):
 			# stop sending out more queries.
 			self.pending = []
 			self.done = True
@@ -362,30 +358,13 @@ class kFindValue(kFindNode):
 		if self.done:
 			result = {}
 			# see if everyone's responses agreed...
-			try:
-				for success, resp in responses:
-					# only look at successful non-kData (dict) responses.
-					if success and resp != None and not isinstance(resp, dict):
-						if result.has_key(resp):
-							result[resp] += 1
-						else:
-							result[resp] = 1
-			except:
-				# XXX: looks like we get here when we get a 'responses' that is
-				# a kData text string (a list of nodes such as is returned from
-				# FindNode() or FindVal() when an exact match isn't found)
-				# instead of a valid value response (fencoded file metadata).
-				# In both cases the data is in [(True, data),...] format
-				# XXX: this try/except can go away -- the check for
-				# isinstance(resp,dict) above prevents the exception this was
-				# built to handle.
-				print "FV: problem in roundDone for %s, got: %s" % (key, 
-						str(responses)) #[:100])
-				print "FV: ----- debugpath -----"
-				for i in self.debugpath:
-					print "%s" % i
-				print "FV: ===== debugpath ====="
-				raise
+			for success, resp in responses:
+				# only look at successful non-kData (dict) responses.
+				if success and resp != None and not isinstance(resp, dict):
+					if result.has_key(resp):
+						result[resp] += 1
+					else:
+						result[resp] = 1
 			if len(result) == 0:
 				# ... if no one responded, XXX: do something orther than None?
 				logger.info("couldn't get any results")
@@ -451,11 +430,10 @@ class SENDkFINDNODE(REQUEST):
 		logger.debug("kfindnode._gotResponse()")
 		self._checkStatus(factory.status, response, host, port)
 		response = eval(response)
-		nID = long(respose['id'], 16)
+		nID = long(response['id'], 16)
 		updateNode(node.client, node.config, host, port, None, nID)
-		res = kData(response)
-		updateNodes(node.client, node.config, res)
-		return res
+		updateNodes(node.client, node.config, response['k'])
+		return response
 
 	def _checkStatus(self, status, response, host, port):
 		logger.debug("kfindnode._checkStatus()")
@@ -567,14 +545,14 @@ class SENDkFINDVALUE(SENDkFINDNODE):
 			if factory.response_headers.has_key('nodeid'):
 				nID = factory.response_headers['nodeid'][0]
 			updateNode(node.client, node.config, host, port, None, nID)
-			return fdecode(response)
+			return response
 		
-		nID = long(eval(response)['id'], 16)
+		response = eval(response)
+		nID = long(response['id'], 16)
 		updateNode(node.client, node.config, host, port, None, nID)
 
 		logger.info("received SENDkFINDVALUE nodes")
 		logger.debug("received SENDkFINDVALUE nodes: %s" % response)
-		res = kData(eval(response))
-		updateNodes(node.client, node.config, res)
-		return res
+		updateNodes(node.client, node.config, response['k'])
+		return response
 

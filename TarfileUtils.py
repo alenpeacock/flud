@@ -67,32 +67,49 @@ def concatenate(tarfile1, tarfile2):
 	empty = tarfile.BLOCKSIZE*e
 	emptyblockcount = 0
 	while not done:
-		# read blocks until we encounter 2 blocks in a row that are blank
-		# (2 blank blocks is the end-of-tar marker)
-		bytes = f.read(tarfile.BLOCKSIZE)
-		if bytes == "":
-			done = True
-		if bytes == empty:
+		header = f.read(tarfile.BLOCKSIZE)
+		if header == "":
+			print "error: end of archive not found"
+			return
+		elif header == empty:
 			emptyblockcount += 1
-			if emptyblockcount >= 2:
+			if emptyblockcount == 2:
 				done = True
 		else:
-			if emptyblockcount > 0:
-				emptyblockcount = 0
+			emptyblockcount = 0
+			fsize = eval(header[124:135])
+			skip = int(round(float(fsize) / float(tarfile.BLOCKSIZE) + 0.5))
+			f.seek(skip*tarfile.BLOCKSIZE, 1)
+
 	# truncate the file to the spot before the end-of-tar marker 
-	falseend = f.tell() - (tarfile.BLOCKSIZE*2)
-	f.seek(falseend)
+	trueend = f.tell() - (tarfile.BLOCKSIZE*2)
+	f.seek(trueend)
 	f.truncate()
 
 	# now write the contents of the second tarfile into this spot
 	f2 = open(tarfile2, "r")
 	done = False
 	while not done:
-		bytes = f2.read(tarfile.BLOCKSIZE)
-		if bytes == "":
-			done = True
+		header = f2.read(tarfile.BLOCKSIZE)
+		if header == "":
+			print "error: end of archive not found"
+			f.seek(trueend)
+			f.write(empty*2)
+			return
 		else:
-			f.write(bytes)
+			f.write(header)
+			if header == empty:
+				emptyblockcount += 1
+				if emptyblockcount == 2:
+					done = True
+			else:
+				emptyblockcount = 0
+				fsize = eval(header[124:135])
+				bsize = int(round(float(fsize) / float(tarfile.BLOCKSIZE) 
+					+ 0.5))
+				# XXX: break this up if large
+				data = f2.read(bsize*tarfile.BLOCKSIZE)
+				f.write(data)
 
 	f2.close()
 	f.close()

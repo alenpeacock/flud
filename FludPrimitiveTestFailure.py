@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from FludNode import FludNode
 from Protocol.FludClient import FludClient
 import FludCrypto
@@ -40,6 +42,7 @@ def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
 	else:
 		# XXX: here and elsewhere, raise something more descriptive, otherwise
 		# its waay confusing
+		print "the following trace may be misleading..."
 		raise failure
 
 def testDELETEBadKey(nKu, node, host, port):
@@ -72,7 +75,7 @@ def testVERIFYBadKey(nKu, node, host, port):
 	return deferred
 
 def testVERIFYBadLengthFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.NotFoundException'):
+	if failure.check('Protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		return testVERIFYBadKey(nKu, node, host, port)
 	else:
@@ -90,10 +93,11 @@ def testVERIFYBadLength(nKu, node, host, port):
 	return deferred
 
 def testVERIFYBadOffsetFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.NotFoundException'):
+	if failure.check('Protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		return testVERIFYBadLength(nKu, node, host, port)
 	else:
+		print "VERIFYBadOffset failed as expected, but with wrong failure"
 		raise failure
 
 def testVERIFYBadOffset(nKu, node, host, port):

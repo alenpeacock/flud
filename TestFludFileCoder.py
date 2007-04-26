@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import sys
 from FludFileCoder import Coder, Decoder
 

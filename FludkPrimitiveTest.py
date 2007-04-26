@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from FludNode import FludNode
 from Protocol.FludClient import FludClient
 import FludCrypto
@@ -11,7 +13,7 @@ Test code for primitive operations.  These ops include all of the descendents
 of ROOT and REQUEST in FludProtocol.
 """
 
-stay_alive = 25
+stay_alive = 5
 filename = "/tmp/tempstoredata"
 filekey = os.path.basename(filename)
 key = 87328673569979667228965797330646992089697345905484734072690869757741450870337L
@@ -38,6 +40,7 @@ logger.addHandler(screenhandler)
 logger.setLevel(logging.INFO)
 
 def cleanup(_, node):
+	logger.info("waiting %ds to shutdown..." % stay_alive)
 	reactor.callLater(stay_alive, node.stop)
 
 def testerror(failure, message, node):

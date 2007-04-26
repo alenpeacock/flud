@@ -5,7 +5,8 @@ under the terms of the GNU General Public License (the GPL), version 2.
 Primitive server storage protocol
 """
 
-import binascii, time, os, stat, httplib, gc, re, sys, logging, sets, tarfile
+import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
+import tempfile, tarfile
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import reactor, threads, defer
@@ -176,8 +177,6 @@ class ID(ROOT):
 
 
 
-# XXX: need to do nodeID/key -> links for accounting (in STORE, RETRIEVE, 
-#      VERIFY).
 class STORE(ROOT):
 	"""
 	A request to store data via http upload.
@@ -265,9 +264,7 @@ class STORE(ROOT):
 		# get the data to a tmp file
 		loggerstor.debug("writing store data to tmpfile")
 		data = request.args.get('filename')[0]  # XXX: file in mem! need web2.
-		# XXX: can't do this tempstorefile thing without uniquifying... it'll
-		# get clobbered...
-		tmpfile = self.config.storedir+"/tempstorefile"
+		tmpfile = tempfile.mktemp(dir=self.config.storedir)
 		# XXX: bad blocking stuff here
 		f = open(tmpfile,"wb")
 		f.write(data)
@@ -289,10 +286,10 @@ class STORE(ROOT):
 				return msg
 			# XXX: add digests to a db of already stored files
 			if os.path.exists(tarname):
-				os.rename(tmpfile,tarname+".mergeme")
-				TarfileUtils.concatenate(tarname, tarname+".mergeme")
+				loggerstor.debug("concatenating tarfiles")
+				TarfileUtils.concatenate(tarname, tmpfile)
 			else:
-				os.rename(tmpfile,tarname)
+				os.rename(tmpfile, tarname)
 		else:
 			h = FludCrypto.hashfile(tmpfile)
 			if fencode(long(h, 16)) != filekey:
@@ -570,6 +567,7 @@ class VERIFY(ROOT):
 						request.setResponseCode(http.BAD_REQUEST, msg) 
 						return msg
 					tarf.seek(offset)
+					# XXX: bad blocking read
 					data = tarf.read(length)
 					tarf.close()
 					tar.close()

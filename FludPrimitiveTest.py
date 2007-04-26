@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from FludNode import FludNode
 from Protocol.FludClient import FludClient
 import FludCrypto

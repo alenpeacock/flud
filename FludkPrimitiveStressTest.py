@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import time, os, stat, random, sys, logging, socket
 import FludCrypto
 from FludNode import FludNode

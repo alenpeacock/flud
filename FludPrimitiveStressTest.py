@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import time, os, stat, random, sys, logging, socket
 import FludCrypto
 from FludNode import FludNode
@@ -5,17 +7,14 @@ from Protocol.FludClient import FludClient
 from Protocol.FludCommUtil import *
 from twisted.python import failure
 from twisted.internet import defer
+from fencode import *
 
 """
 Test code for primitive operations.  These ops include all of the descendents
 of ROOT and REQUEST in FludProtocol.
 """
-# XXX: check return from ops to see if they passed (e.g., if STORE fails, we
-#      are notified [currently] by the html page that is returned).
 
-# XXX: should make a random file each time this is run...
-
-CONCURRENT=500
+CONCURRENT=300
 
 node = None
 files = None
@@ -224,7 +223,7 @@ def createFakeData(dir="/tmp", num=CONCURRENT):
 	files = []
 	for i in range(num):
 		randdata = randsrc.read(256)
-		filekey = FludCrypto.hashstring(randdata)
+		filekey = fencode(int(FludCrypto.hashstring(randdata), 16))
 		filename = dir+'/'+filekey
 		f = open(filename, 'wb')
 		f.write(randdata)

@@ -145,7 +145,7 @@ def fencode(d, lenField=False):
 		else:
 			return 'n0'
 	else:
-		raise ValueError("invalid value passed to fencode")
+		raise ValueError("invalid value passed to fencode: %s" % type(d))
 	
 def fdecode(d, lenField=False):
 	"""

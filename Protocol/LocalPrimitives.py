@@ -220,14 +220,13 @@ class LocalProtocol(basic.LineReceiver):
 		elif command == "DIAG":
 			if data == "NODE":
 				logger.debug("DIAG NODE")
-				self.transport.write("DIAG:NODE"+
-						str(self.factory.config.routing.knownExternalNodes())+
-						"\r\n")
+				self.transport.write("DIAG:NODE%s\r\n" % 
+						fencode(
+							self.factory.config.routing.knownExternalNodes()))
 			elif data == "BKTS":
 				logger.debug("DIAG BKTS")
-				self.transport.write("DIAG:BKTS"+
-						str(self.factory.config.routing.kBuckets)+
-						"\r\n")
+				bucks = eval("%s" % self.factory.config.routing.kBuckets)
+				self.transport.write("DIAG:BKTS%s\r\n" % fencode(bucks))
 			else:
 				dcommand = data[:4]
 				ddata = data[5:]

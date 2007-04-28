@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 """
 FludLocalClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed
 under the terms of the GNU General Public License (the GPL), version 2.
@@ -15,9 +17,7 @@ from FludCrypto import *
 
 from Protocol.LocalClient import *
 
-# places where we are printing msgs to stdout need to instead put msgs in a
-# buffer, to be printed when promptUser returns (i.e., down in the promptLoop()
-# function).
+logger = logging.getLogger('flud')
 
 def callFactory(func, commands, msgs):
 	# since we can't call factory methods from the promptUser thread, we
@@ -62,7 +62,6 @@ def promptUser(factory):
 	helpDict['fndv'] = "retrieve a value from the DHT: 'fndv hexkey'"
 	helpDict['dlet'] = "delete from the stor: '[XXX]'"
 	if commandkey == 'exit' or commandkey == 'quit':
-		#reactor.callFromThread(reactor.stop)
 		factory.quit = True
 	elif commandkey == 'help':
 		printHelp(helpDict)
@@ -174,8 +173,6 @@ def printHelp(helpDict):
 	helpkeys.sort()
 	for i in helpkeys:
 		print "%s:\t %s" % (i, helpDict[i])
-
-logger = logging.getLogger('flud')
 
 def promptLoop(r, factory):
 	for c in factory.pending:

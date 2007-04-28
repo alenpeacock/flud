@@ -72,12 +72,10 @@ class LocalClient(LineReceiver):
 				self.factory.setDie()
 		elif command == "DIAG":
 			subcommand = data[:4]
-			data = data[5:]
+			data = data[4:]
 			if subcommand == "NODE":
-				logger.debug("DIAG NODE")
-				# XXX: make NODE pass in fencoded data instead of eval'ing, so
-				# that its like everyone else
-				data = eval(data)
+				logger.debug("DIAG NODE: %s" % data)
+				data = fdecode(data)
 				result = ""
 				for i in data:
 					petID = "%064x" % i[2]
@@ -90,9 +88,7 @@ class LocalClient(LineReceiver):
 				return
 			if subcommand == "BKTS":
 				logger.debug("DIAG BKTS")
-				# XXX: make BKTS pass in fencoded data instead of eval'ing, so
-				# that its like everyone else
-				data = eval(data)
+				data = fdecode(data)
 				result = ""
 				for i in data:
 					for bucket in i:

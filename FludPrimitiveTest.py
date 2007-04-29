@@ -22,11 +22,14 @@ def testerror(failure, message, node):
 	print "At least 1 test FAILED"
 	return failure
 
+def allGood(_, nKu):
+	print "all tests PASSED"
+	return nKu 
+
 def checkDELETE(res, nKu, fname, fkey, node, host, port):
 	""" checks to ensure the file was deleted """
 	# XXX: check to see that its gone
-	print "all tests PASSED"
-	return nKu 
+	allGood(res, nKu)
 
 def testDELETE(res, nKu, fname, fkey, node, host, port):
 	""" Tests sendDelete, and invokes checkDELETE on success """
@@ -97,7 +100,22 @@ def testID(fname, fkey, node, host, port):
 	deferred.addErrback(testerror, "failed at testID", node)
 	return deferred
 
-	
+def testAggSTORE(nKu, aggFiles, node, host, port):
+	print "starting testAggSTORE"
+	dlist = []
+	for i in aggFiles:
+		print "testAggSTORE %s" % i[0]
+		deferred = node.client.sendStore(i[0], host, port, nKu)
+		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
+		deferred.addErrback(testerror, "failed at testAggSTORE", node)
+		dlist.append(deferred)
+	# used ErrDeferredList instead
+	dl = defer.DeferredList(dlist)
+	dl.addCallback(allGood, nKu)
+	dl.addErrback(testerror, "failed at testAggSTORE", node)
+	return dl
+
+
 def cleanup(_, node, filenamelist):
 	for f in filenamelist:
 		try:
@@ -120,15 +138,19 @@ def generateTestData(minSize):
 	return (filename, filekey)
 
 def runTests(host, port=None, listenport=None):
-	(smallFilename, smallFilekey) = generateTestData(5120)
 	(largeFilename, largeFilekey) = generateTestData(512000)
+	(smallFilename, smallFilekey) = generateTestData(5120)
+	aggFiles = []
+	for i in range(4):
+		aggFiles.append(generateTestData(4096))
 	node = FludNode(port=listenport)
 	if port == None:
 		port = node.config.port
 	node.run()
 	d = testID(largeFilename, largeFilekey, node, host, port)
 	d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
-	d.addBoth(cleanup, node, [smallFilename, largeFilename])
+	d.addCallback(testAggSTORE, aggFiles, node, host, port)
+	d.addBoth(cleanup, node, [largeFilename, smallFilename])
 	node.join()
 
 """

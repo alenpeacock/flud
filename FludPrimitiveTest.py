@@ -26,11 +26,11 @@ def checkDELETE(res, nKu, fname, fkey, node, host, port):
 	""" checks to ensure the file was deleted """
 	# XXX: check to see that its gone
 	print "all tests PASSED"
-	return res 
+	return nKu 
 
 def testDELETE(res, nKu, fname, fkey, node, host, port):
 	""" Tests sendDelete, and invokes checkDELETE on success """
-	print "starting testDELETE"
+	print "starting testDELETE %s" % fname
 	deferred = node.client.sendDelete(fkey, host, port, nKu)
 	deferred.addCallback(checkDELETE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testDELETE", node)
@@ -46,7 +46,7 @@ def checkVERIFY(res, nKu, fname, fkey, node, host, port, hash):
 def testVERIFY(nKu, fname, fkey, node, host, port):
 	""" executes after checkRETRIEVE """
 	""" Test sendVerify """
-	print "starting testVERIFY"
+	print "starting testVERIFY %s" % fname
 	
 	fd = os.open(fname, os.O_RDONLY)
 	fsize = os.fstat(fd)[stat.ST_SIZE]
@@ -75,7 +75,7 @@ def checkRETRIEVE(res, nKu, fname, fkey, node, host, port):
 
 def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
 	""" Tests sendRetrieve, and invokes checkRETRIEVE on success """
-	print "starting testRETRIEVE"
+	print "starting testRETRIEVE %s" % fname
 	deferred = node.client.sendRetrieve(fkey, host, port, nKu)
 	deferred.addCallback(checkRETRIEVE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testRETRIEVE", node)
@@ -83,7 +83,7 @@ def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
 
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
-	print "starting testSTORE"
+	print "starting testSTORE %s" % fname
 	deferred = node.client.sendStore(fname, host, port, nKu)
 	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
@@ -120,13 +120,15 @@ def generateTestData(minSize):
 	return (filename, filekey)
 
 def runTests(host, port=None, listenport=None):
+	(smallFilename, smallFilekey) = generateTestData(5120)
 	(largeFilename, largeFilekey) = generateTestData(512000)
 	node = FludNode(port=listenport)
 	if port == None:
 		port = node.config.port
 	node.run()
 	d = testID(largeFilename, largeFilekey, node, host, port)
-	d.addBoth(cleanup, node, [largeFilename,])
+	d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
+	d.addBoth(cleanup, node, [smallFilename, largeFilename])
 	node.join()
 
 """

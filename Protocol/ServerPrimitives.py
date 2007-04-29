@@ -663,7 +663,7 @@ class DELETE(ROOT):
 			request.setResponseCode(http.NOT_FOUND, "Not found: %s" % filekey)
 			request.write("Not found: %s" % filekey)
 		else:
-			f = BlockFile.open(fname,"rb")
+			f = BlockFile.open(fname,"rb+")
 			if f.hasNode(reqID):
 				# remove this node from owning this file block
 				f.delNode(reqID)

@@ -6,7 +6,6 @@ under the terms of the GNU General Public License (the GPL), version 2.
 
 FludLocalClient provides a command-line client for interacting with FludNode.
 """
-#!/usr/bin/python
 
 import sys, os, time
 from twisted.internet import reactor

@@ -182,6 +182,7 @@ class LocalProtocol(basic.LineReceiver):
 			self.serviceQueue(command)
 		except:
 			print sys.exec_info()
+		return resp
 
 	def sendFailure(self, err, command, data, prepend=None):
 		logger.debug("FAILED! %s!%s" % (command, data)) 
@@ -194,6 +195,7 @@ class LocalProtocol(basic.LineReceiver):
 		self.transport.write(w)
 		self.commands[command][CONCURR] -= 1
 		self.serviceQueue(command)
+		return err
 
 	def lineReceived(self, line):
 		logger.debug("lineReceived: '%s'" % line)

@@ -135,6 +135,7 @@ class FludNode(object):
 			self.logger.warn("Couldn't connect to gateway at %s:%s" % 
 					(sys.argv[1], sys.argv[2]))
 
+		self.logger.debug("connectViaGateway %s%d" % (host, port))
 		deferred = self.client.sendkFindNode(host, port, 
 				self.config.routing.node[2])
 		deferred.addCallback(refresh)

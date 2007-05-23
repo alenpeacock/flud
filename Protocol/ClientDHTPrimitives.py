@@ -16,6 +16,7 @@ import FludkRouting
 from ClientPrimitives import REQUEST
 from fencode import fencode, fdecode
 from FludCommUtil import *
+import FludDefer
 
 logger = logging.getLogger("flud.client.dht")
 
@@ -279,7 +280,7 @@ class kStore(kFindNode):
 					self.val).deferred
 			deferred.addErrback(self._kStoreErr, host, port)
 			dlist.append(deferred)
-		dl = ErrDeferredList(dlist)
+		dl = FludDefer.ErrDeferredList(dlist)
 		dl.addCallback(self._kStoreFinished)
 		dl.addErrback(self._kStoreErr, None, 0)
 		return dl

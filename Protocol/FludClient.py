@@ -21,6 +21,7 @@ class FludClient(object):
 	"""
 	def __init__(self, node):
 		self.node = node
+		self.currentStorOps = {}
 	
 	"""
 	Data storage primitives
@@ -43,20 +44,47 @@ class FludClient(object):
 	# XXX: we should cache nKu so that we don't do the GETID for all of these
 	# ops every single time
 	def sendStore(self, filename, host, port, nKu=None):
+		# XXX: need to keep a map of 'filename' to deferreds, in case we are
+		# asked to store the same chunk more than once concurrently (happens
+		# for 0-byte files or from identical copies of the same file, for
+		# example).  both SENDSTORE and AggregateStore will choke on this.
+		# if we find a store req in said map, just return that deferred instead
+		# of redoing the op. [note, could mess up node choice... should also do
+		# this on whole-file level in FileOps]
+
+		# XXX: need to remove from currentStorOps on success or failure
+		key = "%s:%d:%s" % (host, port, filename)
+
+		if self.currentStorOps.has_key(key):
+			logger.debug("returning saved deferred for %s in sendStore" 
+					% filename)
+			return self.currentStorOps[key]
+
 		def sendStoreWithnKu(nKu, host, port, filename):
 			return SENDSTORE(nKu, self.node, host, port, filename).deferred
 
+		def removeKey(r, key):
+			self.currentStorOps.pop(key)
+			return r
+
 		if not nKu:
-			# XXX: doesn't do AggregateStore if filename is small.  Can fix by
+			# XXX: doesn't do AggregateStore if file is small.  Can fix by
 			#      moving this AggStore v. SENDSTORE choice into SENDSTORE 
 			#      proper
 			d = self.sendGetID(host, port)
 			d.addCallback(sendStoreWithnKu, host, port, filename)
+			self.currentStorOps[key] = d
 			return d
+
 		fsize = os.stat(filename)[stat.ST_SIZE];
 		if fsize < MINSTORSIZE:
-			return AggregateStore(nKu, self.node, host, port, filename).deferred
-		d = SENDSTORE(nKu, self.node, host, port, filename).deferred
+			logger.debug("doing AggStore")
+			d = AggregateStore(nKu, self.node, host, port, filename).deferred
+		else:
+			logger.debug("SENDSTORE")
+			d = SENDSTORE(nKu, self.node, host, port, filename).deferred
+		self.currentStorOps[key] = d
+		d.addBoth(removeKey, key)
 		return d
 	
 	def sendRetrieve(self, filekey, host, port, nKu=None):

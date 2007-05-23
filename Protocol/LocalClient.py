@@ -150,12 +150,18 @@ class LocalClientFactory(ClientFactory):
 				'CRED': {}, 'GETM': {}, 'PUTM': {}, 'NODE': {}, 'BKTS': {}}
 
 	def clientConnectionFailed(self, connector, reason):
-		print "connection failed: %s" % reason
+		#print "connection failed: %s" % reason
 		logger.warn("connection failed: %s" % reason)
+		self.cleanup("connection failed: %s" % reason)
 
 	def clientConnectionLost(self, connector, reason):
 		#print "connection lost: %s" % reason
 		logger.debug("connection lost: %s" % reason)
+		self.cleanup("connection lost: %s" % reason)
+
+	def cleanup(self, msg):
+		# override me for cleanup
+		print msg;
 
 	def clientReady(self, instance):
 		self.client = instance

@@ -100,6 +100,9 @@ class StoreFile:
 	the DHT layer.
 	"""
 
+	# XXX: should follow this currentOps model for the other FludFileOps
+	currentOps = {}
+
 	def __init__(self, node, filename):
 		self.node = node
 		self.filename = filename
@@ -108,12 +111,12 @@ class StoreFile:
 		self.routing = self.config.routing
 		self.metadir = self.config.metadir
 		self.metamaster = os.path.join(self.metadir,self.config.metamaster)
-		self.codedir = self.config.clientdir # XXX: clientdir?
+		self.parentcodedir = self.config.clientdir # XXX: clientdir?
 
 		self.deferred = self._storeFile()
 		
 	def _storeFile(self):
-		if os.path.isfile(self.filename) == False:
+		if not os.path.isfile(self.filename):
 			return defer.fail(ValueError("%s is not a file" % self.filename))
 
 		# 1: create encryption key (eK) and storage key (sK).  Query DHT using
@@ -140,6 +143,20 @@ class StoreFile:
 		f.write(fencode(self.nodeFileMetadata))
 		f.close();
 
+		# if already storing identical file by CAS, piggyback on it
+		if self.currentOps.has_key(self.eK):
+			logger.debug("reusing callback on %s" % self.eK)
+			(d, counter) = self.currentOps[self.eK]
+			self.currentOps[self.eK] = (d, counter+1)
+			# setting sfile, encodedir, and efilename to empty vals is kinda
+			# hokey -- could split _storeMetadata into two funcs instead (the
+			# cleanup part and the store part; see _storeMetadata)
+			self.sfiles = []
+			self.encodedir = None
+			self.efilename = None
+			d.addCallback(self._piggybackStoreMetadata)
+			return d
+
 		# 3: encrypt and encode the file locally.
 		self.efilename = os.path.join(self.metadir,self.flatname+appendEncrypt)
 		e = open(self.efilename, "w")
@@ -163,17 +180,25 @@ class StoreFile:
 		os.close(fd)
 		# code the file
 		c = Coder(code_k, code_m, code_l)
+		self.encodedir = os.path.join(self.parentcodedir, self.flatname)
+		try:
+			os.mkdir(self.encodedir)
+		except:
+			return defer.fail(failure.DefaultException(
+				"%s already requested" % self.filename))
 		self.sfiles = c.codeData(self.efilename, 
-				os.path.join(self.codedir,self.flatname))
+				os.path.join(self.encodedir, 'c'))
 		#logger.debug("coded to: %s" % str(self.sfiles))
 		# take hashes and rename coded blocks
 		self.segHashesLocal = []
 		for i in range(len(self.sfiles)):
 			sfile = self.sfiles[i]
 			h = long(FludCrypto.hashfile(sfile),16)
-			self.segHashesLocal.append(h)
 			logger.debug(" file block %s hashes to %s" % (i, fencode(h)))
-			destfile = os.path.join(self.codedir,fencode(h))
+			destfile = os.path.join(self.encodedir,fencode(h))
+			if os.path.exists(destfile):
+				logger.warn(" %s exists (%s)" % (destfile, fencode(h)))
+			self.segHashesLocal.append(h)
 			#logger.debug("moved %s to %s" % (sfile, destfile))
 			os.rename(sfile, destfile)
 			self.sfiles[i] = destfile
@@ -182,6 +207,7 @@ class StoreFile:
 		d = self.node.client.kFindValue(self.sK)
 		d.addCallback(self._checkForExistingFileMetadata)
 		d.addErrback(self._storeFileErr, "DHT query for metadata failed")
+		self.currentOps[self.eK] = (d, 1)
 		return d
 
 	# 4b: compare hashlists (locally encrypted vs. DHT -- if available).
@@ -239,7 +265,11 @@ class StoreFile:
 		return dl
 
 	def _storeBlock(self, hash, sfile, retry=2):
-		node = random.choice(self.routing.knownExternalNodes())
+		nodeChoices = self.routing.knownExternalNodes()
+		if not nodeChoices:
+			return defer.fail(failure.DefaultException(
+				"cannot store blocks to 0 nodes"))
+		node = random.choice(nodeChoices)
 		host = node[0]
 		port = node[1]
 		nID = node[2]
@@ -281,7 +311,7 @@ class StoreFile:
 		logger.debug(' # local blocks: %d' % len(fileNames))
 		result = True
 		for i in storedFiles:
-			fname = os.path.join(self.codedir,fencode(i))
+			fname = os.path.join(self.encodedir,fencode(i))
 			if not fname in fileNames:
 				logger.warn("%s not in sfiles" % fencode(i))
 				result = False
@@ -375,7 +405,8 @@ class StoreFile:
 			d = self._storeBlock(seg, sfile)
 			return d
 		else:
-			#logger.debug("block passed verify (%s == %s)" % (hash, long(result,16)))
+			#logger.debug("block passed verify (%s == %s)" 
+			#		% (hash, long(result,16)))
 			return fencode(seg)
 
 	def _checkVerifyErr(self, failure, seg, sfile, hash):
@@ -384,9 +415,17 @@ class StoreFile:
 		d = self._storeBlock(seg, sfile)
 		return d
 
+	def _piggybackStoreMetadata(self, piggybackMeta):
+		logger.debug("need to parse this %s: %s" 
+				% (type(piggybackMeta), piggybackMeta))
+		self.blockMetadata = piggybackMeta[1]['b']
+		logger.debug("which is %s, i think", self.blockMetadata)
+		return self._storeMetadata([])
+
 	# 6 - store the metadata.
 	def _storeMetadata(self, dlistresults):
-		logger.info("dlist=%s" % str(dlistresults))
+		# cleanup part of storeMetadata:
+		logger.debug("dlist=%s" % str(dlistresults))
 		# XXX: for any "False" in dlistresults, need to invoke _storeBlocks
 		#      again on corresponding entries in sfiles.
 		for i in dlistresults:
@@ -397,18 +436,19 @@ class StoreFile:
 		# clean up locally coded files and encrypted file
 		for sfile in self.sfiles:
 			os.remove(sfile)
-			logger.info("removed %s" % sfile)
-		os.remove(self.efilename)
-		logger.info("removed %s" % self.efilename)
+			#logger.info("removed %s" % sfile)
+		if self.encodedir: os.rmdir(self.encodedir)
+		if self.efilename: os.remove(self.efilename)
 
+		# storeMetadata part of storeMetadata
 		meta = {self.config.nodeID: self.nodeFileMetadata, 
 				'b' :self.blockMetadata}
 		# XXX: should sign metadata to prevent forged entries.
 		logger.debug("node metadata = %s" 
 				% {self.config.nodeID: self.nodeFileMetadata})
-		for i in self.blockMetadata:
-			logger.debug("  %s: %s" 
-					% (fencode(i), fencode(self.blockMetadata[i])))
+		#for i in self.blockMetadata:
+		#	logger.debug("  %s: %s" 
+		#			% (fencode(i), fencode(self.blockMetadata[i])))
 		logger.debug("storing metadata at %s" % fencode(self.sK))
 		logger.info("len(segMetadata) = %d" % len(self.blockMetadata))
 		logger.debug("len(meta) = %d" % len(str(meta)))
@@ -454,9 +494,25 @@ class StoreFile:
 		os.remove(self.mfilename)
 		logger.info("removed %s" % self.mfilename)
 		#return fencode(self.sK)
+		(d, counter) = self.currentOps[self.eK]
+		counter = counter - 1
+		if counter == 0:
+			logger.debug("counter 0 for currentOps %s" % self.eK)
+			self.currentOps.pop(self.eK)
+		else:
+			logger.debug("setting counter = %d for %s" % (counter, self.eK))
+			self.currentOps[self.eK] = (d, counter)
 		return (key, meta)
 		
 	def _storeFileErr(self, failure, message, raiseException=True):
+		(d, counter) = self.currentOps[self.eK]
+		counter = counter - 1
+		if counter == 0:
+			logger.debug("err counter 0 for currentOps %s" % self.eK)
+			self.currentOps.pop(self.eK)
+		else:
+			logger.debug("err setting counter = %d for %s" % (counter, self.eK))
+			self.currentOps[self.eK] = (d, counter)
 		logger.error("%s: %s" % (message, failure.getErrorMessage()))
 		#logger.debug(failure.getTraceback())
 		if raiseException:
@@ -490,7 +546,7 @@ class RetrieveFile:
 		self.routing = self.config.routing.knownNodes()
 		self.metadir = self.config.metadir
 		self.metamaster = os.path.join(self.metadir,self.config.metamaster)
-		self.codedir = self.config.clientdir
+		self.parentcodedir = self.config.clientdir
 		self.numDecoded = 0
 
 		self.deferred = self._retrieveFile()
@@ -520,7 +576,7 @@ class RetrieveFile:
 				self.nmeta = self.meta[i]
 				logger.info("got metadata for node %s:" % fencode(long(i,16)))
 		self.decoded = False
-		self.decoder = Decoder(os.path.join(self.codedir,fencode(self.sK))
+		self.decoder = Decoder(os.path.join(self.parentcodedir,fencode(self.sK))
 				+".rec1", code_k, code_m, code_l)
 		#return self._getSomeBlocks()
 		return self._getSomeBlocks(25) # XXX: magic. Should derive from k & m
@@ -607,7 +663,7 @@ class RetrieveFile:
 		#self.meta['b'].pop(block)
 		self.numDecoded += 1
 		if not self.decoded and self.decoder.decodeData(
-				os.path.join(self.codedir,block)):
+				os.path.join(self.parentcodedir,block)):
 			self.decoded = True
 			logger.info("successfully decoded (retrieved %d blocks --"
 					" all but %d blocks tried)" % (self.numDecoded, 
@@ -617,8 +673,8 @@ class RetrieveFile:
 		# 3: Retrieve eK from sK by eK=Kr(eeK).  Use eK to decrypt file.  Strip
 		#    off leading pad.
 		skey = fencode(self.sK)
-		f1 = open(os.path.join(self.codedir,skey+".rec1"), "r")
-		f2 = open(os.path.join(self.codedir,skey+".rec2"), "w")
+		f1 = open(os.path.join(self.parentcodedir,skey+".rec1"), "r")
+		f2 = open(os.path.join(self.parentcodedir,skey+".rec2"), "w")
 		#logger.info("decoding nmeta eeK for %s" % dir(self))
 		eeK = fdecode(self.nmeta['eeK'])
 		# d_eK business is to ensure that eK is zero-padded to 32 bytes
@@ -633,9 +689,9 @@ class RetrieveFile:
 			f2.write(eKey.decrypt(buf))
 		f1.close()
 		f2.close()
-		os.remove(os.path.join(self.codedir,skey+".rec1"))
-		f2 = open(os.path.join(self.codedir,skey+".rec2"), "r")
-		f3 = open(os.path.join(self.codedir,skey+".rec3"), "w")
+		os.remove(os.path.join(self.parentcodedir,skey+".rec1"))
+		f2 = open(os.path.join(self.parentcodedir,skey+".rec2"), "r")
+		f3 = open(os.path.join(self.parentcodedir,skey+".rec3"), "w")
 		padlen = f2.read(1)
 		#print "%s" % repr(padlen)
 		padlen = ord(padlen)
@@ -649,7 +705,7 @@ class RetrieveFile:
 			f3.write(buf)
 		f2.close()
 		f3.close()
-		os.remove(os.path.join(self.codedir,skey+".rec2"))
+		os.remove(os.path.join(self.parentcodedir,skey+".rec2"))
 
 		# 4: Move file to its correct path, imbue it with properties from 
 		#    metadata.
@@ -680,11 +736,13 @@ class RetrieveFile:
 				#      so as not to overwrite coincidentally named files.
 				fmeta['path'] = fmeta['path']+".recovered"
 				result.insert(0,fmeta['path'])
-				os.rename(os.path.join(self.codedir,skey+".rec3"),fmeta['path'])
+				os.rename(os.path.join(self.parentcodedir,skey+".rec3"),
+						fmeta['path'])
 			else:
 				logger.info('same version of file %s already present'
 						% fmeta['path']) 
-				os.remove(os.path.join(self.codedir,skey+".rec3")) # no need to copy
+				# no need to copy:
+				os.remove(os.path.join(self.parentcodedir,skey+".rec3")) 
 		else:
 			# recover parent directories of not present
 			fmaster = open(self.metamaster, 'r')
@@ -707,7 +765,8 @@ class RetrieveFile:
 					# XXX: should try to make sure we can write to dir, change
 					# perms if necessary.
 			# recover file by renaming to its path 
-			os.rename(os.path.join(self.codedir,skey+".rec3"), fmeta['path'])
+			os.rename(os.path.join(self.parentcodedir,skey+".rec3"), 
+					fmeta['path'])
 
 		# XXX: chown not supported on Windows
 		os.chown(fmeta['path'], fmeta['uid'], fmeta['gid'])

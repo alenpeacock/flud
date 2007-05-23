@@ -261,9 +261,16 @@ aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
 class AggregateStore:
 
+	# XXX: if multiple guys store the same file, we're going to get into bad
+	# cb state (the except clause in errbackTarfiles).  Need to catch this
+	# as it happens... (this happens e.g. for small files with the same
+	# filehash, e.g, 0-byte files, file copies etc).  Should fix this in
+	# FludClient -- non-agg store has a similar problem (encoded file chunks
+	# get deleted out from under successive STOR ops for the same chunk, i.e.
+	# from two concurrent STORs of the same file contents)
 	def __init__(self, nKu, node, host, port, filename):
-		tarfilename = node.config.clientdir+"/"+nKu.id()+'-'+host+'-'\
-				+str(port)+".tar"
+		tarfilename = os.path.join(node.config.clientdir,nKu.id())\
+				+'-'+host+'-'+str(port)+".tar"
 		loggerstoragg.debug("tarfile name is %s" % tarfilename)
 		if not os.path.exists(tarfilename) \
 				or not aggDeferredMap.has_key(tarfilename):

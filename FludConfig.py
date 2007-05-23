@@ -138,9 +138,9 @@ class FludConfig:
 			#logger.setLevel(self.loglevel)
 			#logger.setLevel(logging.WARNING) # XXX: overrides user prefs
 			#logger.setLevel(logging.DEBUG) # XXX: overrides user prefs
-			if os.environ.has_key("FLUDLOGFILTER"):
+			if os.environ.has_key("LOGFILTER"):
 				self.filter = FludDebugLogFilter(
-						os.environ["FLUDLOGFILTER"].split(' '))
+						os.environ["LOGFILTER"].split(' '))
 				handler.addFilter(self.filter)
 				# XXX: add a LocalPrimitive that can be called dynamically to
 				# invoke filter.setWildcards()

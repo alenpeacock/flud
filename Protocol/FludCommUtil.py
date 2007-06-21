@@ -249,54 +249,61 @@ def downloadPageFactory(url, file, contextFactory=None, timeout=None,
 		reactor.connectTCP(host, port, factory, timeout=to)
 	return factory
 
-def fileUpload(host, port, selector, filename, form=(), headers={}):
+def fileUpload(host, port, selector, files, form=(), headers={}):
 	"""
 	Performs a file upload via http.
 	host - webserver hostname
 	port - webserver listen port
 	selector - the request (relative URL)
-	filename - a file to upload.  The basename will be used as the filename
-	  on the form.  Type will be "application/octet-stream"
+	files - list of files to upload.  list contains tuples, with the first
+		entry as filename and the second as form element name.  The filename's
+		basename will be used as the filename on the form.  Type will be
+		"application/octet-stream"
 	form (optional) - a list of pairs of name/value form elements 
-	  (param/values).
+	    (param/values).
 	[hopefully, this method goes away in twisted-web2]
 	"""
 	# XXX: set timeout (based on filesize?)
 	port = int(port)
-	if filename == None:
-		filename = "/dev/null" # XXX: not portable -- need another way to send
-		                       # no file data.
-	file = os.path.basename(filename)
-	fd = os.open(filename, os.O_RDONLY)
-	file_length = os.fstat(fd)[stat.ST_SIZE]
-	#logger.info("upload file is %s, len=%d" % (filename, file_length))
+
 	rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
 	boundary = "---------------------------"+rand_bound
 	CRLF = '\r\n'
-
 	body_content_type = "application/octet-stream"
-	H = []  # stuff that goes above file data
-	T = []  # stuff that goes below file data
-	for (param, value) in form:
-		H.append('--' + boundary)
-		H.append('Content-Disposition: form-data; name="%s"' % param)
-		H.append('')
-		H.append(value)
-	H.append('--' + boundary)
-	H.append('Content-Disposition: form-data; name="filename"; filename="%s"' 
-			% file)
-	H.append('Content-Type: %s\n' % body_content_type)
-	H.append('')
-	file_headers = CRLF.join(H)
-
-	T.append('--'+boundary+'--')
-	T.append('')
-	T.append('')
-	file_trailer = CRLF.join(T)
-	
-	content_length = len(file_headers) + file_length + len(file_trailer)
-	
 	content_type = "multipart/form-data; boundary="+boundary
+
+	fuploads = []
+
+	for filename, element in files:
+		if filename == None:
+			filename = "/dev/null"   # XXX: not portable -- need another 
+			                         # way to send no file data.
+		file = os.path.basename(filename)
+		file_length = os.stat(filename)[stat.ST_SIZE]
+		#logger.info("upload file is %s, len=%d" % (filename, file_length))
+
+		H = []  # stuff that goes above file data
+		T = []  # stuff that goes below file data
+		for (param, value) in form:
+			H.append('--' + boundary)
+			H.append('Content-Disposition: form-data; name="%s"' % param)
+			H.append('')
+			H.append(value)
+		H.append('--' + boundary)
+		H.append('Content-Disposition: form-data; name="%s"; filename="%s"' 
+				% (element, file))
+		H.append('Content-Type: %s\n' % body_content_type)
+		H.append('')
+		file_headers = CRLF.join(H)
+
+		T.append('--'+boundary+'--')
+		T.append('')
+		T.append('')
+		file_trailer = CRLF.join(T)
+		
+		content_length = len(file_headers) + file_length + len(file_trailer)
+		fuploads.append((file_headers, filename, file_length, file_trailer))
+
 	h = httplib.HTTPConnection(host, port) # XXX: blocking
 	h.putrequest('POST', selector)
 	for pageheader in headers:
@@ -305,17 +312,12 @@ def fileUpload(host, port, selector, filename, form=(), headers={}):
 	h.putheader('Content-Length', content_length)
 	h.endheaders()
 
-	h.send(file_headers)
-	# XXX: do this while loop instead of the one massive send (just need to test it)
-	#while True:
-	#	data = os.read(fd, 8192)
-	#	if data = "":
-	#		break
-	#	h.send(data)
-	#h.send(CRLF)
-	h.send(os.read(fd, file_length)+CRLF) # XXX: blocking
-	h.send(file_trailer)
-	os.close(fd)
+	for fheader, filename, flen, ftrailer in fuploads:
+		fd = os.open(filename, os.O_RDONLY)
+		h.send(fheader)
+		h.send(os.read(fd, flen)+CRLF) # XXX: blocking
+		h.send(ftrailer)
+		os.close(fd)
 
 	return h
 

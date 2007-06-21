@@ -182,7 +182,7 @@ class SENDSTORE(REQUEST):
 		else:
 			f = filename
 		deferred = threads.deferToThread(fileUpload, host, port, 
-				'/STORE', f, params, headers=self.headers)
+				'/STORE', [(f, 'filename')], params, headers=self.headers)
 		deferred.addCallback(self._getSendStore, nKu, host, port, filename,
 				params, self.headers)
 		deferred.addErrback(self._errSendStore, 

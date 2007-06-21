@@ -19,6 +19,9 @@ if [ -n $3 ]; then
 fi
 
 export FLUDHOME="${HOME}/.flud${i}"
+if [ ! -d $FLUDHOME ]; then
+	mkdir $FLUDHOME;
+fi
 let listenport=8080+$i
 pidfile="$FLUDHOME/twistd.pid"
 logfile="$FLUDHOME/twistd.log"
@@ -36,6 +39,9 @@ let seqend=$1+$i-1
 
 for i in `seq $seqstart $seqend`; do
 	export FLUDHOME="${HOME}/.flud${i}"
+	if [ ! -d $FLUDHOME ]; then
+		mkdir $FLUDHOME;
+	fi
 	testport=$listenport
 	let listenport=8080+$i
 	pidfile="$FLUDHOME/twistd.pid"

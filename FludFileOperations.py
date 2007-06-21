@@ -284,9 +284,9 @@ class StoreFile:
 		return deferred
 
 	def _retryStoreBlock(self, error, hash, sfile, badtarget, retry=None): 
-		logger.warn("STORE to %s failed, trying again" % badtarget)
 		retry = retry - 1
 		if retry > 0:
+			logger.warn("STORE to %s failed, trying again" % badtarget)
 			d = self._storeBlock(hash, sfile, retry)
 			d.addCallback(self._fileStored, hash)
 			# This will fail the entire operation.  This is correct
@@ -296,6 +296,14 @@ class StoreFile:
 			# value in _storeBlock().
 			d.addErrback(self._storeFileErr, "couldn't store block %s" 
 					% fencode(hash))
+			return d
+		else:
+			logger.warn("STORE to %s failed, giving up" % badtarget)
+			d = defer.Deferred()
+			d.addErrback(self._storeFileErr, "couldn't store block %s"
+					% fencode(hash))
+			d.errback()
+			return d
 
 	def _fileStored(self, result, hash):
 		return fencode(hash)

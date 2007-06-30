@@ -256,10 +256,12 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	port - webserver listen port
 	selector - the request (relative URL)
 	files - list of files to upload.  list contains tuples, with the first
-		entry as filename and the second as form element name.  The filename's
+		entry as filename/file-like obj and the second as form element name.
+		If the first element is a file-like obj, the element will be used as
+		the filename.  If the first element is a filename, the filename's
 		basename will be used as the filename on the form.  Type will be
 		"application/octet-stream"
-	form (optional) - a list of pairs of name/value form elements 
+	form (optional) - a list of pairs of additional name/value form elements 
 	    (param/values).
 	[hopefully, this method goes away in twisted-web2]
 	"""
@@ -271,16 +273,24 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	CRLF = '\r\n'
 	body_content_type = "application/octet-stream"
 	content_type = "multipart/form-data; boundary="+boundary
+	content_length = 0
 
 	fuploads = []
 
-	for filename, element in files:
-		if filename == None:
-			filename = "/dev/null"   # XXX: not portable -- need another 
-			                         # way to send no file data.
-		file = os.path.basename(filename)
-		file_length = os.stat(filename)[stat.ST_SIZE]
-		#logger.info("upload file is %s, len=%d" % (filename, file_length))
+	for file, element in files:
+		if file == None:
+			file = "/dev/null"   # XXX: not portable 
+
+		if 'read' in dir(file):
+			fname = element
+			file.seek(0,2)
+			file_length = file.tell()
+			file.seek(0,0)
+		else:
+			fname = os.path.basename(file)
+			file_length = os.stat(file)[stat.ST_SIZE]
+
+		#logger.info("upload file %s len is %d" % (fname, file_length))
 
 		H = []  # stuff that goes above file data
 		T = []  # stuff that goes below file data
@@ -291,19 +301,20 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 			H.append(value)
 		H.append('--' + boundary)
 		H.append('Content-Disposition: form-data; name="%s"; filename="%s"' 
-				% (element, file))
+				% (element, fname))
 		H.append('Content-Type: %s\n' % body_content_type)
 		H.append('')
 		file_headers = CRLF.join(H)
 
-		T.append('--'+boundary+'--')
-		T.append('')
-		T.append('')
-		file_trailer = CRLF.join(T)
-		
-		content_length = len(file_headers) + file_length + len(file_trailer)
-		fuploads.append((file_headers, filename, file_length, file_trailer))
+		content_length = content_length + len(file_headers) + file_length
+		fuploads.append((file_headers, file, file_length))
 
+	T.append('--'+boundary+'--')
+	T.append('')
+	T.append('')
+	trailer = CRLF.join(T)
+	content_length = content_length + len(trailer)
+		
 	h = httplib.HTTPConnection(host, port) # XXX: blocking
 	h.putrequest('POST', selector)
 	for pageheader in headers:
@@ -312,12 +323,14 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	h.putheader('Content-Length', content_length)
 	h.endheaders()
 
-	for fheader, filename, flen, ftrailer in fuploads:
-		fd = os.open(filename, os.O_RDONLY)
+	for fheader, file, flen in fuploads:
+		if 'read' not in dir(file):
+			file = open(file, 'r')
 		h.send(fheader)
-		h.send(os.read(fd, flen)+CRLF) # XXX: blocking
-		h.send(ftrailer)
-		os.close(fd)
+		h.send(file.read(flen)+CRLF) # XXX: blocking
+		file.close()
+
+	h.send(trailer)
 
 	return h
 

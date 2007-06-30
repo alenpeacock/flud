@@ -277,7 +277,7 @@ class StoreFile:
 		logger.info("STOREing under %s on %s:%d" % (fencode(hash), host, port))
 		#self.blockMetadata[hash] = (long(nKu.id(),16), host, port)
 		self.blockMetadata[hash] = long(nKu.id(), 16)
-		deferred = self.node.client.sendStore(sfile, host, port, nKu) 
+		deferred = self.node.client.sendStore(sfile, None, host, port, nKu) 
 		deferred.addCallback(self._fileStored, hash)
 		deferred.addErrback(self._retryStoreBlock, hash, sfile,
 				"%s (%s:%d)" % (fencode(nID), host, port), retry)

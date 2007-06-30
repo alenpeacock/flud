@@ -140,8 +140,8 @@ class LocalProtocol(basic.LineReceiver):
 			print "%s: %s : %s , %s" % (command, host, port, fname)
 			if command == "STOR":
 				logger.debug("STOR");
-				return self.factory.node.client.sendStore(fname, host, 
-						int(port))
+				return self.factory.node.client.sendStore(fname, None, 
+						host, int(port))
 			elif command == "RTRV":
 				logger.debug("RTRV");
 				return self.factory.node.client.sendRetrieve(fname, host, 

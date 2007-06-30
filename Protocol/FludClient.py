@@ -43,7 +43,7 @@ class FludClient(object):
 
 	# XXX: we should cache nKu so that we don't do the GETID for all of these
 	# ops every single time
-	def sendStore(self, filename, host, port, nKu=None):
+	def sendStore(self, filename, metadata, host, port, nKu=None):
 		# XXX: need to keep a map of 'filename' to deferreds, in case we are
 		# asked to store the same chunk more than once concurrently (happens
 		# for 0-byte files or from identical copies of the same file, for
@@ -61,7 +61,8 @@ class FludClient(object):
 			return self.currentStorOps[key]
 
 		def sendStoreWithnKu(nKu, host, port, filename):
-			return SENDSTORE(nKu, self.node, host, port, filename).deferred
+			return SENDSTORE(nKu, self.node, host, port, filename, 
+					metadata).deferred
 
 		def removeKey(r, key):
 			self.currentStorOps.pop(key)
@@ -79,10 +80,12 @@ class FludClient(object):
 		fsize = os.stat(filename)[stat.ST_SIZE];
 		if fsize < MINSTORSIZE:
 			logger.debug("doing AggStore")
-			d = AggregateStore(nKu, self.node, host, port, filename).deferred
+			d = AggregateStore(nKu, self.node, host, port, filename, 
+					metadata).deferred
 		else:
 			logger.debug("SENDSTORE")
-			d = SENDSTORE(nKu, self.node, host, port, filename).deferred
+			d = SENDSTORE(nKu, self.node, host, port, filename, 
+					metadata).deferred
 		self.currentStorOps[key] = d
 		d.addBoth(removeKey, key)
 		return d

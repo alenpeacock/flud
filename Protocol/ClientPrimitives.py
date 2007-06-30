@@ -138,7 +138,9 @@ class SENDGETID(REQUEST):
 #      chosen by caller, and is simply the filename.
 class SENDSTORE(REQUEST):
 
-	def __init__(self, nKu, node, host, port, filename, fsize=0):
+	# XXX: make this take a [(),()] instead of datafile, metafile (so that
+	# aggregate can still use it
+	def __init__(self, nKu, node, host, port, datafile, metafile=None, fsize=0):
 		"""
 		Try to upload a file.
 		"""
@@ -147,72 +149,77 @@ class SENDSTORE(REQUEST):
 
 		loggerstor.info("sending STORE request to %s" % self.dest)
 		if not fsize:
-			fsize = os.stat(filename)[stat.ST_SIZE]
+			fsize = os.stat(datafile)[stat.ST_SIZE]
 		Ku = self.node.config.Ku.exportPublicKey()
 		params = (('nodeID', self.node.config.nodeID),
 				('Ku_e', str(Ku['e'])),
 				('Ku_n', str(Ku['n'])),
 				('port', str(self.node.config.port)),
-				('filekey', os.path.basename(filename)),
+				('filekey', os.path.basename(datafile)),
 				('size', str(fsize)))
 		self.timeoutcount = 0
 
 		self.deferred = defer.Deferred()
 		ConnectionQueue.enqueue((self, self.headers, nKu, host, port, 
-				filename, params, True))
+				datafile, metafile, params, True))
 		#self.deferred = self._sendRequest(self.headers, nKu, host, port,
-		#		filename, params, True)
+		#		datafile, params, True)
 
-	def startRequest(self, headers, nKu, host, port, filename, params, 
-			skipFile):
-		d = self._sendRequest(headers, nKu, host, port, filename, params, 
-		   	skipFile)
+	def startRequest(self, headers, nKu, host, port, datafile, metafile,
+			params, skipFile):
+		d = self._sendRequest(headers, nKu, host, port, datafile, metafile, 
+				params, skipFile)
 		d.addBoth(ConnectionQueue.checkWaiting)
 		d.addCallback(self.deferred.callback)
 		d.addErrback(self.deferred.errback)
 
-	def _sendRequest(self, headers, nKu, host, port, filename, params,
-			skipfile=False):
+	def _sendRequest(self, headers, nKu, host, port, datafile, metafile,
+			params, skipfile=False):
 		"""
 		skipfile - set to True if you want to send everything but file data
 		(used to send the unauthorized request before responding to challenge)
 		"""
 		if skipfile:
-			f = None
+			dataf = None
+			metaf = None
 		else:
-			f = filename
+			dataf = datafile
+			metaf = metafile
 		deferred = threads.deferToThread(fileUpload, host, port, 
-				'/STORE', [(f, 'filename')], params, headers=self.headers)
-		deferred.addCallback(self._getSendStore, nKu, host, port, filename,
-				params, self.headers)
+				'/STORE', [(dataf, 'filename'), (metaf, 'meta')], 
+				params, headers=self.headers)
+		deferred.addCallback(self._getSendStore, nKu, host, port, datafile,
+				metafile, params, self.headers)
 		deferred.addErrback(self._errSendStore, 
-				"Couldn't upload file %s to %s:%d" % (filename, host, port),
-				self.headers, nKu, host, port, filename, params)
+				"Couldn't upload file %s to %s:%d" % (datafile, host, port),
+				self.headers, nKu, host, port, datafile, metafile, params)
 		return deferred
 
-	def _getSendStore(self, httpconn, nKu, host, port, filename, params, 
-			headers):
+	def _getSendStore(self, httpconn, nKu, host, port, datafile, metafile,
+			params, headers):
 		"""
 		Check the response for status. 
 		"""
 		deferred2 = threads.deferToThread(httpconn.getresponse)
 		deferred2.addCallback(self._getSendStore2, httpconn, nKu, host, port, 
-				filename, params, headers)
+				datafile, metafile, params, headers)
 		deferred2.addErrback(self._errSendStore, "Couldn't get response", 
-				headers, nKu, host, port, filename, params, httpconn)
+				headers, nKu, host, port, datafile, metafile, params, httpconn)
 		return deferred2
 
-	def _getSendStore2(self, response, httpconn, nKu, host, port, filename,
-			params, headers):
+	def _getSendStore2(self, response, httpconn, nKu, host, port, datafile,
+			metafile, params, headers):
 		httpconn.close()
 		if response.status == http.UNAUTHORIZED:
 			loggerstor.info("SENDSTORE unauthorized, sending credentials")
 			challenge = response.reason
 			d = answerChallengeDeferred(challenge, self.node.config.Kr,
 					self.node.config.groupIDu, nKu.id(), headers)
-			d.addCallback(self._sendRequest, nKu, host, port, filename, params)
+			d.addCallback(self._sendRequest, nKu, host, port, datafile, 
+					metafile, params)
 			d.addErrback(self._errSendStore, "Couldn't answerChallenge", 
-					headers, nKu, host, port, filename, params, httpconn)
+					headers, nKu, host, port, datafile, metafile, params, 
+					httpconn)
 			return d
 		elif response.status == http.CONFLICT:
 			result = response.read()
@@ -232,14 +239,14 @@ class SENDSTORE(REQUEST):
 			return result
 
 	def _errSendStore(self, err, msg, headers, nKu, host, port,
-			filename, params, httpconn=None):
+			datafile, metafile, params, httpconn=None):
 		if err.check('socket.error'):
 			#print "SENDSTORE request error: %s" % err.__class__.__name__
 			self.timeoutcount += 1
 			if self.timeoutcount < MAXTIMEOUTS:
 				print "trying again [#%d]...." % self.timeoutcount
-				return self._sendRequest(headers, nKu, host, port, filename, 
-						params)
+				return self._sendRequest(headers, nKu, host, port, datafile, 
+						metafile, params)
 			else:
 				print "Maxtimeouts exceeded: %d" % self.timeoutcount
 		elif err.check(BadCASKeyException):
@@ -268,14 +275,14 @@ class AggregateStore:
 	# FludClient -- non-agg store has a similar problem (encoded file chunks
 	# get deleted out from under successive STOR ops for the same chunk, i.e.
 	# from two concurrent STORs of the same file contents)
-	def __init__(self, nKu, node, host, port, filename):
+	def __init__(self, nKu, node, host, port, datafile, metadata):
 		tarfilename = os.path.join(node.config.clientdir,nKu.id())\
 				+'-'+host+'-'+str(port)+".tar"
 		loggerstoragg.debug("tarfile name is %s" % tarfilename)
 		if not os.path.exists(tarfilename) \
 				or not aggDeferredMap.has_key(tarfilename):
 			loggerstoragg.debug("creating tarfile %s to append %s" 
-					% (tarfilename, filename))
+					% (tarfilename, datafile))
 			tar = tarfile.open(tarfilename, "w")
 			tarfileTimeout = reactor.callLater(TARFILE_TO, self.sendTar,  
 					tarfilename, nKu, node, host, port)
@@ -283,16 +290,16 @@ class AggregateStore:
 			aggTimeoutMap[tarfilename] = tarfileTimeout
 		else:
 			loggerstoragg.debug("opening tarfile %s to append %s"
-					% (tarfilename, filename))
+					% (tarfilename, datafile))
 			tar = tarfile.open(tarfilename, "a")
 			
-		tar.add(filename, os.path.basename(filename))
+		tar.add(datafile, os.path.basename(datafile))
 		tar.close()
 		# XXX: (re)set timeout for tarfilename
 		self.deferred = defer.Deferred()
 		loggerstoragg.debug("adding deferred on %s for %s" 
-				% (tarfilename, filename))
-		aggDeferredMap[tarfilename][os.path.basename(filename)] = self.deferred
+				% (tarfilename, datafile))
+		aggDeferredMap[tarfilename][os.path.basename(datafile)] = self.deferred
 		self.resetTimeout(aggTimeoutMap[tarfilename], tarfilename)
 
 	def resetTimeout(self, timoutFunc, tarball):

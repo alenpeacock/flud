@@ -172,7 +172,7 @@ def testSTORELargeFailed(failure, msg, node, nKu, host, port):
 
 def testSTOREBadKeyLarge(nKu, node, host, port):
 	print "starting testSTOREBadKeyLarge"
-	deferred = node.client.sendStore(largefilenamebad, host, port, nKu)
+	deferred = node.client.sendStore(largefilenamebad, None, host, port, nKu)
 	deferred.addCallback(testUnexpectedSuccess, "large file, bad key succeeded",
 			node)
 	deferred.addErrback(testSTORELargeFailed, 
@@ -190,7 +190,7 @@ def testSTORESmallFailed(failure, msg, node, nKu, host, port):
 
 def testSTOREBadKeySmall(nKu, node, host, port):
 	print "starting testSTOREBadKeySmall"
-	deferred = node.client.sendStore(smallfilenamebad, host, port, nKu)
+	deferred = node.client.sendStore(smallfilenamebad, None, host, port, nKu)
 	deferred.addCallback(testUnexpectedSuccess, "small file, bad key succeeded",
 			node)
 	deferred.addErrback(testSTORESmallFailed, 
@@ -205,7 +205,7 @@ def testSTORESuccess(res, nKu, node, host, port):
 def testSTORE(nKu, node, host, port):
 	# store a file successfully for later failure tests (VERIFY, etc)
 	print "starting testSTORE"
-	deferred = node.client.sendStore(smallfilename, host, port, nKu)
+	deferred = node.client.sendStore(smallfilename, None, host, port, nKu)
 	deferred.addCallback(testSTORESuccess, nKu, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred

@@ -7,6 +7,7 @@ from Protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
 from fencode import fencode
+from StringIO import StringIO
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -87,7 +88,7 @@ def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
 	print "starting testSTORE %s" % fname
-	deferred = node.client.sendStore(fname, host, port, nKu)
+	deferred = node.client.sendStore(fname, StringIO("x"), host, port, nKu)
 	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred
@@ -105,7 +106,7 @@ def testAggSTORE(nKu, aggFiles, node, host, port):
 	dlist = []
 	for i in aggFiles:
 		print "testAggSTORE %s" % i[0]
-		deferred = node.client.sendStore(i[0], host, port, nKu)
+		deferred = node.client.sendStore(i[0], StringIO("x"), host, port, nKu)
 		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
 		deferred.addErrback(testerror, "failed at testAggSTORE", node)
 		dlist.append(deferred)

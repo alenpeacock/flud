@@ -71,7 +71,7 @@ def runCLI(client, node):
 	import sys
 	done = False
 	time.sleep(1)
-	host = port = nKu = nid = val = file = ''
+	host = port = nKu = nid = val = file = mdata = ''
 	while not done:
 		command = raw_input("flud command> ")
 		ohost = host
@@ -80,6 +80,7 @@ def runCLI(client, node):
 		onid = nid
 		oval = val
 		ofile = file
+		omdata = mdata
 		try:
 			if command == 'getid':
 				host = raw_input("host> ")
@@ -116,12 +117,13 @@ def runCLI(client, node):
 				port = raw_input("port> ")
 				nKu = raw_input("nKu> ")
 				file = raw_input("filename> ")
+				mdata = raw_input("metadata> ")
 				(host, port, nKu, file) = _default_oldvals(
-						(host, port, nKu, file),
-						(ohost, oport, onKu, ofile))
+						(host, port, nKu, file, mdata),
+						(ohost, oport, onKu, ofile, omdata))
 				nKu_i = FludRSA.importPublicKey(eval(nKu))
 				command = 'sendStore(nKu_i, "%s", %s, "%s")' % (host, port, 
-						file)
+						file, mdata)
 				exec('d = client.%s' % command)
 				exec('d.addCallback(r_store)')
 				exec('d.addErrback(errhdlr, command)')

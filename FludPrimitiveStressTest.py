@@ -137,7 +137,7 @@ def testSTORE(nKu, host, port, num=CONCURRENT):
 	for i in range(num):
 		#if i == 4:
 		#	port = 21
-		deferred = node.client.sendStore(files[i], host, port, nKu)
+		deferred = node.client.sendStore(files[i], None, host, port, nKu)
 		#deferred.addCallback(itersuccess, "succeeded at testSTORE %d" % i)
 		deferred.addErrback(itererror, "failed at testSTORE %d" % i)
 		dlist.append(deferred)

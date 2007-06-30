@@ -180,14 +180,13 @@ class SENDSTORE(REQUEST):
 		(used to send the unauthorized request before responding to challenge)
 		"""
 		if skipfile:
-			dataf = None
-			metaf = None
+			files = [(None, 'filename')]
+		elif metafile:
+			files = [(datafile, 'filename'), (metafile, 'meta')]
 		else:
-			dataf = datafile
-			metaf = metafile
+			files = [(datafile, 'filename')]
 		deferred = threads.deferToThread(fileUpload, host, port, 
-				'/STORE', [(dataf, 'filename'), (metaf, 'meta')], 
-				params, headers=self.headers)
+				'/STORE', files, params, headers=self.headers)
 		deferred.addCallback(self._getSendStore, nKu, host, port, datafile,
 				metafile, params, self.headers)
 		deferred.addErrback(self._errSendStore, 

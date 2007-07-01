@@ -37,6 +37,10 @@ def fencode(d, lenField=False):
 	True
 	>>> fdecode(fencode(I)) == I
 	True
+	>>> fdecode(fencode(-i)) == -i
+	True
+	>>> fdecode(fencode(-I)) == -I
+	True
 	>>> fdecode(fencode(s)) == s
 	True
 	>>> fdecode(fencode(d)) == d
@@ -83,15 +87,20 @@ def fencode(d, lenField=False):
 	
 	if isinstance(d, int) or isinstance(d, long):
 		val = "%x" % d
+		neg = False
+		c = 'i'
+		if isinstance(d, long):
+			c = 'o'
+		if d < 0:
+			neg = True
+			val = val[1:]
+			c = c.upper()
 		if len(val) % 2 != 0:
 			val = "0%s" % val
 		val = val.decode('hex')
 		if len(val) % 2 != 0:
 			val = '\x00' + val
 		val = base64.urlsafe_b64encode(val) 
-		c = 'i'
-		if isinstance(d, long):
-			c = 'o'
 		if lenField:
 			if len(val) > 65535:
 				raise ValueError("value to large for encode")
@@ -187,10 +196,18 @@ def fdecode(d, lenField=False):
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return int(val, 16)
+	elif type == 'I':
+		val = base64.urlsafe_b64decode(val)
+		val = val.encode('hex')
+		return -int(val, 16)
 	elif type == 'o':
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return long(val, 16)
+	elif type == 'O':
+		val = base64.urlsafe_b64decode(val)
+		val = val.encode('hex')
+		return -long(val, 16)
 	elif type == 's':
 		return base64.urlsafe_b64decode(val)
 	elif type == 'd':

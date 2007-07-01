@@ -23,10 +23,11 @@ def open(fname, mode='rb+'):
 	""" Return a BlockFile object. """
 	return BlockFile(fname, mode)
 
-def convert(fname, nodeID=None):
+def convert(fname, nodeIDandMeta=None):
 	"""
-	Convert a non-BlockFile to a BlockFile, with an optional nodeID to add.
-	The file represented by fname will be a BlockFile upon successful return.
+	Convert a non-BlockFile to a BlockFile, with an optional nodeID/metadata
+	pair to add.  The file represented by fname will be a BlockFile upon
+	successful return.
 	"""
 	tname = tempfile.mktemp()
 	f1 = __builtin__.open(fname, 'rb')
@@ -38,10 +39,15 @@ def convert(fname, nodeID=None):
 		if buf == "":
 			break
 		f2.write(buf)
-	if nodeID == None:
-		l = []
+	if nodeIDandMeta == None:
+		l = {} 
 	else:
-		l = [nodeID]
+		if len(nodeIDandMeta) != 2:
+			raise IOError("invalid nodeID/metadata pair")
+		nodeID = nodeIDandMeta[0]
+		meta = nodeIDandMeta[1]
+		l = {} 
+		l[nodeID] = [meta]
 	f2.write(fencode(l))
 	f2.close()
 	f1.close()
@@ -55,16 +61,28 @@ class BlockFile:
 	>>> f1 = __builtin__.open(fname,'wb')
 	>>> f1.write(fdata)
 	>>> f1.close()
-	>>> convert(fname, 1234567890)
+	>>> convert(fname, (1234567890, 'x'))
 	>>> f = open(fname)
 	>>> f.hasNode(1234567890)
 	True
+	>>> f.meta(1234567890) == ['x']
+	True
 	>>> f.addNode(7)
+	>>> f.addNode(8, 'y')
+	>>> f.addNode(8, 'z')
 	>>> f.close()
 	>>> f = open(fname)
 	>>> f.hasNode(7)
 	True
+	>>> f.meta(7)
+	[None]
+	>>> f.hasNode(8)
+	True
+	>>> f.meta(8) == ['y', 'z']
+	True
 	>>> f.hasNode(34)
+	False
+	>>> f.meta(34)
 	False
 	>>> f.hasNode(1234567890)
 	True
@@ -154,20 +172,28 @@ class BlockFile:
 				self._file.seek(saved)
 			self._file.close()
 
-	def addNode(self, nodeID):
+	def addNode(self, nodeID, meta=None):
 		if self.mode[0] == 'r' and self.mode.find('+') < 0:
 			raise IOError("cannot add a node to a read-only BlockFile")
-		if not nodeID in self._accounting:
-			self._accounting.append(nodeID)
+		if not nodeID in self._accounting or self._accounting[nodeID] == [None]:
+			self._accounting[nodeID] = [meta]
+		else:
+			self._accounting[nodeID].append(meta)
 	
 	def hasNode(self, nodeID):
 		return nodeID in self._accounting
+
+	def meta(self, nodeID):
+		if nodeID not in self._accounting:
+			return False
+		else:
+			return self._accounting[nodeID]
 
 	def delNode(self, nodeID):
 		if self.mode[0] == 'r' and self.mode.find('+') < 0:
 			raise IOError("cannot delete a node from a read-only BlockFile")
 		if nodeID in self._accounting:
-			self._accounting.remove(nodeID)
+			self._accounting.pop(nodeID)
 
 	def getNodes(self):
 		return self._accounting

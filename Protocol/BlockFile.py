@@ -46,8 +46,10 @@ def convert(fname, nodeIDandMeta=None):
 			raise IOError("invalid nodeID/metadata pair")
 		nodeID = nodeIDandMeta[0]
 		meta = nodeIDandMeta[1]
+		if not isinstance(meta,dict):
+			raise IOError("invalid metadata (should be a dict)")
 		l = {} 
-		l[nodeID] = [meta]
+		l[nodeID] = meta
 	f2.write(fencode(l))
 	f2.close()
 	f1.close()
@@ -61,25 +63,33 @@ class BlockFile:
 	>>> f1 = __builtin__.open(fname,'wb')
 	>>> f1.write(fdata)
 	>>> f1.close()
-	>>> convert(fname, (1234567890, 'x'))
+	>>> convert(fname, (1234567890, {1: 'x'}))
 	>>> f = open(fname)
 	>>> f.hasNode(1234567890)
 	True
-	>>> f.meta(1234567890) == ['x']
-	True
+	>>> f.meta(1234567890) 
+	{1: 'x'}
 	>>> f.addNode(7)
-	>>> f.addNode(8, 'y')
-	>>> f.addNode(8, 'z')
+	>>> f.addNode(8, {10: 12})
+	>>> f.addNode(9, {'ff': 'y'})
+	>>> f.addNode(9, {'gg': 'z'})
 	>>> f.close()
 	>>> f = open(fname)
 	>>> f.hasNode(7)
 	True
+	>>> f.meta(7) == None
+	True
+	>>> f.addNode(7, {1: 2})
 	>>> f.meta(7)
-	[None]
+	{1: 2}
 	>>> f.hasNode(8)
 	True
-	>>> f.meta(8) == ['y', 'z']
+	>>> f.meta(8)
+	{10: 12}
+	>>> f.hasNode(9)
 	True
+	>>> f.meta(9)
+	{'gg': 'z', 'ff': 'y'}
 	>>> f.hasNode(34)
 	False
 	>>> f.meta(34)
@@ -160,7 +170,6 @@ class BlockFile:
 			self._file.seek(0)
 			self._file.write(struct.pack("=Q",self._size))
 			self._file.seek(self._dataend)
-			
 
 	def close(self):
 		if not self._file.closed: # XXX
@@ -175,10 +184,16 @@ class BlockFile:
 	def addNode(self, nodeID, meta=None):
 		if self.mode[0] == 'r' and self.mode.find('+') < 0:
 			raise IOError("cannot add a node to a read-only BlockFile")
-		if not nodeID in self._accounting or self._accounting[nodeID] == [None]:
-			self._accounting[nodeID] = [meta]
+		if meta is None:
+			self._accounting[nodeID] = meta
+			return
+		if not isinstance(meta, dict):
+			raise IOError("invalid metadata (should be a dict)")
+		if not nodeID in self._accounting or self._accounting[nodeID] == None:
+			self._accounting[nodeID] = meta
 		else:
-			self._accounting[nodeID].append(meta)
+			for key in meta:
+				self._accounting[nodeID][key] = meta[key]
 	
 	def hasNode(self, nodeID):
 		return nodeID in self._accounting
@@ -187,6 +202,7 @@ class BlockFile:
 		if nodeID not in self._accounting:
 			return False
 		else:
+			#return self._accounting
 			return self._accounting[nodeID]
 
 	def delNode(self, nodeID):

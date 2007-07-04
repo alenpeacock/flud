@@ -243,7 +243,8 @@ def fdecode(d, lenField=False):
 		return None
 	else:
 		raise ValueError("invalid value passed to fdecode"
-				" -- cannot fdecode data that wasn't previously fencoded")
+				" -- cannot fdecode data that wasn't previously fencoded: '%s'"
+				% d[:400])
 
 if __name__ == '__main__':
 	import doctest

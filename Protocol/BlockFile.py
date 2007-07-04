@@ -28,6 +28,11 @@ def convert(fname, nodeIDandMeta=None):
 	Convert a non-BlockFile to a BlockFile, with an optional nodeID/metadata
 	pair to add.  The file represented by fname will be a BlockFile upon
 	successful return.
+	nodeIdAndMeta should be a tuple.  The first element is the nodeID, the
+	second the metadata.  Metadata should be a dict (client can send arbitrary
+	dict, but the purpose is to have a key/value pair where the key is the
+	crc32 checksum of the full metadata, and the value is the chunk of metadata
+	being stored with this BlockFile)
 	"""
 	tname = tempfile.mktemp()
 	f1 = __builtin__.open(fname, 'rb')
@@ -46,7 +51,7 @@ def convert(fname, nodeIDandMeta=None):
 			raise IOError("invalid nodeID/metadata pair")
 		nodeID = nodeIDandMeta[0]
 		meta = nodeIDandMeta[1]
-		if not isinstance(meta,dict):
+		if not isinstance(meta, dict):
 			raise IOError("invalid metadata (should be a dict)")
 		l = {} 
 		l[nodeID] = meta

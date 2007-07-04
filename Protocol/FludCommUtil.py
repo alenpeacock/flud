@@ -275,8 +275,16 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	content_type = "multipart/form-data; boundary="+boundary
 	content_length = 0
 
-	fuploads = []
+	H = []
+	for (param, value) in form:
+		H.append('--' + boundary)
+		H.append('Content-Disposition: form-data; name="%s"' % param)
+		H.append('')
+		H.append('%s' % value)
+	form_data = CRLF.join(H)+CRLF
+	content_length = content_length + len(form_data)
 
+	fuploads = []
 	for file, element in files:
 		if file == None:
 			file = "/dev/null"   # XXX: not portable 
@@ -294,11 +302,6 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 
 		H = []  # stuff that goes above file data
 		T = []  # stuff that goes below file data
-		for (param, value) in form:
-			H.append('--' + boundary)
-			H.append('Content-Disposition: form-data; name="%s"' % param)
-			H.append('')
-			H.append(value)
 		H.append('--' + boundary)
 		H.append('Content-Disposition: form-data; name="%s"; filename="%s"' 
 				% (element, fname))
@@ -322,6 +325,8 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	h.putheader('Content-Type', content_type)
 	h.putheader('Content-Length', content_length)
 	h.endheaders()
+
+	h.send(form_data)
 
 	for fheader, file, flen in fuploads:
 		if 'read' not in dir(file):

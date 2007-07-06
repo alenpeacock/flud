@@ -118,7 +118,7 @@ def concatenate(tarfile1, tarfile2):
 	os.remove(tarfile2)
 	#print "concatenated %s to %s" % (tarfile2, tarfile1)
 
-def verifyHashes(tarball):
+def verifyHashes(tarball, ignoreExt=None):
 	# return all the names of files in this tarball if hash checksum passes,
 	# otherwise return False
 	digests = []
@@ -132,21 +132,27 @@ def verifyHashes(tarball):
 		elif bytes == empty:
 			pass
 		else:
+			if bytes[0] == '\0' and bytes[124] == '\0':
+				print "WARNING: read nulls when expecting file header"
+				break
 			name = bytes[0:99]
 			name = name[:name.find(chr(0))]
 			size = int(bytes[124:135], 8)
 			blocks = size / tarfile.BLOCKSIZE
+			if ignoreExt and name[-len(ignoreExt):] == ignoreExt:
+				f.seek(size, 1)
+			else:
+				digest = hashstream(f, size)
+				digest = fencode(int(digest,16))
+				if name == digest:
+					#print "%s == %s" % (name, digest)
+					digests.append(name)
+				else:
+					#print "%s != %s" % (name, digest)
+					f.close()
+					return []
 			if (size % tarfile.BLOCKSIZE) > 0:
 				blocks += 1
-			digest = hashstream(f, size)
-			digest = fencode(int(digest,16))
-			if name == digest:
-				#print "%s == %s" % (name, digest)
-				digests.append(name)
-			else:
-				#print "%s != %s" % (name, digest)
-				f.close()
-				return []
 			f.seek((blocks * tarfile.BLOCKSIZE) - size + f.tell())
 	f.close()
 	return digests

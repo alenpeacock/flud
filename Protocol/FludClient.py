@@ -60,7 +60,7 @@ class FludClient(object):
 					% filename)
 			return self.currentStorOps[key]
 
-		def sendStoreWithnKu(nKu, host, port, filename):
+		def sendStoreWithnKu(nKu, host, port, filename, metadata):
 			return SENDSTORE(nKu, self.node, host, port, filename, 
 					metadata).deferred
 
@@ -72,14 +72,20 @@ class FludClient(object):
 			# XXX: doesn't do AggregateStore if file is small.  Can fix by
 			#      moving this AggStore v. SENDSTORE choice into SENDSTORE 
 			#      proper
+			logger.warn("not doing AggregateStore on small file because"
+					" of missing nKu")
+			print "not doing AggregateStore on small file because" \
+					" of missing nKu"
 			d = self.sendGetID(host, port)
-			d.addCallback(sendStoreWithnKu, host, port, filename)
+			d.addCallback(sendStoreWithnKu, host, port, filename, metadata)
 			self.currentStorOps[key] = d
 			return d
 
 		fsize = os.stat(filename)[stat.ST_SIZE];
 		if fsize < MINSTORSIZE:
 			logger.debug("doing AggStore")
+			if metadata:
+				logger.debug("with metadata")
 			d = AggregateStore(nKu, self.node, host, port, filename, 
 					metadata).deferred
 		else:

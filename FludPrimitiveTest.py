@@ -30,7 +30,7 @@ def allGood(_, nKu):
 def checkDELETE(res, nKu, fname, fkey, node, host, port):
 	""" checks to ensure the file was deleted """
 	# XXX: check to see that its gone
-	allGood(res, nKu)
+	return allGood(res, nKu)
 
 def testDELETE(res, nKu, fname, fkey, node, host, port):
 	""" Tests sendDelete, and invokes checkDELETE on success """
@@ -39,6 +39,7 @@ def testDELETE(res, nKu, fname, fkey, node, host, port):
 	deferred.addCallback(checkDELETE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testDELETE", node)
 	return deferred
+	#return checkDELETE(None, nKu, fname, fkey, node, host, port)
 
 def checkVERIFY(res, nKu, fname, fkey, node, host, port, hash):
 	""" executes after testVERIFY """
@@ -88,25 +89,26 @@ def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
 	print "starting testSTORE %s" % fname
-	deferred = node.client.sendStore(fname, StringIO("x"), host, port, nKu)
+	deferred = node.client.sendStore(fname, (341252, StringIO("11212121aaaa")), 
+			host, port, nKu)
 	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred
 
-def testID(fname, fkey, node, host, port):
+def testID(node, host, port):
 	""" Tests sendGetID(), and invokes testSTORE on success """
 	print "starting testID"
 	deferred = node.client.sendGetID(host, port)
-	deferred.addCallback(testSTORE, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testID", node)
 	return deferred
 
 def testAggSTORE(nKu, aggFiles, node, host, port):
-	print "starting testAggSTORE"
+	print "starting testAggSTORE, nKu=%s" % nKu
 	dlist = []
 	for i in aggFiles:
 		print "testAggSTORE %s" % i[0]
-		deferred = node.client.sendStore(i[0], StringIO("x"), host, port, nKu)
+		deferred = node.client.sendStore(i[0], (34, StringIO("12")), 
+				host, port, nKu)
 		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
 		deferred.addErrback(testerror, "failed at testAggSTORE", node)
 		dlist.append(deferred)
@@ -148,7 +150,8 @@ def runTests(host, port=None, listenport=None):
 	if port == None:
 		port = node.config.port
 	node.run()
-	d = testID(largeFilename, largeFilekey, node, host, port)
+	d = testID(node, host, port)
+	d.addCallback(testSTORE, largeFilename, largeFilekey, node, host, port)
 	d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
 	d.addCallback(testAggSTORE, aggFiles, node, host, port)
 	d.addBoth(cleanup, node, [largeFilename, smallFilename])

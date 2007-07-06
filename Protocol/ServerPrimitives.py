@@ -263,10 +263,10 @@ class STORE(ROOT):
 
 		# get the data to a tmp file
 		loggerstor.debug("writing store data to tmpfile")
-		data = request.args.get('filename')[0]  # XXX: file in mem! need web2.
 		tmpfile = tempfile.mktemp(dir=self.config.storedir)
+		data = request.args.get('filename')[0]  # XXX: file in mem! need web2.
 		# XXX: bad blocking stuff here
-		f = open(tmpfile,"wb")
+		f = open(tmpfile, 'wb')
 		f.write(data)
 		f.close()
 
@@ -274,8 +274,10 @@ class STORE(ROOT):
 		tarname = os.path.join(self.config.storedir, reqKu.id() + ".tar")
 		if filekey[-4:] == ".tar":
 			# client sent a tarball
+			# XXX: need to check for metadata
+			print "XXX: need to check for metadata"
 			loggerstor.debug("about to chksum %s" % tmpfile)
-			digests = TarfileUtils.verifyHashes(tmpfile)
+			digests = TarfileUtils.verifyHashes(tmpfile, '.meta')
 			loggerstor.debug("chksum returned %s" % digests)
 			if not digests:
 				msg = "Attempted to use non-CAS storage key(s) for" \
@@ -292,6 +294,13 @@ class STORE(ROOT):
 				os.rename(tmpfile, tarname)
 		else:
 			h = FludCrypto.hashfile(tmpfile)
+			if request.args.has_key('meta') and request.args.has_key('metakey'):
+				metakey = request.args.get('metakey')[0]
+				meta = request.args.get('meta')[0]  # XXX: file in mem! 
+				print "metakey is %s" % metakey
+			else:
+				metakey = None
+				meta = None
 			if fencode(long(h, 16)) != filekey:
 				msg = "Attempted to use non-CAS storage key for STORE data "
 				msg += "(%s != %s)" % (filekey, fencode(long(h, 16)))
@@ -302,10 +311,12 @@ class STORE(ROOT):
 			if os.path.exists(fname):
 				f = BlockFile.open(fname,'rb+')
 				if not f.hasNode(nodeID):
-					f.addNode(nodeID)
+					f.addNode(int(nodeID,16), {metakey: meta})
 					f.close()
 			else:
 				if os.path.exists(nodeID+".tar"):
+					# XXX: need to do something with metadata!
+					print "XXX: need to do something with metadata for tar!"
 					tarball = tarfile.open(tarname, 'r')
 					if fname in tarball.getnames():
 						# if the file is already in the corresponding tarball,
@@ -314,6 +325,8 @@ class STORE(ROOT):
 						# XXX: update timestamp for filekey in tarball
 						return "Successful STORE"
 				if len(data) < 8192 and fname != tarname: #XXX: magic # (blk sz)
+					# XXX: need to do somethin with metadata!
+					print "XXX: need to do something with metadata for small!"
 					# If the file is small, move it into the appropriate
 					# tarball.  Note that this code is unlikely to ever be
 					# executed if the client is an official flud client, as
@@ -336,7 +349,7 @@ class STORE(ROOT):
 				else:
 					# store the file 
 					os.rename(tmpfile, fname)
-					BlockFile.convert(fname, nodeID)
+					BlockFile.convert(fname, (int(nodeID,16), {metakey: meta}))
 
 		loggerstor.debug("successful STORE for %s" % filekey)
 		return "Successful STORE"
@@ -714,19 +727,21 @@ class PROXY(ROOT):
 	
 def authenticate(request, reqKu, reqID, host, port, client, config, callable, 
 		*callargs):
-	#   1- make sure that reqKu hashes to reqID
-	#   2- send a challenge/groupchallenge to reqID (encrypt with reqKu)
+	# 1- make sure that reqKu hashes to reqID
+	# 2- send a challenge/groupchallenge to reqID (encrypt with reqKu)
 	challengeResponse = request.getUser()
 	groupResponse = request.getPassword()
 	if reqKu.id() != reqID:
-		msg = "Ku does not hash to nodeID, failing request"
+		msg = "Ku %s does not hash to nodeID %s, failing request" \
+				% (reqKu.id(), reqID)
 		loggerauth.info(msg)
 		# XXX: update trust, routing
 		request.setResponseCode(http.UNAUTHORIZED, "Unauthorized: %s" % msg)
 		return msg
 
 	if not challengeResponse or not groupResponse:
-		loggerauth.info("returning challenge for request from %s:%d" % (host, port))
+		loggerauth.info("returning challenge for request from %s:%d" \
+				% (host, port))
 		return sendChallenge(request, reqKu, config.nodeID)
 	else:
 		if getChallenge(challengeResponse):
@@ -739,7 +754,8 @@ def authenticate(request, reqKu, reqID, host, port, client, config, callable,
 			else:
 				err = "Group Challenge Failed"
 				loggerauth.info(err)
-				loggerauth.debug("Group Challenge received was %s" % groupResponse)
+				loggerauth.debug("Group Challenge received was %s" \
+						% groupResponse)
 				# XXX: update trust, routing
 				request.setResponseCode(http.FORBIDDEN, err);
 				return err
@@ -763,8 +779,9 @@ def sendChallenge(request, reqKu, id):
 	echallenge = reqKu.encrypt(binascii.unhexlify(id)+challenge)[0]
 	echallenge = fencode(echallenge)
 	loggerauth.debug("echallenge = %s" % echallenge)
-	# since challenges will result in a new req/resp pair being generated, these
-	# could take much longer than the primitive_to.  Expire in 15*primitive_to
+	# since challenges will result in a new req/resp pair being generated,
+	# these could take much longer than the primitive_to.  Expire in
+	# 15*primitive_to
 	reactor.callLater(primitive_to*15, expireChallenge, challenge, True)
 	resp = 'challenge = %s' % echallenge
 	loggerauth.debug("resp = %s" % resp)

@@ -92,6 +92,30 @@ def fencode(d, lenField=False):
 	True
 	>>> fdecode(fdecode(fencode({i: f}))[i]) == s
 	True
+	>>> fdecode(fdecode(fencode({i: f, I: f}))[i]) == s
+	True
+	>>> fdecode(fencode(f), recurse=True) == s
+	True
+	>>> fdecode(fencode(f), recurse=2) == s
+	True
+	>>> f2 = Fencoded(fencode(f))
+	>>> f3 = Fencoded(fencode(f2))
+	>>> fdecode(fencode(f3), recurse=True) == s
+	True
+	>>> fdecode(fencode(f3), recurse=3) == f
+	True
+	>>> fdecode(fencode({i: f3, I: f2})) == {i: f3, I: f2}
+	True
+	>>> fdecode(fencode({i: f3, I: f2}), recurse=1) == {i: f3, I: f2}
+	True
+	>>> fdecode(fencode({i: f3, I: f2}), recurse=2) == {i: f2, I: f}
+	True
+	>>> fdecode(fencode({i: f3, I: f2}), recurse=3) == {i: f, I: s}
+	True
+	>>> fdecode(fencode({i: f3, I: f2}), recurse=4) == {i: s, I: s}
+	True
+	>>> fdecode(fencode({i: f3, I: f2}), recurse=True) == {i: s, I: s}
+	True
 	"""
 
 	def makeLen(i):
@@ -187,16 +211,21 @@ def fencode(d, lenField=False):
 	else:
 		raise ValueError("invalid value passed to fencode: %s" % type(d))
 	
-def fdecode(d, lenField=False):
+def fdecode(d, lenField=False, recurse=1):
 	"""
 	Takes previously fencoded data and decodes it into its python type(s). 
+	'lenField' is used internally, and indicates that the fencoded data has
+	length fields (used for compositiong of tuples, lists, dicts, etc).
+	'recurse' indicates that fdecode should recursively fdecode Fencoded
+	objects if set to True, or that it should recurse to a depth of 'recurse'
+	when encountering Fencoded objects if it is an integer value.
 	"""
 
 	def getLen(s):
 		if len(s) != 3 or not isinstance(s, str):
 			raise ValueError("fdecode length strings must be 3 bytes long: '%s'"
 					% s)
-		return fdecode('i'+s+'=')
+		return fdecode('i'+s+'=', recurse=recurse)
 
 	def scanval(valstring, lenField=False):
 		"""
@@ -213,13 +242,14 @@ def fdecode(d, lenField=False):
 			start = 1
 			end = len(valstring)-1
 		#print " scanval calling fdecode on val[%d:%d]=%s" % (0, end, valstring)
-		return (fdecode(valstring[0:end], True), end)
+		return (fdecode(valstring[0:end], True, recurse=recurse), end)
 
 	if isinstance(d, Fencoded):
-		return fdecode(d.data)
+		return fdecode(d.data, recurse=recurse)
 
 	if not isinstance(d, str):
-		raise ValueError("decode takes string data or Fencoded object only, got %s" % type(d))
+		raise ValueError("decode takes string data or Fencoded object only,"
+				" got %s" % type(d))
 	valtype = d[0]
 	if lenField:
 		length = getLen(d[1:4])
@@ -274,6 +304,10 @@ def fdecode(d, lenField=False):
 			val = val[l:]
 		return tuple(result)
 	elif valtype == 'f':
+		if not isinstance(recurse, bool):
+			recurse = recurse-1
+		if recurse > 0:
+			return fdecode(val, recurse=recurse)
 		return Fencoded(val)
 	elif valtype == 'n':
 		return None

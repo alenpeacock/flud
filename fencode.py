@@ -7,6 +7,20 @@ terms of the GNU General Public License (the GPL), version 2.
 Provides efficient urlsafe base64 encoding of python types (int, long, string, None, dict, tuple, list) -- in the same vein as BitTorrent's bencode or MNet's mencode.
 """
 
+class Fencoded:
+	# provides a typed wrapper for previously fencoded data, so that we can
+	# nest fencoded data inside other fencoded structures without bloating it
+	# (note that this could also be used to store strings without b64 bloating,
+	# but that forgoes url safety).  See doctests in fencode() for usage
+	# examples.
+	def __init__(self, data):
+		self.data = data
+
+	def __eq__(self, i):
+		if not isinstance(i, Fencoded):
+			return False
+		return self.data == i.data
+
 def fencode(d, lenField=False):
 	"""
 	Takes string data or a number and encodes it to an efficient URL-friendly
@@ -69,6 +83,15 @@ def fencode(d, lenField=False):
 	True
 	>>> fdecode(fencode(l5)) == l5
 	True
+	>>> f = Fencoded(fencode(s))
+	>>> fdecode(fencode(f)) == f
+	True
+	>>> fdecode(fdecode(fencode(f))) == s
+	True
+	>>> fdecode(fencode({i: f})) == {i: f}
+	True
+	>>> fdecode(fdecode(fencode({i: f}))[i]) == s
+	True
 	"""
 
 	def makeLen(i):
@@ -119,7 +142,7 @@ def fencode(d, lenField=False):
 		else:
 			return 's'+val
 	elif isinstance(d, dict):
-		result = "d"
+		result = 'd'
 		contents = ""
 		for i in d:
 			contents = contents + fencode(i,True) + fencode(d[i],True)
@@ -129,8 +152,8 @@ def fencode(d, lenField=False):
 			result = result+contents
 		return result
 	elif isinstance(d, list):
-		result = "l"
-		contents = ""
+		result = 'l'
+		contents = '' 
 		for i in d:
 			contents = contents + fencode(i,True)
 		if lenField:
@@ -139,12 +162,20 @@ def fencode(d, lenField=False):
 			result = result+contents
 		return result
 	elif isinstance(d, tuple):
-		result = "t"
-		contents = ""
+		result = 't'
+		contents = ''
 		for i in d:
 			contents = contents + fencode(i,True)
 		if lenField:
 			result = result+makeLen(len(contents))+contents
+		else:
+			result = result+contents
+		return result
+	elif isinstance(d, Fencoded):
+		result = 'f'
+		contents = d.data
+		if lenField:
+			result = result+makeLen(len(d.data))+contents
 		else:
 			result = result+contents
 		return result
@@ -174,7 +205,7 @@ def fdecode(d, lenField=False):
 		only the length of the first is returned.  Otherwise, the entire length
 		is returned.
 		"""
-		type = valstring[0]
+		valtype = valstring[0]
 		if lenField:
 			start = 4
 			end = start+getLen(valstring[1:4])
@@ -184,33 +215,36 @@ def fdecode(d, lenField=False):
 		#print " scanval calling fdecode on val[%d:%d]=%s" % (0, end, valstring)
 		return (fdecode(valstring[0:end], True), end)
 
+	if isinstance(d, Fencoded):
+		return fdecode(d.data)
+
 	if not isinstance(d, str):
-		raise ValueError("decode takes string data only")
-	type = d[0]
+		raise ValueError("decode takes string data or Fencoded object only, got %s" % type(d))
+	valtype = d[0]
 	if lenField:
 		length = getLen(d[1:4])
 		val = d[4:]
 	else:
 		val = d[1:len(d)]
-	if type == 'i':
+	if valtype == 'i':
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return int(val, 16)
-	elif type == 'I':
+	elif valtype == 'I':
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return -int(val, 16)
-	elif type == 'o':
+	elif valtype == 'o':
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return long(val, 16)
-	elif type == 'O':
+	elif valtype == 'O':
 		val = base64.urlsafe_b64decode(val)
 		val = val.encode('hex')
 		return -long(val, 16)
-	elif type == 's':
+	elif valtype == 's':
 		return base64.urlsafe_b64decode(val)
-	elif type == 'd':
+	elif valtype == 'd':
 		result = {}
 		while len(val) != 0:
 			#print "string is: %s (len=%d)" % (val, len(val))
@@ -221,7 +255,7 @@ def fdecode(d, lenField=False):
 			result[key] = value
 			val = val[l1+l2:]
 		return result
-	elif type == 'l':
+	elif valtype == 'l':
 		result = []
 		if lenField:
 			pass
@@ -230,7 +264,7 @@ def fdecode(d, lenField=False):
 			result.append(v)
 			val = val[l:]
 		return result
-	elif type == 't':
+	elif valtype == 't':
 		result = []
 		if lenField:
 			pass
@@ -239,7 +273,9 @@ def fdecode(d, lenField=False):
 			result.append(v)
 			val = val[l:]
 		return tuple(result)
-	elif type == 'n':
+	elif valtype == 'f':
+		return Fencoded(val)
+	elif valtype == 'n':
 		return None
 	else:
 		raise ValueError("invalid value passed to fdecode"

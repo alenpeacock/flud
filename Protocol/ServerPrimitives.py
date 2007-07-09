@@ -274,8 +274,6 @@ class STORE(ROOT):
 		tarname = os.path.join(self.config.storedir, reqKu.id() + ".tar")
 		if filekey[-4:] == ".tar":
 			# client sent a tarball
-			# XXX: need to check for metadata
-			print "XXX: need to check for metadata"
 			loggerstor.debug("about to chksum %s" % tmpfile)
 			digests = TarfileUtils.verifyHashes(tmpfile, '.meta')
 			loggerstor.debug("chksum returned %s" % digests)
@@ -325,8 +323,6 @@ class STORE(ROOT):
 						# XXX: update timestamp for filekey in tarball
 						return "Successful STORE"
 				if len(data) < 8192 and fname != tarname: #XXX: magic # (blk sz)
-					# XXX: need to do somethin with metadata!
-					print "XXX: need to do something with metadata for small!"
 					# If the file is small, move it into the appropriate
 					# tarball.  Note that this code is unlikely to ever be
 					# executed if the client is an official flud client, as
@@ -344,6 +340,15 @@ class STORE(ROOT):
 						tarball = tarfile.open(tarname, 'a')
 					# XXX: more bad blocking stuff
 					tarball.add(tmpfile, os.path.basename(fname))
+					if meta:
+						metafilename = "%s.%s.meta" % (os.path.basename(fname), 
+								metakey)
+						loggerstor.debug("adding metadata file to tarball %s" 
+								% metafilename)
+						metaio = StringIO(meta)
+						tinfo = tarfile.TarInfo(metafilename)
+						tinfo.size = len(meta)
+						tarball.addfile(tinfo, metaio)
 					tarball.close()
 					os.remove(tmpfile)
 				else:

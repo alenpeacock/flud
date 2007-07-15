@@ -295,7 +295,6 @@ class STORE(ROOT):
 			if request.args.has_key('meta') and request.args.has_key('metakey'):
 				metakey = request.args.get('metakey')[0]
 				meta = request.args.get('meta')[0]  # XXX: file in mem! 
-				print "metakey is %s" % metakey
 			else:
 				metakey = None
 				meta = None
@@ -411,16 +410,25 @@ class RETRIEVE(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if request.args.has_key('meta'):
+				returnMeta = True
+			else:
+				returnMeta = None
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
-					self._sendFile, request, filekey, reqKu)
+					self._sendFile, request, filekey, reqKu, params['nodeID'],
+					returnMeta)
 			
 
-	def _sendFile(self, request, filekey, reqKu):
+	def _sendFile(self, request, filekey, reqKu, nodeID, returnMeta):
 		fname = self.config.storedir + filekey
 		loggerretr.debug("reading file data from %s" % fname)
 		# XXX: make sure requestor owns the file? 
+		if returnMeta:
+			request.setHeader('Content-type', 'Multipart/Related')
+			rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
+			request.setHeader('boundary', rand_bound)
 		if not os.path.exists(fname):
 			# check for tarball for originator
 			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
@@ -428,8 +436,45 @@ class RETRIEVE(ROOT):
 				tar = tarfile.open(tarball, "r")
 				try:
 					tfilekey = filekey[1:]
+					tinfo = tar.getmember(tfilekey)
+					returnedMeta = False
+					if returnMeta:
+						try:
+							minfo = tar.getmember(tfilekey+".meta")
+							H = []
+							H.append("--%s" % rand_bound)
+							H.append("Content-Type: Application/octet-stream")
+							H.append("Content-ID: %s.meta" % tfilekey)
+							H.append("Content-Length: %d" % minfo.size)
+							H.append("")
+							H = '\r\n'.join(H)
+							tarm = tar.extractfile(minfo)
+							loggerretr.debug("successful metadata RETRIEVE"
+									" (from %s)" % tarball)
+							# XXX: bad blocking stuff
+							while 1:
+								buf = tarm.read()
+								if buf == "":
+									break
+								request.write(buf)
+							tarm.close()
+
+							H = []
+							H.append("--%s" % rand_bound)
+							H.append("Content-Type: Application/octet-stream")
+							H.append("Content-ID: %s" % tfilekey)
+							H.append("Content-Length: %d" % tinfo.size)
+							H.append("")
+							H = '\r\n'.join(H)
+							request.write(H)
+							request.write('\r\n')
+							returnedMeta = True
+						except:
+							# couldn't find any metadata, just return normal
+							# file
+							pass
 					# XXX: bad blocking stuff
-					tarf = tar.extractfile(tfilekey)
+					tarf = tar.extractfile(tinfo)
 					# XXX: update timestamp on tarf in tarball
 					loggerretr.debug("successful RETRIEVE (from %s)" % tarball)
 					# XXX: bad blocking stuff
@@ -440,6 +485,12 @@ class RETRIEVE(ROOT):
 						request.write(buf)
 					tarf.close()
 					tar.close()
+					if returnedMeta:
+						T = []
+						T.append("")
+						T.append("--%s--" % rand_bound)
+						T.append("")
+						request.write('\r\n'.join(T))
 					return ""
 				except:
 					tar.close()
@@ -449,6 +500,26 @@ class RETRIEVE(ROOT):
 			f = BlockFile.open(fname,"rb")
 			loggerretr.log(logging.INFO, "successful RETRIEVE for %s" 
 					% filekey )
+			meta = f.meta(nodeID)
+			if returnMeta and meta:
+				H = []
+				H.append("--%s" % rand_bound)
+				H.append("Content-Type: Application/octet-stream")
+				H.append("Content-ID: %s.meta" % filekey)
+				H.append("Content-Length: %d" % len(meta))
+				H.append("")
+				H.append(meta)
+				H = '\r\n'.join(H)
+				request.write(H)
+
+				H = []
+				H.append("--%s" % rand_bound)
+				H.append("Content-Type: Application/octet-stream")
+				H.append("Content-ID: %s" % filekey)
+				H.append("Content-Length: %d" % f.size())
+				H.append("")
+				H = '\r\n'.join(H)
+				request.write(H)
 			# XXX: bad blocking stuff
 			while 1:
 				buf = f.read()
@@ -456,6 +527,12 @@ class RETRIEVE(ROOT):
 					break
 				request.write(buf)
 			f.close()
+			if returnMeta and meta:
+				T = []
+				T.append("")
+				T.append("--%s--" % rand_bound)
+				T.append("")
+				request.write('\r\n'.join(T))
 			return ""
 	
 	def _sendErr(self, error, request, msg):

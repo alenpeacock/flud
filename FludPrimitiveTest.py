@@ -73,7 +73,9 @@ def checkRETRIEVE(res, nKu, fname, fkey, node, host, port):
 	if (f1.read() != f2.read()):
 		f1.close()
 		f2.close()
-		raise failure.DefaultException("upload/download files don't match")
+		raise failure.DefaultException(
+				"upload/download (%s, %s) files don't match" % (fname, 
+					os.path.join(node.config.clientdir, fkey)))
 	f1.close()
 	f2.close()
 	return testVERIFY(nKu, fname, fkey, node, host, port)
@@ -103,7 +105,7 @@ def testID(node, host, port):
 	return deferred
 
 def testAggSTORE(nKu, aggFiles, node, host, port):
-	print "starting testAggSTORE, nKu=%s" % nKu
+	print "starting testAggSTORE"
 	dlist = []
 	for i in aggFiles:
 		print "testAggSTORE %s" % i[0]
@@ -154,7 +156,7 @@ def runTests(host, port=None, listenport=None):
 	d.addCallback(testSTORE, largeFilename, largeFilekey, node, host, port)
 	d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
 	d.addCallback(testAggSTORE, aggFiles, node, host, port)
-	d.addBoth(cleanup, node, [largeFilename, smallFilename])
+	d.addBoth(cleanup, node, [i[0] for i in aggFiles] + [largeFilename, smallFilename])
 	node.join()
 
 """

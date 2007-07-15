@@ -404,6 +404,7 @@ class SENDRETRIEVE(REQUEST):
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
+		url += "&meta=T"
 		filename = self.node.config.clientdir+'/'+filekey
 		self.timeoutcount = 0
 

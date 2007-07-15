@@ -166,6 +166,11 @@ class BlockFile:
 	def tell(self):
 		return self._file.tell() - 8
 
+	def size(self):
+		# returns the 'true' size of the file (not including BlockFile
+		# accounting data)
+		return self._size
+
 	def write(self, data):
 		self._file.write(data)
 		if self._file.tell() > self._dataend:

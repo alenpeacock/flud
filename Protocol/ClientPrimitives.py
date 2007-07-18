@@ -390,7 +390,7 @@ class AggregateStore:
 
 class SENDRETRIEVE(REQUEST):
 
-	def __init__(self, nKu, node, host, port, filekey):
+	def __init__(self, nKu, node, host, port, filekey, metakey=True):
 		"""
 		Try to download a file.
 		"""
@@ -404,28 +404,28 @@ class SENDRETRIEVE(REQUEST):
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
-		url += "&meta=T"
-		filename = self.node.config.clientdir+'/'+filekey
+		url += "&meta="+str(metakey)
+		#filename = self.node.config.clientdir+'/'+filekey
 		self.timeoutcount = 0
 
 		self.deferred = defer.Deferred()
 		ConnectionQueue.enqueue((self, self.headers, nKu, host, port, 
-			url, filename))
+			url))
 
-	def startRequest(self, headers, nKu, host, port, url, filename):
+	def startRequest(self, headers, nKu, host, port, url):
 		#print "doing RET: %s" % filename
-		d = self._sendRequest(headers, nKu, host, port, url, filename)
+		d = self._sendRequest(headers, nKu, host, port, url)
 		d.addBoth(ConnectionQueue.checkWaiting)
 		d.addCallback(self.deferred.callback)
 		d.addErrback(self.deferred.errback)
 
-	def _sendRequest(self, headers, nKu, host, port, url, filename):
-		factory = downloadPageFactory(url, filename,
+	def _sendRequest(self, headers, nKu, host, port, url):
+		factory = multipartDownloadPageFactory(url, self.node.config.clientdir,
 				headers=headers, timeout=transfer_to)
 		deferred = factory.deferred
 		deferred.addCallback(self._getSendRetrieve, nKu, host, port, factory)
 		deferred.addErrback(self._errSendRetrieve, nKu, host, port, factory, 
-				url, filename, headers)
+				url, headers)
 		return deferred
 
 	def _getSendRetrieve(self, response, nKu, host, port, factory):
@@ -442,18 +442,14 @@ class SENDRETRIEVE(REQUEST):
 			raise failure.DefaultException("SENDRETRIEVE FAILED: "
 					+"server sent status "+factory.status+", '"+response+"'")
 
-	def _errSendRetrieve(self, err, nKu, host, port, factory, url, filename, 
-			headers):
+	def _errSendRetrieve(self, err, nKu, host, port, factory, url, headers):
 		if err.check('twisted.internet.error.TimeoutError') or \
 				err.check('twisted.internet.error.ConnectionLost'): #or \
 				#err.check('twisted.internet.error.ConnectBindError'):
 			self.timeoutcount += 1
 			if self.timeoutcount < MAXTIMEOUTS:
 				#print "RETR trying again [#%d]..." % self.timeoutcount
-				#print "RETR trying again [#%d]....%s" % (self.timeoutcount, 
-				#		filename)
-				return self._sendRequest(headers, nKu, host, port, url, 
-						filename)
+				return self._sendRequest(headers, nKu, host, port, url)
 			else:
 				#print "RETR timeout exceeded: %d" % self.timeoutcount
 				pass
@@ -463,14 +459,13 @@ class SENDRETRIEVE(REQUEST):
 			challenge = err.getErrorMessage()[4:]
 			d = answerChallengeDeferred(challenge, self.node.config.Kr,
 					self.node.config.groupIDu, nKu.id(), headers)
-			d.addCallback(self._sendRequest, nKu, host, port, url, filename)
+			d.addCallback(self._sendRequest, nKu, host, port, url)
 			#d.addErrback(self._errSendRetrieve, nKu, host, port, factory,
-			#		url, filename, headers)
+			#		url, headers)
 			return d
 			#extraheaders = answerChallenge(challenge, self.node.config.Kr,
 			#		self.node.config.groupIDu, nKu.id(), self.headers)
-			#return self._sendRequest(nKu, host, port, url, filename, 
-			#		extraheaders)
+			#return self._sendRequest(nKu, host, port, url, extraheaders)
 		# XXX: these remaining else clauses are really just for debugging...
 		elif hasattr(factory, 'status'):
 			if eval(factory.status) == http.NOT_FOUND:

@@ -411,20 +411,23 @@ class RETRIEVE(ROOT):
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
 			if request.args.has_key('meta'):
-				returnMeta = True
+				if request.args['meta'] == 'True':
+					returnMeta = True
+				else:
+					returnMeta = request.args['meta']
 			else:
-				returnMeta = None
+				returnMeta = False
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
-					self._sendFile, request, filekey, reqKu, params['nodeID'],
-					returnMeta)
+					self._sendFile, request, filekey, reqKu, returnMeta)
 			
 
-	def _sendFile(self, request, filekey, reqKu, nodeID, returnMeta):
+	def _sendFile(self, request, filekey, reqKu, returnMeta):
 		fname = self.config.storedir + filekey
 		loggerretr.debug("reading file data from %s" % fname)
 		# XXX: make sure requestor owns the file? 
+		tfilekey = filekey[1:]
 		if returnMeta:
 			request.setHeader('Content-type', 'Multipart/Related')
 			rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
@@ -435,29 +438,38 @@ class RETRIEVE(ROOT):
 			if os.path.exists(tarball):
 				tar = tarfile.open(tarball, "r")
 				try:
-					tfilekey = filekey[1:]
 					tinfo = tar.getmember(tfilekey)
 					returnedMeta = False
 					if returnMeta:
+						loggerretr.debug("tar returnMeta %s" % tfilekey)
 						try:
-							minfo = tar.getmember(tfilekey+".meta")
-							H = []
-							H.append("--%s" % rand_bound)
-							H.append("Content-Type: Application/octet-stream")
-							H.append("Content-ID: %s.meta" % tfilekey)
-							H.append("Content-Length: %d" % minfo.size)
-							H.append("")
-							H = '\r\n'.join(H)
-							tarm = tar.extractfile(minfo)
-							loggerretr.debug("successful metadata RETRIEVE"
-									" (from %s)" % tarball)
-							# XXX: bad blocking stuff
-							while 1:
-								buf = tarm.read()
-								if buf == "":
-									break
-								request.write(buf)
-							tarm.close()
+							metas = [f for f in tar.getnames()
+										if f[:len(tfilekey)] == tfilekey 
+										and f[-4:] == 'meta']
+							loggerretr.debug("tar returnMetas=%s" % metas)
+							for m in metas:
+								minfo = tar.getmember(m)
+								H = []
+								H.append("--%s" % rand_bound)
+								H.append("Content-Type: "
+										"Application/octet-stream")
+								H.append("Content-ID: %s" % m)
+								H.append("Content-Length: %d" % minfo.size)
+								H.append("")
+								H = '\r\n'.join(H)
+								request.write(H)
+								request.write('\r\n')
+								tarm = tar.extractfile(minfo)
+								loggerretr.debug("successful metadata RETRIEVE"
+										" (from %s)" % tarball)
+								# XXX: bad blocking stuff
+								while 1:
+									buf = tarm.read()
+									if buf == "":
+										break
+									request.write(buf)
+									request.write('\r\n')
+								tarm.close()
 
 							H = []
 							H.append("--%s" % rand_bound)
@@ -472,6 +484,7 @@ class RETRIEVE(ROOT):
 						except:
 							# couldn't find any metadata, just return normal
 							# file
+							loggerretr.debug("no metadata found")
 							pass
 					# XXX: bad blocking stuff
 					tarf = tar.extractfile(tinfo)
@@ -490,7 +503,8 @@ class RETRIEVE(ROOT):
 						T.append("")
 						T.append("--%s--" % rand_bound)
 						T.append("")
-						request.write('\r\n'.join(T))
+						T = '\r\n'.join(T)
+						request.write(T)
 					return ""
 				except:
 					tar.close()
@@ -500,26 +514,31 @@ class RETRIEVE(ROOT):
 			f = BlockFile.open(fname,"rb")
 			loggerretr.log(logging.INFO, "successful RETRIEVE for %s" 
 					% filekey )
-			meta = f.meta(nodeID)
+			meta = f.meta(int(reqKu.id(),16))
 			if returnMeta and meta:
-				H = []
-				H.append("--%s" % rand_bound)
-				H.append("Content-Type: Application/octet-stream")
-				H.append("Content-ID: %s.meta" % filekey)
-				H.append("Content-Length: %d" % len(meta))
-				H.append("")
-				H.append(meta)
-				H = '\r\n'.join(H)
-				request.write(H)
+				loggerretr.debug("returnMeta %s" % filekey)
+				loggerretr.debug("returnMetas=%s" % meta)
+				for m in meta:
+					H = []
+					H.append("--%s" % rand_bound)
+					H.append("Content-Type: Application/octet-stream")
+					H.append("Content-ID: %s.%s.meta" % (tfilekey, m))
+					H.append("Content-Length: %d" % len(meta[m]))
+					H.append("")
+					H.append(meta[m])
+					H = '\r\n'.join(H)
+					request.write(H)
+					request.write('\r\n')
 
 				H = []
 				H.append("--%s" % rand_bound)
 				H.append("Content-Type: Application/octet-stream")
-				H.append("Content-ID: %s" % filekey)
+				H.append("Content-ID: %s" % tfilekey)
 				H.append("Content-Length: %d" % f.size())
 				H.append("")
 				H = '\r\n'.join(H)
 				request.write(H)
+				request.write('\r\n')
 			# XXX: bad blocking stuff
 			while 1:
 				buf = f.read()

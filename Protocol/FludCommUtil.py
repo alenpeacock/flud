@@ -12,6 +12,7 @@ import inspect
 import FludCrypto
 from FludExceptions import FludException
 from FludCrypto import FludRSA
+from HTTPMultipartDownloader import HTTPMultipartDownloader
 
 """
 Some constants used by the Flud Protocol classes
@@ -232,13 +233,14 @@ def getPageFactory(url, contextFactory=None, *args, **kwargs):
 		reactor.connectTCP(host, port, factory, timeout=to)
 	return factory
 
-def downloadPageFactory(url, file, contextFactory=None, timeout=None, 
+def _dlPageFactory(url, target, factoryClass, contextFactory=None, timeout=None,
 		*args, **kwargs):
+	# XXX: make downloadPageFactory and multipartDownloadPageFactory use this
 	scheme, host, port, path = client._parse(url)
 	if timeout != None:
 		# XXX: do something like http://twistedmatrix.com/pipermail/twisted-python/2003-August/005504.html
 		pass
-	factory = client.HTTPDownloader(url, file, *args, **kwargs)
+	factory = factoryClass(url, target, *args, **kwargs)
 	to = CONNECT_TO+random.randrange(2+CONNECT_TO_VAR)-CONNECT_TO_VAR
 	if scheme == 'https':
 		from twisted.internet import ssl
@@ -248,6 +250,16 @@ def downloadPageFactory(url, file, contextFactory=None, timeout=None,
 	else:
 		reactor.connectTCP(host, port, factory, timeout=to)
 	return factory
+
+def downloadPageFactory(url, file, contextFactory=None, timeout=None, 
+		*args, **kwargs):
+	return _dlPageFactory(url, file, client.HTTPDownloader, contextFactory, 
+			timeout, *args, **kwargs)
+
+def multipartDownloadPageFactory(url, dir, contextFactory=None, timeout=None,
+		*args, **kwargs):
+	return _dlPageFactory(url, dir, HTTPMultipartDownloader, contextFactory, 
+			timeout, *args, **kwargs)
 
 def fileUpload(host, port, selector, files, form=(), headers={}):
 	"""

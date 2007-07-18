@@ -107,13 +107,15 @@ def testID(node, host, port):
 def testAggSTORE(nKu, aggFiles, node, host, port):
 	print "starting testAggSTORE"
 	dlist = []
+	mfkey = 34
 	for i in aggFiles:
 		print "testAggSTORE %s" % i[0]
-		deferred = node.client.sendStore(i[0], (34, StringIO("12")), 
+		deferred = node.client.sendStore(i[0], (mfkey, StringIO("12")), 
 				host, port, nKu)
 		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
 		deferred.addErrback(testerror, "failed at testAggSTORE", node)
 		dlist.append(deferred)
+		mfkey = mfkey+1
 	# used ErrDeferredList instead
 	dl = defer.DeferredList(dlist)
 	dl.addCallback(allGood, nKu)

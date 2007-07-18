@@ -27,6 +27,7 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 			agent="Flud client", supportPartial=0):
 		self.requestedPartial = 0
 
+		self.filenames = []
 		self.dir = dir
 		client.HTTPClientFactory.__init__(self, url, method=method, 
 				postdata=postdata, headers=headers, agent=agent)
@@ -47,10 +48,11 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 
 	def openFile(self, partialContent):
 		if partialContent:
-			file = open(self.fileName, 'rb+')
+			file = open(self.filename, 'rb+')
 			file.seek(0, 2)
 		else:
-			file = open(self.fileName, 'wb')
+			file = open(self.filename, 'wb')
+		self.filenames.append(self.filename)
 		return file
 
 	def pageStart(self, partialContent):
@@ -92,7 +94,7 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 				raise ValueError, "no Content-ID field in multipart,"\
 						" can't continue"
 			# XXX: need to check for badness (e.g, "../../) in content-id
-			self.fileName = os.path.join(self.dir, 
+			self.filename = os.path.join(self.dir, 
 					self.subHeaders['content-id'])
 			self.file = self.openFile(self.partialContent)
 			if not self.subHeaders.has_key('content-length'):
@@ -107,14 +109,13 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 			self.getSubHeader(data)
 		else:
 			if not self.file:
-				raise ValueError, "file %s not open for output" % self.fileName
+				raise ValueError, "file %s not open for output" % self.filename
 			try:
 				if self.filesizeRemaining > len(data):
 					self.file.write(data)
 					self.filesizeRemaining -= len(data)
 				else:
 					self.file.write(data[:self.filesizeRemaining])
-							self.fileName)
 					skipto = self.filesizeRemaining
 					self.filesizeRemaining = 0
 					self.file.close()
@@ -133,7 +134,7 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 			except IOError:
 				self.deferred.errback(failure.Failure())
 				return
-		self.deferred.callback(self.value)
+		self.deferred.callback(self.filenames)
 
 def doit():
 	factory = HTTPMultipartDownloader("/ret", "/tmp/")
@@ -141,7 +142,7 @@ def doit():
 	return factory.deferred
 
 def didit(r):
-	print "didit: %s" % r
+	print "didit: %s" % str(r)
 	reactor.stop()
 
 if __name__ == "__main__":

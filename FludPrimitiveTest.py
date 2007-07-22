@@ -6,13 +6,17 @@ import FludCrypto
 from Protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
-from fencode import fencode
+from fencode import *
 from StringIO import StringIO
+from zlib import crc32
 
 """
 Test code for primitive operations.  These ops include all of the descendents
 of ROOT and REQUEST in FludProtocol.
 """
+
+# metadatablock: (block#,n,k,blockdata)
+metadatablock = fencode((1,20,40,'adfdsfdffffffddddddddddddddd'))
 
 def testerror(failure, message, node):
 	"""
@@ -78,6 +82,13 @@ def checkRETRIEVE(res, nKu, fname, fkey, node, host, port):
 					os.path.join(node.config.clientdir, fkey)))
 	f1.close()
 	f2.close()
+	# make sure the metadata is the same...
+	mkey = crc32(fname)
+	f3 = open(os.path.join(node.config.clientdir, fkey)+"."+str(mkey)+".meta")
+	md = f3.read()
+	if md != metadatablock:
+		raise failure.DefaultException("upload/download metadata doesn't match"
+				" (%s != %s)" % (md, metadatablock))
 	return testVERIFY(nKu, fname, fkey, node, host, port)
 
 def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
@@ -90,8 +101,9 @@ def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
 
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
-	print "starting testSTORE %s" % fname
-	deferred = node.client.sendStore(fname, (341252, StringIO("11212121aaaa")), 
+	mfkey = crc32(fname)
+	print "starting testSTORE %s (%s)" % (fname, mfkey)
+	deferred = node.client.sendStore(fname, (mfkey, StringIO(metadatablock)), 
 			host, port, nKu)
 	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
@@ -107,10 +119,10 @@ def testID(node, host, port):
 def testAggSTORE(nKu, aggFiles, node, host, port):
 	print "starting testAggSTORE"
 	dlist = []
-	mfkey = 34
 	for i in aggFiles:
-		print "testAggSTORE %s" % i[0]
-		deferred = node.client.sendStore(i[0], (mfkey, StringIO("12")), 
+		mfkey = crc32(i[0]) 
+		print "testAggSTORE %s (%s)" % (i[0], mfkey)
+		deferred = node.client.sendStore(i[0], (mfkey, StringIO(metadatablock)),
 				host, port, nKu)
 		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
 		deferred.addErrback(testerror, "failed at testAggSTORE", node)

@@ -289,6 +289,7 @@ class STORE(ROOT):
 				loggerstor.debug("concatenating tarfiles")
 				TarfileUtils.concatenate(tarname, tmpfile)
 			else:
+				loggerstor.debug("saving tarfile")
 				os.rename(tmpfile, tarname)
 		else:
 			h = FludCrypto.hashfile(tmpfile)
@@ -306,6 +307,7 @@ class STORE(ROOT):
 				return msg
 			fname = os.path.join(self.config.storedir, filekey)
 			if os.path.exists(fname):
+				loggerstor.debug("adding metadata to %s" % fname)
 				f = BlockFile.open(fname,'rb+')
 				if not f.hasNode(nodeID):
 					f.addNode(int(nodeID,16), {metakey: meta})
@@ -316,11 +318,15 @@ class STORE(ROOT):
 					print "XXX: need to do something with metadata for tar!"
 					tarball = tarfile.open(tarname, 'r')
 					if fname in tarball.getnames():
+						loggerstor.debug("%s already stored in tarball" % fname)
 						# if the file is already in the corresponding tarball,
 						# update its timestamp and return success.
 						loggerstor.debug("%s already stored" % filekey)
 						# XXX: update timestamp for filekey in tarball
 						return "Successful STORE"
+					else:
+						loggerstor.debug("tarball for %s, but %s not in tarball"
+								% (nodeID,fname))
 				if len(data) < 8192 and fname != tarname: #XXX: magic # (blk sz)
 					# If the file is small, move it into the appropriate
 					# tarball.  Note that this code is unlikely to ever be
@@ -352,6 +358,7 @@ class STORE(ROOT):
 					os.remove(tmpfile)
 				else:
 					# store the file 
+					loggerstor.debug("storing %s" % fname)
 					os.rename(tmpfile, fname)
 					BlockFile.convert(fname, (int(nodeID,16), {metakey: meta}))
 
@@ -416,7 +423,7 @@ class RETRIEVE(ROOT):
 				else:
 					returnMeta = request.args['meta']
 			else:
-				returnMeta = False
+				returnMeta = True
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
@@ -429,6 +436,7 @@ class RETRIEVE(ROOT):
 		# XXX: make sure requestor owns the file? 
 		tfilekey = filekey[1:]
 		if returnMeta:
+			loggerretr.debug("returnMeta = %s" % returnMeta)
 			request.setHeader('Content-type', 'Multipart/Related')
 			rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
 			request.setHeader('boundary', rand_bound)
@@ -512,8 +520,7 @@ class RETRIEVE(ROOT):
 			request.write("Not found: %s" % filekey)
 		else:
 			f = BlockFile.open(fname,"rb")
-			loggerretr.log(logging.INFO, "successful RETRIEVE for %s" 
-					% filekey )
+			loggerretr.log(logging.INFO, "successful RETRIEVE for %s" % filekey)
 			meta = f.meta(int(reqKu.id(),16))
 			if returnMeta and meta:
 				loggerretr.debug("returnMeta %s" % filekey)
@@ -733,7 +740,7 @@ class DELETE(ROOT):
 	def render_GET(self, request):
 		self.setHeaders(request)
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
+			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'metakey')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by DELETE" 
@@ -758,12 +765,14 @@ class DELETE(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			metakey = params['metakey']
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
-					self._deleteFile, request, filekey, reqKu, params['nodeID'])
+					self._deleteFile, request, filekey, metakey, reqKu, 
+					params['nodeID'])
 
-	def _deleteFile(self, request, filekey, reqKu, reqID):
+	def _deleteFile(self, request, filekey, metakey, reqKu, reqID):
 		fname = self.config.storedir + filekey
 		loggerdele.debug("reading file data from %s" % fname)
 		if not os.path.exists(fname):
@@ -771,16 +780,19 @@ class DELETE(ROOT):
 			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
 			if os.path.exists(tarball):
 				tfilekey = filekey[1:]
-				if TarfileUtils.delete(tarball, tfilekey):
-					loggerdele.info("DELETED file (from %s)" % tarball)
+				mfilekey = "%s.%s.meta" % (tfilekey, metakey)
+				deleted = TarfileUtils.delete(tarball, [tfilekey, mfilekey])
+				if deleted:
+					loggerdele.info("DELETED %s (from %s)" % (deleted, tarball))
 				return ""
 			request.setResponseCode(http.NOT_FOUND, "Not found: %s" % filekey)
 			request.write("Not found: %s" % filekey)
 		else:
 			f = BlockFile.open(fname,"rb+")
-			if f.hasNode(reqID):
-				# remove this node from owning this file block
-				f.delNode(reqID)
+			nID = int(reqID, 16)
+			if f.hasNode(nID):
+				# remove this node/metakey from owning this file block
+				f.delNode(nID, metakey)
 				if f.emptyNodes():
 					# if this was the only owning node, delete it
 					f.close()

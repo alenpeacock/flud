@@ -9,6 +9,7 @@ from twisted.python import failure
 from fencode import *
 from StringIO import StringIO
 from zlib import crc32
+from FludDefer import ErrDeferredList
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -31,28 +32,28 @@ def allGood(_, nKu):
 	print "all tests PASSED"
 	return nKu 
 
-def checkDELETE(res, nKu, fname, fkey, node, host, port):
+def checkDELETE(res, nKu, fname, fkey, mkey, node, host, port):
 	""" checks to ensure the file was deleted """
 	# XXX: check to see that its gone
 	return allGood(res, nKu)
 
-def testDELETE(res, nKu, fname, fkey, node, host, port):
+def testDELETE(res, nKu, fname, fkey, mkey, node, host, port):
 	""" Tests sendDelete, and invokes checkDELETE on success """
 	print "starting testDELETE %s" % fname
-	deferred = node.client.sendDelete(fkey, host, port, nKu)
-	deferred.addCallback(checkDELETE, nKu, fname, fkey, node, host, port)
+	deferred = node.client.sendDelete(fkey, mkey, host, port, nKu)
+	deferred.addCallback(checkDELETE, nKu, fname, fkey, mkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testDELETE", node)
 	return deferred
 	#return checkDELETE(None, nKu, fname, fkey, node, host, port)
 
-def checkVERIFY(res, nKu, fname, fkey, node, host, port, hash):
+def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash):
 	""" executes after testVERIFY """
 	if long(hash, 16) != long(res, 16):
 		raise failure.DefaultException("verify didn't match: %s != %s"
 				% (hash, res))
-	return testDELETE(res, nKu, fname, fkey, node, host, port)
+	return testDELETE(res, nKu, fname, fkey, mkey, node, host, port)
 
-def testVERIFY(nKu, fname, fkey, node, host, port):
+def testVERIFY(nKu, fname, fkey, mkey, node, host, port):
 	""" executes after checkRETRIEVE """
 	""" Test sendVerify """
 	print "starting testVERIFY %s" % fname
@@ -66,46 +67,50 @@ def testVERIFY(nKu, fname, fkey, node, host, port):
 	os.close(fd)
 	hash = FludCrypto.hashstring(data)
 	deferred = node.client.sendVerify(fkey, offset, length, host, port, nKu)
-	deferred.addCallback(checkVERIFY, nKu, fname, fkey, node, host, port, hash)
+	deferred.addCallback(checkVERIFY, nKu, fname, fkey, mkey, node, host, port,
+			hash)
 	deferred.addErrback(testerror, "failed at testVERIFY", node)
 	return deferred
 
-def checkRETRIEVE(res, nKu, fname, fkey, node, host, port):
+def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port):
 	""" Compares the file that was stored with the one that was retrieved """
 	f1 = open(fname)
-	f2 = open(os.path.join(node.config.clientdir, fkey))
+	f2 = open(res[1]) # XXX: don't rely on position, find the one without .meta
 	if (f1.read() != f2.read()):
 		f1.close()
 		f2.close()
 		raise failure.DefaultException(
 				"upload/download (%s, %s) files don't match" % (fname, 
 					os.path.join(node.config.clientdir, fkey)))
+	print "%s (%d) and %s (%d) match" % (fname, os.stat(fname)[stat.ST_SIZE],
+		res[1], os.stat(res[1])[stat.ST_SIZE])
 	f1.close()
 	f2.close()
 	# make sure the metadata is the same...
 	mkey = crc32(fname)
-	f3 = open(os.path.join(node.config.clientdir, fkey)+"."+str(mkey)+".meta")
+	f3 = open(res[0]) # XXX: ... and the one with .meta
 	md = f3.read()
 	if md != metadatablock:
 		raise failure.DefaultException("upload/download metadata doesn't match"
 				" (%s != %s)" % (md, metadatablock))
-	return testVERIFY(nKu, fname, fkey, node, host, port)
+	return testVERIFY(nKu, fname, fkey, mkey, node, host, port)
 
-def testRETRIEVE(res, nKu, fname, fkey, node, host, port):
+def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port):
 	""" Tests sendRetrieve, and invokes checkRETRIEVE on success """
 	print "starting testRETRIEVE %s" % fname
 	deferred = node.client.sendRetrieve(fkey, host, port, nKu)
-	deferred.addCallback(checkRETRIEVE, nKu, fname, fkey, node, host, port)
+	deferred.addCallback(checkRETRIEVE, nKu, fname, fkey, mkey, node, host, 
+			port)
 	deferred.addErrback(testerror, "failed at testRETRIEVE", node)
 	return deferred
 
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
-	mfkey = crc32(fname)
-	print "starting testSTORE %s (%s)" % (fname, mfkey)
-	deferred = node.client.sendStore(fname, (mfkey, StringIO(metadatablock)), 
+	mkey = crc32(fname)
+	print "starting testSTORE %s (%s)" % (fname, mkey)
+	deferred = node.client.sendStore(fname, (mkey, StringIO(metadatablock)), 
 			host, port, nKu)
-	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, node, host, port)
+	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred
 
@@ -120,16 +125,15 @@ def testAggSTORE(nKu, aggFiles, node, host, port):
 	print "starting testAggSTORE"
 	dlist = []
 	for i in aggFiles:
-		mfkey = crc32(i[0]) 
-		print "testAggSTORE %s (%s)" % (i[0], mfkey)
-		deferred = node.client.sendStore(i[0], (mfkey, StringIO(metadatablock)),
+		mkey = crc32(i[0]) 
+		print "testAggSTORE %s (%s)" % (i[0], mkey)
+		deferred = node.client.sendStore(i[0], (mkey, StringIO(metadatablock)),
 				host, port, nKu)
-		#deferred.addCallback(testRetrieve, nKu, i[0], i[1], node, host, port)
+		deferred.addCallback(testRETRIEVE, nKu, i[0], i[1], mkey, node, host, 
+				port)
 		deferred.addErrback(testerror, "failed at testAggSTORE", node)
 		dlist.append(deferred)
-		mfkey = mfkey+1
-	# used ErrDeferredList instead
-	dl = defer.DeferredList(dlist)
+	dl = ErrDeferredList(dlist)
 	dl.addCallback(allGood, nKu)
 	dl.addErrback(testerror, "failed at testAggSTORE", node)
 	return dl
@@ -170,7 +174,8 @@ def runTests(host, port=None, listenport=None):
 	d.addCallback(testSTORE, largeFilename, largeFilekey, node, host, port)
 	d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
 	d.addCallback(testAggSTORE, aggFiles, node, host, port)
-	d.addBoth(cleanup, node, [i[0] for i in aggFiles] + [largeFilename, smallFilename])
+	d.addBoth(cleanup, node, [i[0] for i in aggFiles] + [largeFilename, 
+		smallFilename])
 	node.join()
 
 """

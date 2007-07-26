@@ -235,7 +235,6 @@ def getPageFactory(url, contextFactory=None, *args, **kwargs):
 
 def _dlPageFactory(url, target, factoryClass, contextFactory=None, timeout=None,
 		*args, **kwargs):
-	# XXX: make downloadPageFactory and multipartDownloadPageFactory use this
 	scheme, host, port, path = client._parse(url)
 	if timeout != None:
 		# XXX: do something like http://twistedmatrix.com/pipermail/twisted-python/2003-August/005504.html

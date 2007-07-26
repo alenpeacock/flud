@@ -208,14 +208,13 @@ class kSTORE(ROOT):
 		def validMetadata(data, nodeID):
 			# returns true if the format of data conforms to the standard for
 			# metadata 
-			if len(data) != 2 or not data.has_key(nodeID):
-				return False  # should have only 'b' and the node's id for keys
 			blocks = 0
-			for i in data['b']:
+			blockdata = data
+			for i in blockdata:
 				if not validValue(i):
 					#print "%s is invalid key" %i
 					return False
-				location = data['b'][i]
+				location = blockdata[i]
 				if isinstance(location, list):
 					if len(location) > 5:
 						#print "too many (list) nodeIDs" % j

@@ -121,16 +121,18 @@ class FludClient(object):
 			s = SENDVERIFY(nKu, self.node, host, port, filekey, offset, length)
 			return s.deferred
 	
-	def sendDelete(self, filekey, host, port, nKu=None):
-		def sendDeleteWithNKu(nKu, host, port, filekey):
-			return SENDDELETE(nKu, self.node, host, port, filekey).deferred
+	def sendDelete(self, filekey, metakey, host, port, nKu=None):
+		def sendDeleteWithNKu(nKu, host, port, filekey, metakey):
+			return SENDDELETE(nKu, self.node, host, port, filekey,
+					metakey).deferred
 
 		if not nKu:
 			d = self.sendGetID(host, port)
-			d.addCallback(sendDeleteWithNKu, host, port, filekey)
+			d.addCallback(sendDeleteWithNKu, host, port, filekey, metakey)
 			return d
 		else:
-			return SENDDELETE(nKu, self.node, host, port, filekey).deferred
+			return SENDDELETE(nKu, self.node, host, port, filekey,
+					metakey).deferred
 	
 	"""
 	DHT single primitives (single call to single peer).  These should probably

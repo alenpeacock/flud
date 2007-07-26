@@ -293,7 +293,8 @@ class AggregateStore:
 			loggerstoragg.debug("opening tarfile %s to append %s"
 					% (tarfilename, datafile))
 			tar = tarfile.open(tarfilename, "a")
-			
+		
+		loggerstoragg.debug("adding data to tarball")
 		tar.add(datafile, os.path.basename(datafile))
 
 		if metadata:
@@ -362,7 +363,7 @@ class AggregateStore:
 			loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
 					str(aggDeferredMap[tarball].keys())))
 		tar.close()
-		loggerstoragg.debug("deleting tarball")
+		loggerstoragg.debug("deleting tarball %s" % tarball)
 		os.remove(tarball)
 		for cb in cbs:
 			cb.callback(result)
@@ -404,7 +405,7 @@ class SENDRETRIEVE(REQUEST):
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
-		url += "&meta="+str(metakey)
+		url += "&metakey="+str(metakey)
 		#filename = self.node.config.clientdir+'/'+filekey
 		self.timeoutcount = 0
 
@@ -434,10 +435,10 @@ class SENDRETRIEVE(REQUEST):
 			# occured, it may be printed in this file)
 			# XXX: need to check that file hashes to key! If we don't do this,
 			#      malicious nodes can corrupt entire files without detection!
-			result = "received SENDRETRIEVE response"
-			loggerrtrv.info(result)
+			#result = "received SENDRETRIEVE response"
+			loggerrtrv.info(response)
 			updateNode(self.node.client, self.config, host, port, nKu)
-			return result
+			return response
 		else:
 			raise failure.DefaultException("SENDRETRIEVE FAILED: "
 					+"server sent status "+factory.status+", '"+response+"'")
@@ -482,7 +483,7 @@ class SENDRETRIEVE(REQUEST):
 
 class SENDDELETE(REQUEST):
 
-	def __init__(self, nKu, node, host, port, filekey):
+	def __init__(self, nKu, node, host, port, filekey, metakey):
 		"""
 		Try to delete a file.
 		"""
@@ -496,6 +497,7 @@ class SENDDELETE(REQUEST):
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
+		url += "&metakey="+str(metakey)
 		self.timeoutcount = 0
 
 		self.deferred = defer.Deferred()

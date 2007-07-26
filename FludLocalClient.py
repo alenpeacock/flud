@@ -214,7 +214,7 @@ class CmdClientFactory(LocalClientFactory):
 
 	def clientConnectionLost(self, connector, reason):
 		if not self.quit:
-			LocalClientFactory.clientConnectionLost(connector, reason)
+			LocalClientFactory.clientConnectionLost(self, connector, reason)
 
 	def cleanup(self, msg):
 		self.quit = True

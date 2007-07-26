@@ -10,17 +10,24 @@ Provides additional tarfile functionality (deletion of a member from a
 tarball, and concatenation of tarballs).
 """
 
-def delete(tarball, membername):
+def delete(tarball, membernames):
 	"""
-	Deletes a member file from a tarball.  Returns True if the file is removed,
-	False if the file isn't a member.  If membername is the only file in
-	tarball, the entire tarball is deleted
+	Deletes a member file[s] from a tarball.  Returns the names of deleted
+	members if they areremoved, False if the file[s] aren't members.  If
+	membernames contains all the members in the tarball, the entire tarball is
+	deleted
 	"""
 	f = tarfile.open(tarball, 'r')
-	if not membername in f.getnames():
+	if not isinstance(membernames, list):
+		membernames = [membernames]
+	tarnames = f.getnames()
+	for membername in membernames: 
+		if not membername in tarnames:
+			membernames.remove(membername)
+	if len(membernames) < 1:
 		f.close()
 		return False
-	if len(f.getnames()) == 1:
+	if len(tarnames) == len(membernames):
 		f.close()
 		os.remove(tarball)
 		return True
@@ -30,7 +37,7 @@ def delete(tarball, membername):
 	f2 = open(tfile, 'w')
 	empty = tarfile.BLOCKSIZE * '\0'
 	done = False
-	found = False
+	removednames = []
 	while not done:
 		bytes = f.read(tarfile.BLOCKSIZE)
 		if bytes == "":
@@ -44,9 +51,9 @@ def delete(tarball, membername):
 			blocks = size / tarfile.BLOCKSIZE
 			if (size % tarfile.BLOCKSIZE) > 0:
 				blocks += 1
-			if name == membername:
+			if name in membernames:
 				f.seek(blocks*tarfile.BLOCKSIZE + f.tell())
-				found = True
+				removednames.append(name)
 			else:
 				f2.write(bytes)
 				for i in range(blocks):
@@ -54,7 +61,7 @@ def delete(tarball, membername):
 	f2.close()
 	f.close()
 	os.rename(tfile, tarball)
-	return found
+	return removednames
 
 def concatenate(tarfile1, tarfile2):
 	"""
@@ -159,20 +166,23 @@ def verifyHashes(tarball, ignoreExt=None):
 
 
 if __name__ == "__main__":
-	if (len(sys.argv) != 4 or (sys.argv[1] != "-d" and sys.argv[1] != "-c")) \
+	if (len(sys.argv) < 4 or sys.argv[1] != "-d") \
+			and (len(sys.argv) != 4 or sys.argv[1] != "-c") \
 			and sys.argv[1] != "-v":
-		print "usage: [-d tarfile tarfilemember]\n"\
+		print "usage: [-d tarfile tarfilemembers]\n"\
 				+"       [-c tarfile1 tarfile2]\n"\
 				+"       [-v tarfile]\n"\
-				+" -d deletes tarfilemember from tarfile,\n"\
+				+" -d deletes tarfilemembers from tarfile,\n"\
 				+" -c concatenates tarfile1 and tarfile2 into tarfile1\n"\
 				+" -v verifies that the names of files in tarfile are sha256\n"
 		sys.exit(-1)
 	if sys.argv[1] == "-d":
-		if delete(sys.argv[2], sys.argv[3]):
-			print "%s successfully deleted from %s" % (sys.argv[3], sys.argv[2])
+		deleted = delete(sys.argv[2], sys.argv[3:])
+		if deleted == sys.argv[3:]:
+			print "%s successfully deleted from %s" % (deleted, sys.argv[2])
 		else:
-			print "could not delete %s from %s" % (sys.argv[3], sys.argv[2])
+			faileddeletes = [x for x in sys.argv[3:] if x not in deleted]
+			print "could not delete %s from %s" % (faileddeletes, sys.argv[2])
 	elif sys.argv[1] == "-c":
 		concatenate(sys.argv[2], sys.argv[3])
 		print "concatenated %s and %s into %s" % (sys.argv[2], sys.argv[3],

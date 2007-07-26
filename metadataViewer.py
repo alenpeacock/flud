@@ -47,25 +47,10 @@ if __name__ == "__main__":
 	if raw:
 		print data
 	else:
-		for i in data['b']:
+		for i in data:
 			print "%s stored on:" % fencode(i)
-			d = data['b'][i]
+			d = data[i]
 			print "        %s" % fencode(d)
 		print
-		print "%d blocks" % len(data['b'])
-		print
-		for i in data:
-			if i != 'b':
-				print "node %s metadata:" % fencode(long(i,16))
-				if privkey.id() == i:
-					eeK = data[i]['eeK']
-					enmdata = fdecode(data[i]['meta'])
-					nmdata = ""
-					for i in range(0,len(enmdata),128):
-						nmdata += privkey.decrypt(enmdata[i:i+128])
-					print "  meta: %s" % fdecode(nmdata)
-					print "   eeK: %s" % eeK
-				else:
-					print data[i]
-				print
+		print "%d blocks" % len(data)
 

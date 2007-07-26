@@ -125,6 +125,22 @@ class BlockFile:
 	>>> f.hasNode(1234567890)
 	True
 	>>> f.close()
+	>>> f = open(fname)
+	>>> f.delNode(9, 'gg')
+	>>> f.hasNode(9)
+	True
+	>>> f.meta(9)
+	{'ff': 'y'}
+	>>> f.delNode(9, 'ff')
+	>>> f.hasNode(9)
+	False
+	>>> f.addNode(9, {'ff': 'y'})
+	>>> f.addNode(9, {'gg': 'z'})
+	>>> f.hasNode(9)
+	True
+	>>> f.delNode(9)
+	>>> f.hasNode(9)
+	False
 	>>> os.remove(fname)
 	"""
 
@@ -215,11 +231,19 @@ class BlockFile:
 			#return self._accounting
 			return self._accounting[nodeID]
 
-	def delNode(self, nodeID):
+	def delNode(self, nodeID, metakey=None):
 		if self.mode[0] == 'r' and self.mode.find('+') < 0:
 			raise IOError("cannot delete a node from a read-only BlockFile")
 		if nodeID in self._accounting:
-			self._accounting.pop(nodeID)
+			m = self._accounting[nodeID]
+			if not metakey:
+				m = {}
+			elif metakey in m:
+				m.pop(metakey)
+			if m:
+				self._accounting[nodeID] = m
+			else:
+				self._accounting.pop(nodeID)
 
 	def getNodes(self):
 		return self._accounting

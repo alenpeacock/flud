@@ -81,8 +81,10 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
 				# end of multiparts
 				return
 			else:
-				raise ValueError, "found illegal boundary: %s, was %s" \
-						% (newboundary, self.boundary)
+				raise ValueError, "found illegal boundary"
+				# XXX: print some of newboundary *safely*
+				#raise ValueError, "found illegal boundary: %s, was %s" \
+				#		% (newboundary[:80], self.boundary)
 		headerEnd = data.find('\r\n\r\n')
 		if headerEnd != -1:
 			self.inSubHeader = False

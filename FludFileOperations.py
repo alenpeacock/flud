@@ -6,6 +6,7 @@ Implements file storage and retrieval operations using flud primitives.
 """
 
 import os, stat, sys, logging, binascii, random, time
+from zlib import crc32
 import FludCrypto
 from twisted.internet import defer
 from FludCrypto import FludRSA
@@ -60,11 +61,11 @@ class StoreFile:
 	to create an encryption key, eK=H(file), and then again to create the
 	storage key for the file metadata sK=H(eK)=H(H(file)). 
 
-	2. Create node-specific file metadata: Encrypts the storage key
+	2. Create local filesystem file metadata: Encrypts the storage key
 	asymetrically with public key as eeK=e_Ku(eK), and creates local copy
-	of file metadata with eeK and other file metadata (ownership, name,
+	of fs metadata with eeK and other file metadata (ownership, name,
 	timestamps).  Encrypts this metadata with Ku. (flud file metadata
-	consists of eeK and Ku(file metadata)).
+	consists of eeK and Ku(fs metadata)).
 	
 	3. Create data-specific file metadata: Symmetrically encrypt the file
 	with e_file=eK(file). Code e_file into k+m blocks.  Perform
@@ -186,8 +187,12 @@ class StoreFile:
 		except:
 			return defer.fail(failure.DefaultException(
 				"%s already requested" % self.filename))
+		# XXX: codeData should be run outside of event loop
 		self.sfiles = c.codeData(self.efilename, 
 				os.path.join(self.encodedir, 'c'))
+		self.mfiles = c.codeData(self.mfilename,
+				os.path.join(self.encodedir, 'm'))
+		self.mkey = crc32(self.filename)
 		#logger.debug("coded to: %s" % str(self.sfiles))
 		# take hashes and rename coded blocks
 		self.segHashesLocal = []
@@ -202,6 +207,10 @@ class StoreFile:
 			#logger.debug("moved %s to %s" % (sfile, destfile))
 			os.rename(sfile, destfile)
 			self.sfiles[i] = destfile
+
+			mfile = self.mfiles[i]
+			os.rename(mfile, destfile+".m")
+			self.mfiles[i] = destfile+".m"
 
 		# 4a: query DHT for metadata.
 		d = self.node.client.kFindValue(self.sK)
@@ -221,7 +230,7 @@ class StoreFile:
 		else:
 			storedMetadata = fdecode(storedMetadata)
 			logger.info("metadata exists, verifying all data")
-			if not self._compareMetadata(storedMetadata['b'], self.sfiles):
+			if not self._compareMetadata(storedMetadata, self.sfiles):
 				raise ValueError("stored and local metadata do not match")
 			else:
 				logger.info("stored and local metadata match.")
@@ -245,10 +254,7 @@ class StoreFile:
 			port = node[1]
 			nID = node[2]
 			nKu = FludRSA.importPublicKey(node[3])
-			#self.blockMetadata[hash] = (fencode(nKu.exportPublicKey()['n']), 
-			#		host, port)
 			self.blockMetadata[hash] = (long(nKu.id(), 16), host, port)
-			#self.blockMetadata[hash] = long(nKu.id(), 16)
 		return self._storeMetadata(None)
 
 	# 5a -- store all blocks
@@ -258,13 +264,13 @@ class StoreFile:
 		for i in range(len(self.segHashesLocal)):
 			hash = self.segHashesLocal[i]
 			sfile = self.sfiles[i]
-			deferred = self._storeBlock(hash, sfile)
+			deferred = self._storeBlock(hash, sfile, self.mfiles[i])
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
 		dl.addCallback(self._storeMetadata)
 		return dl
 
-	def _storeBlock(self, hash, sfile, retry=2):
+	def _storeBlock(self, hash, sfile, mfile, retry=2):
 		nodeChoices = self.routing.knownExternalNodes()
 		if not nodeChoices:
 			return defer.fail(failure.DefaultException(
@@ -275,9 +281,10 @@ class StoreFile:
 		nID = node[2]
 		nKu = FludRSA.importPublicKey(node[3])
 		logger.info("STOREing under %s on %s:%d" % (fencode(hash), host, port))
-		#self.blockMetadata[hash] = (long(nKu.id(),16), host, port)
 		self.blockMetadata[hash] = long(nKu.id(), 16)
-		deferred = self.node.client.sendStore(sfile, None, host, port, nKu) 
+		logger.debug("mfile is %s" % mfile)
+		deferred = self.node.client.sendStore(sfile, (self.mkey, mfile), host, 
+				port, nKu) 
 		deferred.addCallback(self._fileStored, hash)
 		deferred.addErrback(self._retryStoreBlock, hash, sfile,
 				"%s (%s:%d)" % (fencode(nID), host, port), retry)
@@ -311,7 +318,7 @@ class StoreFile:
 	def _compareMetadata(self, storedFiles, fileNames):
 		# compares the block names returned from DHT to those in fileNames.
 		# @param storedFiles: dict of longs (hashes) to their locations, 
-		#                     usually obtained from storedMetadata['b']
+		#                     usually obtained from storedMetadata
 		# @param fileNames: local filenames.  Only the os.path.basename part 
 		#                     will be used for comparison
 		# @return true if they match up perfectly, false otherwise
@@ -337,7 +344,10 @@ class StoreFile:
 
 	# 5b -- findnode on all stored blocks. 
 	def _verifyAndStoreBlocks(self, storedMetadata):
-		self.blockMetadata = storedMetadata['b']
+		# XXX: XXX: XXX: this needs to verify the metadata part, too (VERIFY
+		# needs to change), and it would be good if VERIFY/STORE were combined
+		# in this case (speeds up initial STORE)
+		self.blockMetadata = storedMetadata
 		dlist = []
 		for sfile in self.sfiles:
 			seg = os.path.basename(sfile)
@@ -357,7 +367,8 @@ class StoreFile:
 					False)
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
-		dl.addCallback(self._storeMetadata)
+		#dl.addCallback(self._storeMetadata)
+		dl.addCallback(self._updateMaster, storedMetadata)
 		return dl
 
 	# 5c -- verify all blocks, store any that fail verify.
@@ -426,7 +437,7 @@ class StoreFile:
 	def _piggybackStoreMetadata(self, piggybackMeta):
 		logger.debug("need to parse this %s: %s" 
 				% (type(piggybackMeta), piggybackMeta))
-		self.blockMetadata = piggybackMeta[1]['b']
+		self.blockMetadata = piggybackMeta[1]
 		logger.debug("which is %s, i think", self.blockMetadata)
 		return self._storeMetadata([])
 
@@ -444,24 +455,19 @@ class StoreFile:
 		# clean up locally coded files and encrypted file
 		for sfile in self.sfiles:
 			os.remove(sfile)
-			#logger.info("removed %s" % sfile)
-		if self.encodedir: os.rmdir(self.encodedir)
+		#for mfile in self.mfiles:
+		#	os.remove(mfile)
+		#if self.encodedir: os.rmdir(self.encodedir)
 		if self.efilename: os.remove(self.efilename)
 
 		# storeMetadata part of storeMetadata
-		meta = {self.config.nodeID: self.nodeFileMetadata, 
-				'b' :self.blockMetadata}
+		meta = self.blockMetadata
 		# XXX: should sign metadata to prevent forged entries.
-		logger.debug("node metadata = %s" 
-				% {self.config.nodeID: self.nodeFileMetadata})
 		#for i in self.blockMetadata:
 		#	logger.debug("  %s: %s" 
 		#			% (fencode(i), fencode(self.blockMetadata[i])))
 		logger.debug("storing metadata at %s" % fencode(self.sK))
-		logger.info("len(segMetadata) = %d" % len(self.blockMetadata))
-		logger.debug("len(meta) = %d" % len(str(meta)))
-		logger.debug("len(nodemeta) = %d" % len(str(self.nodeFileMetadata)))
-		logger.debug("len(segmmeta) = %d" % len(str(self.blockMetadata)))
+		logger.debug("len(segMetadata) = %d" % len(self.blockMetadata))
 		d = self.node.client.kStore(self.sK, meta) 
 		d.addCallback(self._updateMaster, meta)
 		d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
@@ -498,9 +504,9 @@ class StoreFile:
 		m.write(fencode(meta))
 		m.close()
 
-		# clean up local metadata file
+		# clean up fs metadata file
 		os.remove(self.mfilename)
-		logger.info("removed %s" % self.mfilename)
+
 		#return fencode(self.sK)
 		(d, counter) = self.currentOps[self.eK]
 		counter = counter - 1
@@ -579,25 +585,23 @@ class RetrieveFile:
 		if self.meta == None:
 			raise LookupError("couldn't recover metadata for %s" % self.sK)
 		logger.info("got metadata %s" % self.meta)
-		for i in self.meta:
-			if i == self.Ku.id():
-				self.nmeta = self.meta[i]
-				logger.info("got metadata for node %s:" % fencode(long(i,16)))
 		self.decoded = False
-		self.decoder = Decoder(os.path.join(self.parentcodedir,fencode(self.sK))
-				+".rec1", code_k, code_m, code_l)
+		self.decoder = Decoder(os.path.join(self.parentcodedir,
+			fencode(self.sK))+".rec1", code_k, code_m, code_l)
+		self.mdecoder = Decoder(os.path.join(self.parentcodedir,
+			fencode(self.sK))+".m", code_k, code_m, code_l)
 		#return self._getSomeBlocks()
-		return self._getSomeBlocks(25) # XXX: magic. Should derive from k & m
+		return self._getSomeBlocks(25) # XXX: magic 25. Should derive from k & m
 
 	def _getSomeBlocks(self, reqs=40):  # XXX: magic 40. Should be k+m
 		tries = 0
-		if reqs > len(self.meta['b']):
-			reqs = len(self.meta['b'])
+		if reqs > len(self.meta):
+			reqs = len(self.meta)
 		dlist = []
 		for i in range(reqs):
-			c = random.choice(self.meta['b'].keys())
+			c = random.choice(self.meta.keys())
 			block = fencode(c)
-			id = self.meta['b'][c]
+			id = self.meta[c]
 			if isinstance(id, list):
 				logger.info("multiple location choices, choosing one randomly.")
 				id = random.choice(id)
@@ -612,7 +616,7 @@ class RetrieveFile:
 			deferred.addErrback(self._retrieveBlockErr, 
 					"couldn't get block %s from node %s" % (block, fencode(id)))
 			dlist.append(deferred)
-			self.meta['b'].pop(c)
+			self.meta.pop(c)
 			tries = tries + 1
 			if tries >= reqs:
 				break;
@@ -652,13 +656,13 @@ class RetrieveFile:
 
 	def _retrievedAll(self, success):
 		logger.info("tried retreiving %d blocks %s" % (len(success), success))
-		if not self.decoded and len(self.meta['b']) > 0:
+		if not self.decoded and len(self.meta) > 0:
 			tries = 5  # XXX: magic number. Should derive from k & m 
 			logger.info("requesting %d more blocks" % tries)
 			return self._getSomeBlocks(tries) 
 		if self.decoded:
 			logger.info("file successfully decoded")
-			return self._decryptFile() 
+			return self._decryptMeta() 
 		else:
 			logger.info("couldn't decode file after retreiving all %d"
 					" available blocks" %self.numDecoded)
@@ -668,14 +672,27 @@ class RetrieveFile:
 
 	def _decodeBlock(self, msg, block):
 		logger.debug("decode block=%s, msg=%s" % (block, msg))
-		#self.meta['b'].pop(block)
 		self.numDecoded += 1
-		if not self.decoded and self.decoder.decodeData(
-				os.path.join(self.parentcodedir,block)):
+		# XXX: msg[0|1] depends on ordering.  check names instead
+		metadecoded = self.mdecoder.decodeData(msg[0])
+		decoded = self.decoder.decodeData(msg[1]) 
+		if not self.decoded and decoded and metadecoded:
 			self.decoded = True
 			logger.info("successfully decoded (retrieved %d blocks --"
 					" all but %d blocks tried)" % (self.numDecoded, 
-						len(self.meta['b'])))
+						len(self.meta)))
+		else:
+			logger.info("decoded=%s, mdecoded=%s" % (decoded, metadecoded))
+
+	def _decryptMeta(self):
+		# XXX: decrypt the metadatafile with Kr to get all the nmeta stuff (eeK
+		# etc.)
+		mfile = open(os.path.join(self.parentcodedir, fencode(self.sK)+".m"))
+		meta = mfile.read()
+		mfile.close()
+		logger.info("meta is %s" % meta)
+		self.nmeta = fdecode(meta)
+		return self._decryptFile()
 	
 	def _decryptFile(self):
 		# 3: Retrieve eK from sK by eK=Kr(eeK).  Use eK to decrypt file.  Strip
@@ -894,7 +911,7 @@ class UpdateMasterIndex:
 		self.deferred.addErrback(self._storeMasterIndex)
 
 	def _removeOldMasterIndex(self, res):
-		# 0.2. for i in oldmaster['b']: delete(i)
+		# 0.2. for i in oldmaster: delete(i)
 		print "removing old master not yet implemented"
 		return self._storeMasterIndex(res)
 
@@ -960,7 +977,7 @@ if __name__ == "__main__":
 			logger.info("finished %s ------" % msg)
 			logger.info("---------------------------------------------------\n")
 		# delete a block and do a store
-		c = random.choice(meta['b'].keys())
+		c = random.choice(meta.keys())
 		logger.info("removing %s" % fencode(c))
 		os.remove(os.path.join(n.config.storedir,fencode(c)))
 		logger.info("test removed %s" % os.path.join(n.config.storedir,
@@ -976,7 +993,7 @@ if __name__ == "__main__":
 			logger.info("finished %s ------" % msg)
 			logger.info("---------------------------------------------------\n")
 		# corrupt a block and do a store
-		c = random.choice(meta['b'].keys())
+		c = random.choice(meta.keys())
 		logger.info("corrupting %s" % fencode(c))
 		f = open(os.path.join(n.config.storedir,fencode(c)), 'r')
 		data = f.read()

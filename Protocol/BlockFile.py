@@ -95,6 +95,9 @@ class BlockFile:
 	True
 	>>> f.meta(9)
 	{'gg': 'z', 'ff': 'y'}
+	>>> f.addNode(9, {'gg': 'x'})
+	>>> f.meta(9)
+	{'gg': 'x', 'ff': 'y'}
 	>>> f.hasNode(34)
 	False
 	>>> f.meta(34)

@@ -557,9 +557,11 @@ class SENDDELETE(REQUEST):
 
 class SENDVERIFY(REQUEST):
 
-	def __init__(self, nKu, node, host, port, filename, offset, length):
+	def __init__(self, nKu, node, host, port, filename, offset, length, 
+			meta=None):
 		"""
 		Try to verify a file.
+		If meta is present, it should be a (metakey, filelikeobj) pair.
 		"""
 		host = getCanonicalIP(host)
 		REQUEST.__init__(self, host, port, node)
@@ -574,6 +576,9 @@ class SENDVERIFY(REQUEST):
 		url += "&Ku_n="+str(Ku['n'])
 		url += "&offset="+str(offset)
 		url += "&length="+str(length)
+		if meta:
+			url += "&metakey="+str(meta[0])
+			url += "&meta="+fencode(meta[1].read())
 		self.timeoutcount = 0
 
 		if not isinstance(nKu, FludRSA):

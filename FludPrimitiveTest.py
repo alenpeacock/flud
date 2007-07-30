@@ -53,6 +53,8 @@ def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash):
 				% (hash, res))
 	return testDELETE(res, nKu, fname, fkey, mkey, node, host, port)
 
+# XXX: need to do some VERIFIES that add metadata
+
 def testVERIFY(nKu, fname, fkey, mkey, node, host, port):
 	""" executes after checkRETRIEVE """
 	""" Test sendVerify """
@@ -66,7 +68,9 @@ def testVERIFY(nKu, fname, fkey, mkey, node, host, port):
 	data = os.read(fd, length)
 	os.close(fd)
 	hash = FludCrypto.hashstring(data)
-	deferred = node.client.sendVerify(fkey, offset, length, host, port, nKu)
+	mkey = crc32(fname)
+	deferred = node.client.sendVerify(fkey, offset, length, host, port, nKu,
+			(mkey, StringIO(metadatablock)))
 	deferred.addCallback(checkVERIFY, nKu, fname, fkey, mkey, node, host, port,
 			hash)
 	deferred.addErrback(testerror, "failed at testVERIFY", node)

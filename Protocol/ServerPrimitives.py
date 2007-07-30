@@ -7,6 +7,7 @@ Primitive server storage protocol
 
 import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
 import tempfile, tarfile
+from StringIO import StringIO
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import reactor, threads, defer
@@ -402,7 +403,6 @@ class RETRIEVE(ROOT):
 		else:
 			loggerretr.info("received RETRIEVE request for %s from %s..."
 					% (request.path, params['nodeID'][:10]))
-
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
 			filekey = re.sub('/RETRIEVE', '', str(request.path))
@@ -638,6 +638,14 @@ class VERIFY(ROOT):
 		else:
 			loggervrfy.log(logging.INFO, "received VERIFY request from %s..."
 					% params['nodeID'])
+			if 'meta' in request.args:
+				params['metakey'] = request.args['metakey'][0]
+				params['meta'] = request.args['meta'][0]
+				loggerretr.info("VERIFY contained meta field with %d chars"
+						% len(params['meta']))
+				meta = (params['metakey'], params['meta'])
+			else:
+				meta = None
 
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
@@ -658,15 +666,20 @@ class VERIFY(ROOT):
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
-					self._sendVerify, request, filekey, offset, length, reqKu)
+					self._sendVerify, request, filekey, offset, length, reqKu,
+					params['nodeID'], meta)
 			
 						
-	def _sendVerify(self, request, filekey, offset, length, reqKu):
+	def _sendVerify(self, request, filekey, offset, length, reqKu, nodeID, 
+			meta):
 		fname = self.config.storedir+filekey
 		loggervrfy.debug("request for %s" % fname)
 		if os.path.exists(fname):
 			loggervrfy.debug("looking in regular blockfile for %s" % fname)
-			f = BlockFile.open(fname, 'rb')
+			if meta:
+				f = BlockFile.open(fname, 'rb+')
+			else:
+				f = BlockFile.open(fname, 'rb')
 		else:
 			# check for tarball for originator
 			loggervrfy.debug("checking tarball for %s" % fname)
@@ -691,12 +704,48 @@ class VERIFY(ROOT):
 					# XXX: bad blocking read
 					data = tarf.read(length)
 					tarf.close()
+					if meta:
+						mfname = "%s.%s.meta" % (tfilekey, meta[0])
+						if mfname in tar.getnames():
+							# make sure that the data is the same, if not,
+							# remove it and re-add it
+							tarmf = tar.extractfile(mfname)
+							# XXX: bad blocking read
+							stored_meta = tarmf.read()
+							tarmf.close()
+							if meta[1] != stored_meta:
+								loggervrfy.debug("updating tarball"
+										" metadata for %s.%s" 
+										% (tfilekey, meta[0]))
+								tar.close()
+								TarfileUtils.delete(tarball, mfname)
+								tar = tarfile.open(tarball, 'a')
+								metaio = StringIO(meta[1])
+								tinfo = tarfile.TarInfo(mfname)
+								tinfo.size = len(meta[1])
+								tar.addfile(tinfo, metaio)
+							else:
+								loggervrfy.debug("no need to update tarball"
+										" metadata for %s.%s" 
+										% (tfilekey, meta[0]))
+						else:
+							# add it
+							loggervrfy.debug("adding tarball metadata"
+									" for %s.%s" % (tfilekey, meta[0]))
+							tar.close()
+							tar = tarfile.open(tarball, 'a')
+							metaio = StringIO(meta[1])
+							tinfo = tarfile.TarInfo(mfname)
+							tinfo.size = len(meta[1])
+							tar.addfile(tinfo, metaio)
+						
 					tar.close()
 					hash = FludCrypto.hashstring(data)
 					loggervrfy.info("successful VERIFY (from %s)" % tarball)
 					return hash
 				except:
 					tar.close()
+					raise
 			loggervrfy.debug("requested file %s doesn't exist" % fname)
 			msg = "Not found: not storing %s" % filekey
 			request.setResponseCode(http.NOT_FOUND, msg)
@@ -711,8 +760,14 @@ class VERIFY(ROOT):
 			request.setResponseCode(http.BAD_REQUEST, msg) 
 			return msg
 		else:
+			# XXX: blocking
 			f.seek(offset)
 			data = f.read(length)
+			if meta:
+				loggervrfy.debug("adding metadata for %s.%s" 
+						% (fname, meta[0]))
+				f.addNode(int(nodeID, 16) , {meta[0]: meta[1]})
+			# XXX: blocking
 			f.close()
 			hash = FludCrypto.hashstring(data)
 			loggervrfy.debug("returning VERIFY")

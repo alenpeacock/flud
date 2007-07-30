@@ -107,18 +107,21 @@ class FludClient(object):
 		else:
 			return SENDRETRIEVE(nKu, self.node, host, port, filekey).deferred
 	
-	def sendVerify(self, filekey, offset, length, host, port, nKu=None):
-		def sendVerifyWithNKu(nKu, host, port, filekey, offset, length):
+	def sendVerify(self, filekey, offset, length, host, port, nKu=None, 
+			meta=None):
+		def sendVerifyWithNKu(nKu, host, port, filekey, offset, length, 
+				meta=None):
 			return SENDVERIFY(nKu, self.node, host, port, filekey, offset, 
-					length).deferred
+					length, meta).deferred
 
 		if not nKu:
 			d = self.sendGetID(host, port)
 			d.addCallback(sendVerifyWithNKu, host, port, filekey, offset, 
-					length)
+					length, meta)
 			return d
 		else:
-			s = SENDVERIFY(nKu, self.node, host, port, filekey, offset, length)
+			s = SENDVERIFY(nKu, self.node, host, port, filekey, offset, length,
+					meta)
 			return s.deferred
 	
 	def sendDelete(self, filekey, metakey, host, port, nKu=None):

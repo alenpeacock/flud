@@ -1,6 +1,7 @@
 import os, __builtin__, tempfile, stat, sys, struct
 sys.path.append("..")
 from fencode import *
+from binascii import crc32
 
 """
 BlockFile.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
@@ -157,6 +158,8 @@ class BlockFile:
 		self._dataend = 8 + self._size
 		self._file.seek(self._dataend)
 		self._accounting = fdecode(self._file.read())
+		self._accountingcrc = crc32(str(self._accounting))
+		self._changed = False
 		if mode[0] == 'a':
 			self._file.seek(self._dataend)
 		else:
@@ -191,6 +194,7 @@ class BlockFile:
 		return self._size
 
 	def write(self, data):
+		self._changed = True
 		self._file.write(data)
 		if self._file.tell() > self._dataend:
 			enlargement = self._file.tell() - self._dataend
@@ -202,7 +206,9 @@ class BlockFile:
 
 	def close(self):
 		if not self._file.closed: # XXX
-			if self.mode[0] != 'r' or self.mode.find('+') > 0:
+			if (self.mode[0] != 'r' or self.mode.find('+') > 0) \
+					and (self._changed 
+						or crc32(str(self._accounting)) != self._accountingcrc):
 				saved = self._file.tell()
 				self._file.seek(self._dataend)
 				self._file.write(fencode(self._accounting))

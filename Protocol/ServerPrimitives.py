@@ -745,7 +745,6 @@ class VERIFY(ROOT):
 					return hash
 				except:
 					tar.close()
-					raise
 			loggervrfy.debug("requested file %s doesn't exist" % fname)
 			msg = "Not found: not storing %s" % filekey
 			request.setResponseCode(http.NOT_FOUND, msg)

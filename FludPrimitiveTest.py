@@ -53,8 +53,6 @@ def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash):
 				% (hash, res))
 	return testDELETE(res, nKu, fname, fkey, mkey, node, host, port)
 
-# XXX: need to do some VERIFIES that add metadata
-
 def testVERIFY(nKu, fname, fkey, mkey, node, host, port):
 	""" executes after checkRETRIEVE """
 	""" Test sendVerify """

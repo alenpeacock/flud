@@ -5,6 +5,8 @@ from Protocol.FludClient import FludClient
 import FludCrypto
 from Protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, shutil, tempfile
+from binascii import crc32
+from StringIO import StringIO
 from twisted.python import failure
 from fencode import fencode
 
@@ -20,6 +22,8 @@ smallfilenamebad = ""
 largefilekey = ""
 largefilename = ""
 largefilenamebad = ""
+
+metadata = 'aaaa'
 
 def testerror(failure, message, node):
 	"""
@@ -47,8 +51,8 @@ def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
 
 def testDELETEBadKey(nKu, node, host, port):
 	print "starting testDELETEBadKey"
-	deferred = node.client.sendDelete(os.path.join("somedir",largefilekey), 
-			host, port, nKu)
+	path = os.path.join("somedir", largefilekey)
+	deferred = node.client.sendDelete(path, crc32(path), host, port, nKu)
 	deferred.addCallback(testUnexpectedSuccess, "DELETE with bad key succeeded",
 			node)
 	deferred.addErrback(testDELETEBadKeyFailed, 
@@ -172,7 +176,8 @@ def testSTORELargeFailed(failure, msg, node, nKu, host, port):
 
 def testSTOREBadKeyLarge(nKu, node, host, port):
 	print "starting testSTOREBadKeyLarge"
-	deferred = node.client.sendStore(largefilenamebad, None, host, port, nKu)
+	deferred = node.client.sendStore(largefilenamebad, 
+			(crc32(largefilenamebad), StringIO(metadata)), host, port, nKu)
 	deferred.addCallback(testUnexpectedSuccess, "large file, bad key succeeded",
 			node)
 	deferred.addErrback(testSTORELargeFailed, 
@@ -190,7 +195,8 @@ def testSTORESmallFailed(failure, msg, node, nKu, host, port):
 
 def testSTOREBadKeySmall(nKu, node, host, port):
 	print "starting testSTOREBadKeySmall"
-	deferred = node.client.sendStore(smallfilenamebad, None, host, port, nKu)
+	deferred = node.client.sendStore(smallfilenamebad, 
+			(crc32(smallfilenamebad), StringIO(metadata)), host, port, nKu)
 	deferred.addCallback(testUnexpectedSuccess, "small file, bad key succeeded",
 			node)
 	deferred.addErrback(testSTORESmallFailed, 
@@ -205,7 +211,8 @@ def testSTORESuccess(res, nKu, node, host, port):
 def testSTORE(nKu, node, host, port):
 	# store a file successfully for later failure tests (VERIFY, etc)
 	print "starting testSTORE"
-	deferred = node.client.sendStore(smallfilename, None, host, port, nKu)
+	deferred = node.client.sendStore(smallfilename, 
+			(crc32(smallfilename), StringIO(metadata)), host, port, nKu)
 	deferred.addCallback(testSTORESuccess, nKu, node, host, port)
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred

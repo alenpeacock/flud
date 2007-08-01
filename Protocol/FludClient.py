@@ -96,6 +96,7 @@ class FludClient(object):
 		d.addBoth(removeKey, key)
 		return d
 	
+	# XXX: need a version that takes a metakey, too
 	def sendRetrieve(self, filekey, host, port, nKu=None):
 		def sendRetrieveWithNKu(nKu, host, port, filekey):
 			return SENDRETRIEVE(nKu, self.node, host, port, filekey).deferred

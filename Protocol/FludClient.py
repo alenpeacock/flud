@@ -97,16 +97,18 @@ class FludClient(object):
 		return d
 	
 	# XXX: need a version that takes a metakey, too
-	def sendRetrieve(self, filekey, host, port, nKu=None):
-		def sendRetrieveWithNKu(nKu, host, port, filekey):
-			return SENDRETRIEVE(nKu, self.node, host, port, filekey).deferred
+	def sendRetrieve(self, filekey, host, port, nKu=None, metakey=True):
+		def sendRetrieveWithNKu(nKu, host, port, filekey, metakey=True):
+			return SENDRETRIEVE(nKu, self.node, host, port, filekey, 
+					metakey).deferred
 
 		if not nKu:
 			d = self.sendGetID(host, port)
-			d.addCallback(sendRetrieveWithNKu, host, port, filekey)
+			d.addCallback(sendRetrieveWithNKu, host, port, filekey, metakey)
 			return d
 		else:
-			return SENDRETRIEVE(nKu, self.node, host, port, filekey).deferred
+			return SENDRETRIEVE(nKu, self.node, host, port, filekey,
+					metakey).deferred
 	
 	def sendVerify(self, filekey, offset, length, host, port, nKu=None, 
 			meta=None):

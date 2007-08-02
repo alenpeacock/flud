@@ -100,7 +100,8 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port):
 def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port):
 	""" Tests sendRetrieve, and invokes checkRETRIEVE on success """
 	print "starting testRETRIEVE %s" % fname
-	deferred = node.client.sendRetrieve(fkey, host, port, nKu)
+	mkey = crc32(fname)
+	deferred = node.client.sendRetrieve(fkey, host, port, nKu, mkey)
 	deferred.addCallback(checkRETRIEVE, nKu, fname, fkey, mkey, node, host, 
 			port)
 	deferred.addErrback(testerror, "failed at testRETRIEVE", node)

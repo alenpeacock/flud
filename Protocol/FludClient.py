@@ -111,9 +111,9 @@ class FludClient(object):
 					metakey).deferred
 	
 	def sendVerify(self, filekey, offset, length, host, port, nKu=None, 
-			meta=None):
+			meta=True):
 		def sendVerifyWithNKu(nKu, host, port, filekey, offset, length, 
-				meta=None):
+				meta=True):
 			return SENDVERIFY(nKu, self.node, host, port, filekey, offset, 
 					length, meta).deferred
 

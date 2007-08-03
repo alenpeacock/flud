@@ -27,7 +27,7 @@ loggervrfy = logging.getLogger("flud.client.op.vrfy")
 loggerauth = logging.getLogger("flud.client.op.auth")
 
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
-TARFILE_TO = 5       # timeout for checking aggregated tar files
+TARFILE_TO = 2       # timeout for checking aggregated tar files
 
 # FUTURE: check flud protocol version for backwards compatibility
 # XXX: need to make sure we have appropriate timeouts for all comms.

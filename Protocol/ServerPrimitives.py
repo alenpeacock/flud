@@ -835,7 +835,14 @@ class DELETE(ROOT):
 			if os.path.exists(tarball):
 				tfilekey = filekey[1:]
 				mfilekey = "%s.%s.meta" % (tfilekey, metakey)
-				deleted = TarfileUtils.delete(tarball, [tfilekey, mfilekey])
+				tar = tarfile.open(tarball, 'r')
+				mnames = [n for n in tar.getnames() 
+						if n[:len(tfilekey)] == tfilekey]
+				tar.close()
+				if len(mnames) > 2:
+					deleted = TarfileUtils.delete(tarball, mfilekey)
+				else:
+					deleted = TarfileUtils.delete(tarball, [tfilekey, mfilekey])
 				if deleted:
 					loggerdele.info("DELETED %s (from %s)" % (deleted, tarball))
 				return ""

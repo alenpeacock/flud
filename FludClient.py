@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 """
 FludClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed under
 the terms of the GNU General Public License (the GPL), version 2.
@@ -1119,6 +1121,7 @@ class FilePanel(wx.SplitterWindow):
 
 		# XXX: fludfile.conf path should be in config
 		self.fludfiles = self.getFludHome()+"/fludfile.conf"
+		print self.fludfiles
 		if os.path.isfile(self.fludfiles):
 			file = open(self.fludfiles, 'r')
 			states = eval(file.read())

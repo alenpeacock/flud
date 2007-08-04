@@ -293,6 +293,7 @@ class STORE(ROOT):
 				loggerstor.debug("saving tarfile")
 				os.rename(tmpfile, tarname)
 		else:
+			# client sent regular file
 			h = FludCrypto.hashfile(tmpfile)
 			if request.args.has_key('meta') and request.args.has_key('metakey'):
 				metakey = request.args.get('metakey')[0]
@@ -313,6 +314,7 @@ class STORE(ROOT):
 				if not f.hasNode(nodeID):
 					f.addNode(int(nodeID,16), {metakey: meta})
 					f.close()
+				os.remove(tmpfile)
 			else:
 				if os.path.exists(nodeID+".tar"):
 					# XXX: need to do something with metadata!
@@ -417,11 +419,10 @@ class RETRIEVE(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
-			if request.args.has_key('meta'):
-				if request.args['meta'] == 'True':
+			if request.args.has_key('metakey'):
+				returnMeta = request.args['metakey']
+				if returnMeta == 'True':
 					returnMeta = True
-				else:
-					returnMeta = request.args['meta']
 			else:
 				returnMeta = True
 

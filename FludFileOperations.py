@@ -7,6 +7,7 @@ Implements file storage and retrieval operations using flud primitives.
 
 import os, stat, sys, logging, binascii, random, time
 from zlib import crc32
+from StringIO import StringIO
 import FludCrypto
 from twisted.internet import defer
 from FludCrypto import FludRSA
@@ -190,6 +191,8 @@ class StoreFile:
 		# XXX: codeData should be run outside of event loop
 		self.sfiles = c.codeData(self.efilename, 
 				os.path.join(self.encodedir, 'c'))
+		# XXX: mfiles should be held in mem, as StringIOs (when coder supports
+		# this)
 		self.mfiles = c.codeData(self.mfilename,
 				os.path.join(self.encodedir, 'm'))
 		self.mkey = crc32(self.filename)
@@ -344,12 +347,13 @@ class StoreFile:
 
 	# 5b -- findnode on all stored blocks. 
 	def _verifyAndStoreBlocks(self, storedMetadata):
-		# XXX: XXX: XXX: this needs to verify the metadata part, too (VERIFY
-		# needs to change), and it would be good if VERIFY/STORE were combined
-		# in this case (speeds up initial STORE)
 		self.blockMetadata = storedMetadata
 		dlist = []
-		for sfile in self.sfiles:
+		for i, sfile in enumerate(self.sfiles):
+			# XXX: metadata should be StringIO to begin with
+			f = file(self.mfiles[i])
+			mfile = StringIO(f.read())
+			f.close()
 			seg = os.path.basename(sfile)
 			segl = fdecode(seg)
 			nid = self.blockMetadata[segl]
@@ -361,18 +365,20 @@ class StoreFile:
 				#      others until it works
 			logger.info("looking up %s..." % ('%x' % nid)[:8])
 			deferred = self.node.client.kFindNode(nid)
-			deferred.addCallback(self._verifyBlock, sfile, seg, segl, nid)
+			deferred.addCallback(self._verifyBlock, sfile, mfile, 
+					seg, segl, nid)
 			deferred.addErrback(self._storeFileErr, 
 					"couldn't find node %s... for VERIFY" % ('%x' % nid)[:8], 
 					False)
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
 		#dl.addCallback(self._storeMetadata)
+		# XXX XXX XXX: don't _updateMaster unless we succeed!!
 		dl.addCallback(self._updateMaster, storedMetadata)
 		return dl
 
 	# 5c -- verify all blocks, store any that fail verify.
-	def _verifyBlock(self, kdata, sfile, seg, segl, nid):
+	def _verifyBlock(self, kdata, sfile, mfile, seg, segl, nid):
 		# XXX: looks like we occasionally get in here on timed out connections.
 		#      Should go to _storeFileErr instead, eh?
 		if isinstance(kdata, str):
@@ -411,7 +417,7 @@ class StoreFile:
 		verhash = long(FludCrypto.hashstring(data), 16)
 		
 		deferred = self.node.client.sendVerify(seg, offset, length, 
-				host, port, nKu) 
+					host, port, nKu, (self.mkey, mfile)) 
 		deferred.addCallback(self._checkVerify, nKu, host, port, segl, 
 				sfile, verhash)
 		deferred.addErrback(self._checkVerifyErr, segl, sfile, verhash)
@@ -528,7 +534,7 @@ class StoreFile:
 			logger.debug("err setting counter = %d for %s" % (counter, self.eK))
 			self.currentOps[self.eK] = (d, counter)
 		logger.error("%s: %s" % (message, failure.getErrorMessage()))
-		#logger.debug(failure.getTraceback())
+		logger.debug(failure.getTraceback())
 		if raiseException:
 			raise failure
 
@@ -541,7 +547,7 @@ class RetrieveFile:
 	until the complete file can be regenerated and saved locally.
 	"""
 
-	def __init__(self, node, key):
+	def __init__(self, node, key, mkey=True):
 		# 1: Query DHT for sK
 		# 2: Retrieve entries for sK, decoding until efile can be regenerated
 		# 3: Retrieve eK from sK by eK=Kp(eKe).  Use eK to decrypt file.  Strip
@@ -549,6 +555,7 @@ class RetrieveFile:
 		# 4: Save file as filepath=Kp(efilepath).
 
 		self.node = node
+		self.mkey = mkey
 		try:
 			self.sK = fdecode(key)
 		except Exception, inst:
@@ -642,7 +649,7 @@ class RetrieveFile:
 		id = node[2]
 		nKu = FludRSA.importPublicKey(node[3])
 		if not self.decoded:
-			d = self.node.client.sendRetrieve(block, host, port, nKu)
+			d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
 			d.addCallback(self._decodeBlock, block)
 			d.addErrback(self._retrieveBlockErr, 
 					"couldn't get block %s from %s" % (block, fencode(id)))
@@ -828,8 +835,10 @@ class RetrieveFilename:
 			master = fdecode(master)
 		if master.has_key(self.filename):
 			filekey = master[self.filename]
+			metakey = crc32(self.filename)
+			logger
 			if filekey != None and filekey != "":
-				d = RetrieveFile(self.node, fencode(filekey)).deferred
+				d = RetrieveFile(self.node, fencode(filekey), metakey).deferred
 				return d
 			return defer.fail(LookupError("bad filekey %s for %s" 
 					% (filekey, self.filename)))

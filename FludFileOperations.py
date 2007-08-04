@@ -650,7 +650,7 @@ class RetrieveFile:
 		nKu = FludRSA.importPublicKey(node[3])
 		if not self.decoded:
 			d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
-			d.addCallback(self._decodeBlock, block)
+			d.addCallback(self._decodeBlock, block, self.mkey)
 			d.addErrback(self._retrieveBlockErr, 
 					"couldn't get block %s from %s" % (block, fencode(id)))
 			return d
@@ -677,12 +677,16 @@ class RetrieveFile:
 			raise RuntimeError("couldn't decode file after retreiving all %d" 
 					" available blocks" %self.numDecoded)
 
-	def _decodeBlock(self, msg, block):
+	def _decodeBlock(self, msg, block, mkey):
 		logger.debug("decode block=%s, msg=%s" % (block, msg))
 		self.numDecoded += 1
-		# XXX: msg[0|1] depends on ordering.  check names instead
-		metadecoded = self.mdecoder.decodeData(msg[0])
-		decoded = self.decoder.decodeData(msg[1]) 
+		blockname = [f for f in msg if f[-len(block):] == block][0]
+		expectedmeta = "%s.%s.meta" % (block, mkey)
+		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
+		if not metanames:
+			raise failure.DefaultException("expected metadata was missing")
+		metadecoded = self.mdecoder.decodeData(metanames[0])
+		decoded = self.decoder.decodeData(blockname) 
 		if not self.decoded and decoded and metadecoded:
 			self.decoded = True
 			logger.info("successfully decoded (retrieved %d blocks --"

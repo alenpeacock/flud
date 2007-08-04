@@ -650,7 +650,7 @@ class VERIFY(ROOT):
 					% params['nodeID'])
 			if 'meta' in request.args:
 				params['metakey'] = request.args['metakey'][0]
-				params['meta'] = request.args['meta'][0]
+				params['meta'] = fdecode(request.args['meta'][0])
 				loggerretr.info("VERIFY contained meta field with %d chars"
 						% len(params['meta']))
 				meta = (params['metakey'], params['meta'])

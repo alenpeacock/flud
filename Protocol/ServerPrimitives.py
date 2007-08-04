@@ -285,9 +285,18 @@ class STORE(ROOT):
 				os.remove(tmpfile)
 				request.setResponseCode(http.CONFLICT, msg) 
 				return msg
-			# XXX: add digests to a db of already stored files
+			# XXX: add digests to a db of already stored files (for quick 
+			# lookup)
 			if os.path.exists(tarname):
 				loggerstor.debug("concatenating tarfiles")
+				f1 = tarfile.open(tarname, 'r')
+				f2 = tarfile.open(tmpfile, 'r')
+				f1names = f1.getnames()
+				f2names = f2.getnames()
+				f1.close()
+				f2.close()
+				dupes = [f for f in f1names if f in f2names]
+				TarfileUtils.delete(tmpfile, dupes)
 				TarfileUtils.concatenate(tarname, tmpfile)
 			else:
 				loggerstor.debug("saving tarfile")

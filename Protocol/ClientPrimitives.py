@@ -294,8 +294,13 @@ class AggregateStore:
 					% (tarfilename, datafile))
 			tar = tarfile.open(tarfilename, "a")
 		
-		loggerstoragg.debug("adding data to tarball")
-		tar.add(datafile, os.path.basename(datafile))
+		if os.path.basename(datafile) not in tar.getnames():
+			loggerstoragg.info("adding datafile %s to tarball, %s" 
+					% (os.path.basename(datafile), tar.getnames()))
+			loggerstoragg.debug("adding data to tarball")
+			tar.add(datafile, os.path.basename(datafile))
+		else:
+			loggerstoragg.info("skip adding datafile %s to tarball" % datafile)
 
 		if metadata:
 			metafilename = "%s.%s.meta" % (os.path.basename(datafile), 

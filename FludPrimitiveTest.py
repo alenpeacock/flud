@@ -138,6 +138,17 @@ def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable,
 	return deferred
 
 # XXX: need to do another testSTORE with different mkey (to test multiple)
+def testSTORE2(nKu, fname, fkey, node, host, port):
+	mkey = crc32(fname)
+	mkey2 = mkey+(2*fake_mkey_offset)
+	print "starting testSTORE %s.%s" % (fname, mkey2)
+	deferred = node.client.sendStore(fname, (mkey2, StringIO(metadatablock)), 
+			host, port, nKu)
+	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey2, node, host,
+			port, lambda args=(nKu, fname, fkey, mkey, node, host, port, 
+				False): testVERIFY(*args))
+	deferred.addErrback(testerror, "failed at testSTORE", node)
+	return deferred
 
 def testSTORE(nKu, fname, fkey, node, host, port):
 	""" Tests sendStore, and invokes testRETRIEVE on success """
@@ -146,8 +157,7 @@ def testSTORE(nKu, fname, fkey, node, host, port):
 	deferred = node.client.sendStore(fname, (mkey, StringIO(metadatablock)), 
 			host, port, nKu)
 	deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey, node, host, port,
-			lambda args=(nKu, fname, fkey, mkey, node, host, port, 
-				False): testVERIFY(*args))
+			lambda args=(nKu, fname, fkey, node, host, port): testSTORE2(*args))
 	deferred.addErrback(testerror, "failed at testSTORE", node)
 	return deferred
 

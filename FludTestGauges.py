@@ -6,7 +6,7 @@ under the terms of the GNU General Public License (the GPL).
 Provides gauges for visualizing storage for multiple flud nodes running on 
 the same host.  This is really only useful for demos and testing.
 """
-import sys, os, stat, random
+import sys, os, signal, stat, random
 import wx
 import wx.lib.buttons as buttons
 from FludConfig import FludConfig
@@ -90,18 +90,18 @@ class FludTestGauges(wx.Frame):
 			self.gauges[i].dhtgauge = wx.Gauge(self, -1, 100,
 					(curCol*COLWIDTH+LABELWIDTH+SGAUGEWIDTH+SEP, curRow), 
 					(SGAUGEWIDTH/3, GAUGEHEIGHT))
-			self.gauges[i].button = wx.Button(self, i, "power",
+			self.gauges[i].power = wx.Button(self, i, "power",
 					(curCol*COLWIDTH
 						+LABELWIDTH+SGAUGEWIDTH+2*SEP+SGAUGEWIDTH/3, 
 						curRow),
 					(POWERWIDTH, ROWHEIGHT))
-			#self.gauges[i].button = buttons.GenBitmapToggleButton(self, i, 
+			#self.gauges[i].power = buttons.GenBitmapToggleButton(self, i, 
 			#		None, 
 			#		(LABELWIDTH+SGAUGEWIDTH+2*SEP+SGAUGEWIDTH/3, curRow),
 			#		(POWERWIDTH, ROWHEIGHT))
 			#self.gauges[i].button.SetBestSize()
-			self.gauges[i].button.SetToolTipString("press me to shut down")
-			self.Bind(wx.EVT_BUTTON, self.onClick, self.gauges[i].button)
+			self.gauges[i].power.SetToolTipString("power on/off")
+			self.Bind(wx.EVT_BUTTON, self.onClick, self.gauges[i].power)
 
 			curRow += rowheight
 			if curRow > height-RATIOBARHEIGHT:
@@ -122,7 +122,41 @@ class FludTestGauges(wx.Frame):
 		self.timer.Start(1000)
 
 	def onClick(self, event):
-		print "click! %s" % event.GetId()
+		# XXX: note that under our current startNnodes.sh scheme, the first
+		# node spawned doesn't contact anyone, so if that one is powered off
+		# and then powered back on, it will not be part of the node until
+		# another node pings it
+		# XXX: unix-specific proc management stuff follows
+		idx = event.GetId()
+		home = self.gauges[idx].dir
+		pidfile = os.path.join(home, 'twistd.pid')
+		if os.path.exists(pidfile):
+			print "shutting down %s" % home
+			f = open(pidfile)
+			pid = int(f.read())
+			f.close()
+			# XXX: ps command no worky on windows, and "-ww" may not worker on
+			# oldskool unixes
+			self.gauges[idx].savedCmd = os.popen(
+					"ps f -wwp %d -o args=" % pid).read()
+			procline = os.popen("ps e -wwp %d" % pid).read()
+			self.gauges[idx].savedEnv = [e for e in procline.split() 
+					if e[:4] == 'FLUD']
+			# XXX: os.kill no worky on windows, need something like:
+			#def windowskill(pid):
+			#	import win32api
+			#	handle = win32api.OpenProcess(1, 0, pid)
+			#	return (0 != win32api.TerminateProcess(handle, 0))
+			os.kill(pid, signal.SIGTERM)
+		else:
+			print "powering up %s" % home
+			# XXX: this exec no worky on windows
+			fullcmd = "%s %s" % (' '.join(self.gauges[idx].savedEnv), 
+				self.gauges[idx].savedCmd)
+			print fullcmd
+			result = os.popen('%s %s' % (' '.join(self.gauges[idx].savedEnv), 
+				self.gauges[idx].savedCmd)).readlines()
+			print result
 
 	def update(self):
 
@@ -158,7 +192,7 @@ class FludTestGauges(wx.Frame):
 				i.storebytes = 0
 				i.dhtbytes = 0
 				i.Disable()
-				i.button.Disable()
+				i.power.Disable()
 
 		while storelargest > self.storebarend:
 			self.storebarend = self.storebarend * 2
@@ -204,8 +238,11 @@ if __name__ == '__main__':
 		sys.exit()
 	root = sys.argv[1]
 	exts = []
-	for i in sys.argv[2].split(','):
-		if i.find('-') >= 0:
+	dirs = [d.strip() for d in sys.argv[2].split(',')]
+	for i in dirs:
+		if i == "_":
+			exts.append('') # undocumented, means "just dircommon"
+		elif i.find('-') >= 0:
 			start, end = i.split('-')
 			for j in range(int(start),int(end)+1):
 				exts.append(j)

@@ -65,17 +65,25 @@ class LocalProtocol(basic.LineReceiver):
 			return RetrieveFilename(self.factory.node, fname).deferred
 		elif command == "FNDN":
 			logger.debug("FNDN %s" % fname);
-			return self.factory.node.client.kFindNode(long(fname, 16))
+			try: 
+				intval = long(fname, 16)
+			except: 
+				return defer.fail("fname was not hex")
+			return self.factory.node.client.kFindNode(intval)
 			# The following is for testing aggregation of kFindNode on same key
 			#dl = []
 			#for i in [1,2,3,4,5]:
-			#	d = self.factory.node.client.kFindNode(long(fname, 16))
+			#	d = self.factory.node.client.kFindNode(intval)
 			#	dl.append(d)
 			#dlist = defer.DeferredList(dl)
 			#return dlist
 		elif command == "FNDV":
 			logger.debug("FNDV %s" % fname);
-			return self.factory.node.client.kFindValue(long(fname, 16))
+			try: 
+				intval = long(fname, 16)
+			except: 
+				return defer.fail("fname was not hex")
+			return self.factory.node.client.kFindValue(intval)
 		elif command == "CRED":
 			passphrase, email = fdecode(fname)
 			# XXX: allow an optional passphrase hint to be sent in email.

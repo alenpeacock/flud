@@ -146,16 +146,27 @@ class FludScheduler:
 		self.fileChangeTime = time.time()
 		return changedFiles
 
+	def storefileFailed(self, err, file):
+		print "storing %s failed: %s" % (file, err)
+
+	def storefileYay(self, r, file):
+		print "storing %s success" % file
+
 	def storeFiles(self, changedFiles):
-		print "storing %s" % changedFiles
+		#print "storing %s" % changedFiles
 		dlist = []
 		for f in changedFiles:
+			print "storing %s" % f
 			deferred = self.factory.sendPUTF(f)
+			deferred.addCallback(self.storefileYay, f)
+			deferred.addErrback(self.storefileFailed, f)
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
 		return dl
+		#return defer.succeed(True)
 
 	def restartCheckTimer(self, v):
+		print "restarting timer (%d) to call run()" % CHECKTIME
 		reactor.callLater(CHECKTIME, self.run)
 
 	def run(self):

@@ -90,7 +90,7 @@ class FludTestGauges(wx.Frame):
 			self.gauges[i].dhtgauge = wx.Gauge(self, -1, 100,
 					(curCol*COLWIDTH+LABELWIDTH+SGAUGEWIDTH+SEP, curRow), 
 					(SGAUGEWIDTH/3, GAUGEHEIGHT))
-			self.gauges[i].power = wx.Button(self, i, "power",
+			self.gauges[i].power = wx.Button(self, i, "turn OFF",
 					(curCol*COLWIDTH
 						+LABELWIDTH+SGAUGEWIDTH+2*SEP+SGAUGEWIDTH/3, 
 						curRow),
@@ -148,6 +148,9 @@ class FludTestGauges(wx.Frame):
 			#	handle = win32api.OpenProcess(1, 0, pid)
 			#	return (0 != win32api.TerminateProcess(handle, 0))
 			os.kill(pid, signal.SIGTERM)
+			self.gauges[idx].power.SetLabel("turn ON")
+			self.gauges[idx].Hide()
+			self.gauges[idx].dhtgauge.Hide()
 		else:
 			print "powering up %s" % home
 			# XXX: this exec no worky on windows
@@ -156,6 +159,9 @@ class FludTestGauges(wx.Frame):
 			print fullcmd
 			result = os.popen('%s %s' % (' '.join(self.gauges[idx].savedEnv), 
 				self.gauges[idx].savedCmd)).readlines()
+			self.gauges[idx].power.SetLabel("turn OFF")
+			self.gauges[idx].Show()
+			self.gauges[idx].dhtgauge.Show()
 			print result
 
 	def update(self):

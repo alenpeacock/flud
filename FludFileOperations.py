@@ -273,6 +273,7 @@ class StoreFile:
 			sfile = self.sfiles[i]
 			deferred = self._storeBlock(hash, sfile, self.mfiles[i])
 			dlist.append(deferred)
+		logger.debug("%s _storeBlocksAll", self.mkey)
 		dl = defer.DeferredList(dlist)
 		dl.addCallback(self._storeMetadata)
 		return dl
@@ -323,6 +324,7 @@ class StoreFile:
 			return d
 
 	def _fileStored(self, result, hash):
+		logger.debug("%s _filestored %s", self.mkey, fencode(hash))
 		return fencode(hash)
 
 	def _compareMetadata(self, storedFiles, fileNames):

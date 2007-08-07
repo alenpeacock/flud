@@ -131,7 +131,7 @@ class FludNode(object):
 			#      reactor.callLater here to do it.
 			
 		def badGW(error):
-			print error
+			self.logger.warn(error)
 			self.logger.warn("Couldn't connect to gateway at %s:%s" % 
 					(sys.argv[1], sys.argv[2]))
 

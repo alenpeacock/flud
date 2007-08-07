@@ -262,8 +262,8 @@ class SENDSTORE(REQUEST):
 		return err
 
 
-aggDeferredMap = {}  # a map of maps, containing deferreds.  The deferred for
-					 # file 'x' in tarball 'y' is accessed as
+aggDeferredMap = {}  # a map of maps, containing a list of deferreds.  The 
+					 # deferred(s) for file 'x' in tarball 'y' are accessed as
 					 # aggDeferredMap['y']['x']
 aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
@@ -330,7 +330,12 @@ class AggregateStore:
 		self.deferred = defer.Deferred()
 		loggerstoragg.debug("adding deferred on %s for %s" 
 				% (tarfilename, datafile))
-		aggDeferredMap[tarfilename][os.path.basename(datafile)] = self.deferred
+		try:
+			aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
+					self.deferred)
+		except KeyError:
+			aggDeferredMap[tarfilename][os.path.basename(datafile)] \
+					= [self.deferred]
 		self.resetTimeout(aggTimeoutMap[tarfilename], tarfilename)
 
 	def resetTimeout(self, timeoutFunc, tarball):
@@ -358,10 +363,12 @@ class AggregateStore:
 		try: 
 			for tarinfo in tar:
 				if tarinfo.name[-5:] != '.meta':
-					loggerstoragg.debug("callingback for %s in %s" % 
-							(tarinfo.name, tarball))
-					d = aggDeferredMap[tarball].pop(tarinfo.name) 
-					cbs.append(d)
+					dlist = aggDeferredMap[tarball].pop(tarinfo.name) 
+					loggerstoragg.debug("callingback for %s in %s"
+							" (%d deferreds)" 
+							% (tarinfo.name, tarball, len(dlist)))
+					for d in dlist:
+						cbs.append(d)
 		except KeyError:
 			loggerstoragg.warn("aggDeferredMap has keys: %s" 
 					% str(aggDeferredMap.keys()))
@@ -379,17 +386,19 @@ class AggregateStore:
 		cbs = []
 		try: 
 			for tarinfo in tar:
-				loggerstoragg.debug("erringback for %s in %s" % 
-						(tarinfo.name, tarball))
-				d = aggDeferredMap[tarball].pop(tarinfo.name) 
-				cbs.append(d)
+				dlist = aggDeferredMap[tarball].pop(tarinfo.name) 
+				loggerstoragg.debug("erringback for %s in %s" 
+						" (%d deferreds)"
+						% (tarinfo.name, tarball, len(dlist)))
+				for d in dlist:
+					cbs.append(d)
 		except KeyError:
 			loggerstoragg.warn("aggDeferredMap has keys: %s" 
 					% str(aggDeferredMap.keys()))
 			loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
 					str(aggDeferredMap[tarball].keys())))
 		tar.close()
-		loggerstoragg.debug("deleting tarball")
+		loggerstoragg.debug("NOT deleting tarball %s (for debug)" % tarball)
 		#os.remove(tarball)
 		for cb in cbs:
 			cb.errback(failure)

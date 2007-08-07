@@ -1179,6 +1179,15 @@ class FeedbackPanel(wx.Panel):
 		w,h = self.GetClientSizeTuple()
 		event.Skip()
 
+class RestorePanel(wx.Panel):
+	def __init__(self, parent):
+		wx.Panel.__init__(self, parent, -1)
+		self.Bind(wx.EVT_SIZE, self.OnSize)
+
+	def OnSize(self, event):
+		w,h = self.GetClientSizeTuple()
+		event.Skip()
+
 
 class FludNotebook(wx.Notebook):
 	def __init__(self, parent, id=-1, pos=wx.DefaultPosition, 
@@ -1192,6 +1201,8 @@ class FludNotebook(wx.Notebook):
 		self.AddPage(self.schedulePanel, "Backup Schedule")
 		self.feedbackPanel = FeedbackPanel(self)
 		self.AddPage(self.feedbackPanel, "Feedback")
+		self.restorePanel = RestorePanel(self)
+		self.AddPage(self.restorePanel, "Restore")
 
 	def shutdown(self, event):
 		self.filePanel.shutdown(event)

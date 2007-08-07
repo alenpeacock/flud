@@ -270,43 +270,35 @@ class kSTORE(ROOT):
 		"""
 
 		# first merge blocks ('b' sections)
-		m1_b = m1['b']
-		m2_b = m2['b']
-		n_b = {}
-		for i in m2_b:
-			if m1_b.has_key(i) and m2_b[i] != m1_b[i]:
-				if isinstance(m1_b[i], list) and len(m1_b[i]) == 1:
-					m1_b[i] = m1_b[i][0]  # collapse list of len 1
-				if isinstance(m2_b[i], list) and len(m2_b[i]) == 1:
-					m2_b[i] = m2_b[i][0]  # collapse list of len 1
+		n = {}
+		for i in m2:
+			if m1.has_key(i) and m2[i] != m1[i]:
+				if isinstance(m1[i], list) and len(m1[i]) == 1:
+					m1[i] = m1[i][0]  # collapse list of len 1
+				if isinstance(m2[i], list) and len(m2[i]) == 1:
+					m2[i] = m2[i][0]  # collapse list of len 1
 				# combine
-				if isinstance(m1_b[i], list) and isinstance(m2_b[i], list):
-					n_b[i] = m2_b[i]
-					n_b[i].extend(m1_b[i]) 
-				elif isinstance(m2_b[i], list):
-					n_b[i] = m2_b[i]
-					n_b[i] = n_b[i].append(m1_b[i])
-				elif isinstance(m1_b[i], list):
-					n_b[i] = m1_b[i]
-					n_b[i] = n_b[i].append(m2_b[i])
-				elif m1_b[i] == m2_b[i]:
-					n_b[i] = m1_b[i]
+				if isinstance(m1[i], list) and isinstance(m2[i], list):
+					n[i] = m2[i]
+					n[i].extend(m1[i]) 
+				elif isinstance(m2[i], list):
+					n[i] = m2[i]
+					n[i] = n[i].append(m1[i])
+				elif isinstance(m1[i], list):
+					n[i] = m1[i]
+					n[i] = n[i].append(m2[i])
+				elif m1[i] == m2[i]:
+					n[i] = m1[i]
 				else:
-					n_b[i] = [m1_b[i], m2_b[i]]
+					n[i] = [m1[i], m2[i]]
 			else:
-				n_b[i] = m2_b[i]
-		for i in m1_b:
-			if not n_b.has_key(i):
-				n_b[i] = m1_b[i]
-		# now n_b contains the merged blocks.
-		m2['b'] = n_b
-		# merge node metadata (m1 should only have one node metadata)
+				n[i] = m2[i]
 		for i in m1:
-			if i != 'b':
-				m2[i] = m1[i]
-
-		m1 = m2
-		return m2
+			if not n.has_key(i):
+				n[i] = m1[i]
+		# now n contains the merged blocks.
+		m1 = m2 = n
+		return m1
 
 
 class kFINDVAL(ROOT):

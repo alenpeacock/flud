@@ -10,12 +10,16 @@ that we send to MAXOPS.  The rest, we put in the 'waiting' queue, and
 these are popped off when a spot becomes available.  
 """
 
+import logging
+
 MAXOPS = 80      # maximum number of concurrent connections to maintain 
 pending = 0      # number of current connections
 waiting = []     # queue of waiting connections to make.  This queue contains
                  # tuples.  The first element of the tuple must have a 
 				 # startRequest() func that takes the rest of the tuple as
 				 # arguments.
+
+logger = logging.getLogger("flud.client.connq")
 
 def checkWaiting(resp, finishedOne=True):
 	"""
@@ -26,18 +30,19 @@ def checkWaiting(resp, finishedOne=True):
 	transparently in the errback/callback chain).
 	"""
 	numwaiting = len(waiting)
-	#print "in checkWaiting, len(waiting) = %d" % numwaiting
+	logger.debug("in checkWaiting, len(waiting) = %d" % numwaiting)
 	#print "resp = %s..." % fencode(long(resp,16))[:8]
 	#print "resp = %s..." % str(resp)
 	global pending
 	if finishedOne:
 		pending = pending - 1
+		logger.debug("decremented pending to %s" % pending)
 	if numwaiting > 0 and pending < MAXOPS:
 		saved = waiting.pop(0)
 		Req = saved[0]
 		args = saved[1:]
-		#print "w: %d, p: %d, restoring Request %s(%s)" % (numwaiting, 
-		#		pending, Req.__class__.__name__, '-') #str(args))
+		logger.debug("w: %d, p: %d, restoring Request %s(%s)" % (numwaiting, 
+				pending, Req.__class__.__name__, str(args)))
 		Req.startRequest(*args)
 		pending += 1
 	return resp
@@ -50,5 +55,5 @@ def enqueue(requestTuple):
 	comes off the queue (via checkWaiting).
 	"""
 	waiting.append(requestTuple)
-	#print "trying to do %s now..." % requestTuple[0].__class__.__name__
+	logger.debug("trying to do %s now..." % requestTuple[0].__class__.__name__)
 	checkWaiting(None, finishedOne=False)

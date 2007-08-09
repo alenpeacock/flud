@@ -1,6 +1,7 @@
 import os, stat, sys, tarfile, tempfile
 from FludCrypto import hashstream
 from fencode import fencode
+import gzip
 
 """
 TarfileUtils.py (c) 2003-2006 Alen Peacock.  This program is distributed under
@@ -17,6 +18,16 @@ def delete(tarball, membernames):
 	membernames contains all the members in the tarball, the entire tarball is
 	deleted
 	"""
+	gzipped = False
+	if tarball[-7:] == ".tar.gz":
+		gzipped = True
+		f = gzip.GzipFile(tarball, 'rb')
+		f2 = file(tarball[:-3], 'wb')
+		f2.write(f.read())
+		f2.close()
+		f.close()
+		os.remove(tarball)
+		tarball = tarball[:-3]
 	f = tarfile.open(tarball, 'r')
 	if not isinstance(membernames, list):
 		membernames = [membernames]
@@ -34,7 +45,10 @@ def delete(tarball, membernames):
 	f.close()
 	f = open(tarball, 'r+')
 	tfile = tempfile.mktemp()
-	f2 = open(tfile, 'w')
+	if gzipped:
+		f2 = gzip.GzipFile(tfile, 'w')
+	else:
+		f2 = open(tfile, 'w')
 	empty = tarfile.BLOCKSIZE * '\0'
 	done = False
 	removednames = []
@@ -60,6 +74,9 @@ def delete(tarball, membernames):
 					f2.write(f.read(tarfile.BLOCKSIZE))
 	f2.close()
 	f.close()
+	if gzipped:
+		os.remove(tarball)
+		tarball = tarball+".gz"
 	os.rename(tfile, tarball)
 	return removednames
 
@@ -68,6 +85,17 @@ def concatenate(tarfile1, tarfile2):
 	Combines tarfile1 and tarfile2 into tarfile1.  tarfile1 is modified in the
 	process, and tarfile2 is deleted.
 	"""
+	gzipped = False
+	if tarfile1[-7:] == ".tar.gz":
+		gzipped = True
+		f1 = gzip.GzipFile(tarfile1, 'r')
+		tarfile1 = tarfile1[:-3]
+		f2 = file(tarfile1, 'w')
+		f2.write(f1.read())
+		f2.close()
+		f1.close()
+		os.remove(tarfile1+".gz")
+
 	f = open(tarfile1, "r+")
 	done = False
 	e = '\0'
@@ -94,7 +122,10 @@ def concatenate(tarfile1, tarfile2):
 	f.truncate()
 
 	# now write the contents of the second tarfile into this spot
-	f2 = open(tarfile2, "r")
+	if tarfile2[-7:] == ".tar.gz":
+		f2 = gzip.GzipFile(tarfile2, 'r')
+	else:
+		f2 = open(tarfile2, "r")
 	done = False
 	while not done:
 		header = f2.read(tarfile.BLOCKSIZE)
@@ -120,6 +151,14 @@ def concatenate(tarfile1, tarfile2):
 
 	f2.close()
 	f.close()
+
+	if gzipped:
+		f2 = gzip.GzipFile(tarfile1+".gz", 'wb')
+		f = file(tarfile1, 'rb')
+		f2.write(f.read())
+		f2.close()
+		f.close()
+		os.remove(tarfile1)
 	
 	# and delete the second tarfile
 	os.remove(tarfile2)
@@ -130,7 +169,10 @@ def verifyHashes(tarball, ignoreExt=None):
 	# otherwise return False
 	digests = []
 	done = False
-	f = open(tarball, 'r')
+	if tarball[-7:] == ".tar.gz":
+		f = gzip.GzipFile(tarball, 'r:gz')
+	else:
+		f = open(tarball, 'r')
 	empty = tarfile.BLOCKSIZE * '\0'
 	while not done:
 		bytes = f.read(tarfile.BLOCKSIZE)

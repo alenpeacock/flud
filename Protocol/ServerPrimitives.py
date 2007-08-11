@@ -265,19 +265,49 @@ class STORE(ROOT):
 		# get the data to a tmp file
 		loggerstor.debug("writing store data to tmpfile")
 		tmpfile = tempfile.mktemp(dir=self.config.storedir)
+
+		tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
+
+		# rename and/or prepend the data appropriately
+		tmpTarMode = None
+		if filekey[-4:] == ".tar":
+			tmpfile = tmpfile+".tar"
+			tmpTarMode = 'r'
+			targetTar = tarball
+		elif filekey[-7:] == ".tar.gz":
+			tmpfile = tmpfile+".tar.gz"
+			tmpTarMode = 'r:gz'
+			targetTar = tarball+".gz"
+		loggerstor.debug("tmpfile is %s" % tmpfile)
+
+		# XXX: if the server supports both .tar and tar.gz, this is wrong; we'd
+		# need to check *both* for already existing dudes instead of just
+		# choosing one
+		if os.path.exists(tarball+'.gz'):
+			tarball = (tarball+'.gz', 'r:gz')
+		elif os.path.exists(tarball):
+			tarball = (tarball, 'r')
+		else:
+			tarball = None
+		loggerstor.debug("tarball is %s" % str(tarball))
+
 		data = request.args.get('filename')[0]  # XXX: file in mem! need web2.
 		# XXX: bad blocking stuff here
 		f = open(tmpfile, 'wb')
 		f.write(data)
 		f.close()
+		ftype = os.popen('file %s' % tmpfile)
+		loggerstor.debug("ftype of %s is %s" % (tmpfile, ftype.read()))
+		ftype.close()
 
-		# rename and/or prepend the data appropriately
-		tarname = os.path.join(self.config.storedir, reqKu.id() + ".tar")
-		if filekey[-4:] == ".tar":
+		if tmpTarMode:
 			# client sent a tarball
 			loggerstor.debug("about to chksum %s" % tmpfile)
 			digests = TarfileUtils.verifyHashes(tmpfile, '.meta')
 			loggerstor.debug("chksum returned %s" % digests)
+			ftype = os.popen('file %s' % tmpfile)
+			loggerstor.debug("ftype of %s is %s" % (tmpfile, ftype.read()))
+			ftype.close()
 			if not digests:
 				msg = "Attempted to use non-CAS storage key(s) for" \
 						" STORE tarball"
@@ -287,20 +317,29 @@ class STORE(ROOT):
 				return msg
 			# XXX: add digests to a db of already stored files (for quick 
 			# lookup)
-			if os.path.exists(tarname):
-				loggerstor.debug("concatenating tarfiles")
-				f1 = tarfile.open(tarname, 'r')
-				f2 = tarfile.open(tmpfile, 'r')
+			if tarball:
+				tarname, tarnameMode = tarball
+				loggerstor.debug("concatenating tarfiles %s and %s" 
+						% (tarname, tmpfile))
+				f1 = tarfile.open(tarname, tarnameMode)
+				f2 = tarfile.open(tmpfile, tmpTarMode)
 				f1names = f1.getnames()
 				f2names = f2.getnames()
 				f1.close()
 				f2.close()
 				dupes = [f for f in f1names if f in f2names]
 				TarfileUtils.delete(tmpfile, dupes)
+				ftype = os.popen('file %s' % tarname)
+				loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
+				ftype.close()
 				TarfileUtils.concatenate(tarname, tmpfile)
+				ftype = os.popen('file %s' % tarname)
+				loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
+				ftype.close()
 			else:
-				loggerstor.debug("saving tarfile")
-				os.rename(tmpfile, tarname)
+				loggerstor.debug("saving %s as tarfile %s" % (tmpfile, 
+					targetTar))
+				os.rename(tmpfile, targetTar)
 		else:
 			# client sent regular file
 			h = FludCrypto.hashfile(tmpfile)
@@ -453,8 +492,16 @@ class RETRIEVE(ROOT):
 		if not os.path.exists(fname):
 			# check for tarball for originator
 			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
+			tarballs = []
+			if os.path.exists(tarball+'.gz'):
+				tarballs.append((tarball+'.gz', 'r:gz'))
 			if os.path.exists(tarball):
-				tar = tarfile.open(tarball, "r")
+				tarballs.append((tarball, 'r'))
+			loggerretr.debug("tarballs = %s" % tarballs)
+			# XXX: does this work? does it close both tarballs if both got
+			# opened?
+			for tarball, openmode in tarballs:
+				tar = tarfile.open(tarball, openmode)
 				try:
 					tinfo = tar.getmember(tfilekey)
 					returnedMeta = False
@@ -478,8 +525,8 @@ class RETRIEVE(ROOT):
 								request.write(H)
 								request.write('\r\n')
 								tarm = tar.extractfile(minfo)
-								loggerretr.debug("successful metadata RETRIEVE"
-										" (from %s)" % tarball)
+								loggerretr.debug("successful metadata"
+									" RETRIEVE (from %s)" % tarball)
 								# XXX: bad blocking stuff
 								while 1:
 									buf = tarm.read()
@@ -507,7 +554,8 @@ class RETRIEVE(ROOT):
 					# XXX: bad blocking stuff
 					tarf = tar.extractfile(tinfo)
 					# XXX: update timestamp on tarf in tarball
-					loggerretr.debug("successful RETRIEVE (from %s)" % tarball)
+					loggerretr.debug("successful RETRIEVE (from %s)" 
+							% tarball)
 					# XXX: bad blocking stuff
 					while 1:
 						buf = tarf.read()
@@ -693,10 +741,16 @@ class VERIFY(ROOT):
 		else:
 			# check for tarball for originator
 			loggervrfy.debug("checking tarball for %s" % fname)
-			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
-			if os.path.exists(tarball):
-				loggervrfy.debug("looking in tarball...")
-				tar = tarfile.open(tarball, "r")
+			tarballs = []
+			tarballbase = os.path.join(self.config.storedir, reqKu.id())+".tar"
+			if os.path.exists(tarballbase+".gz"):
+				tarballs.append((tarballbase+".gz", 'r:gz'))
+			if os.path.exists(tarballbase):
+				tarballs.append((tarballbase, 'r'))
+			loggervrfy.debug("tarballs is %s" % tarballs)
+			for tarball, openmode in tarballs:
+				loggervrfy.debug("looking in tarball %s..." % tarball)
+				tar = tarfile.open(tarball, openmode)
 				try:
 					tfilekey = filekey[1:]
 					tarf = tar.extractfile(tfilekey)
@@ -716,6 +770,7 @@ class VERIFY(ROOT):
 					tarf.close()
 					if meta:
 						mfname = "%s.%s.meta" % (tfilekey, meta[0])
+						loggervrfy.debug("looking for %s" % mfname)
 						if mfname in tar.getnames():
 							# make sure that the data is the same, if not,
 							# remove it and re-add it
@@ -729,11 +784,18 @@ class VERIFY(ROOT):
 										% (tfilekey, meta[0]))
 								tar.close()
 								TarfileUtils.delete(tarball, mfname)
+								if openmode == 'r:gz':
+									tarball = TarfileUtils.gunzipTarball(
+											tarball)
 								tar = tarfile.open(tarball, 'a')
 								metaio = StringIO(meta[1])
 								tinfo = tarfile.TarInfo(mfname)
 								tinfo.size = len(meta[1])
 								tar.addfile(tinfo, metaio)
+								tar.close()
+								if openmode == 'r:gz':
+									tarball = TarfileUtils.gzipTarball(
+											tarball)
 							else:
 								loggervrfy.debug("no need to update tarball"
 										" metadata for %s.%s" 
@@ -743,11 +805,17 @@ class VERIFY(ROOT):
 							loggervrfy.debug("adding tarball metadata"
 									" for %s.%s" % (tfilekey, meta[0]))
 							tar.close()
+							if openmode == 'r:gz':
+								tarball = TarfileUtils.gunzipTarball(tarball)
 							tar = tarfile.open(tarball, 'a')
 							metaio = StringIO(meta[1])
 							tinfo = tarfile.TarInfo(mfname)
 							tinfo.size = len(meta[1])
 							tar.addfile(tinfo, metaio)
+							tar.close()
+							if openmode == 'r:gz':
+								tarball = TarfileUtils.gzipTarball(
+										tarball)
 						
 					tar.close()
 					hash = FludCrypto.hashstring(data)
@@ -841,11 +909,21 @@ class DELETE(ROOT):
 		loggerdele.debug("reading file data from %s" % fname)
 		if not os.path.exists(fname):
 			# check for tarball for originator
-			tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
-			if os.path.exists(tarball):
+			tarballs = []
+			tarballbase = os.path.join(self.config.storedir, reqKu.id())+".tar"
+			if os.path.exists(tarballbase+".gz"):
+				tarballs.append((tarballbase+".gz", 'r:gz'))
+			if os.path.exists(tarballbase):
+				tarballs.append((tarballbase, 'r'))
+			for tarball, openmode in tarballs:
 				tfilekey = filekey[1:]
 				mfilekey = "%s.%s.meta" % (tfilekey, metakey)
-				tar = tarfile.open(tarball, 'r')
+				loggerdele.debug("opening %s, %s for delete..." 
+						% (tarball, openmode))
+				ftype = os.popen('file %s' % tarball)
+				loggerdele.debug("ftype of %s is %s" % (tarball, ftype.read()))
+				ftype.close()
+				tar = tarfile.open(tarball, openmode)
 				mnames = [n for n in tar.getnames() 
 						if n[:len(tfilekey)] == tfilekey]
 				tar.close()

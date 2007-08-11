@@ -11,7 +11,7 @@ from twisted.python import failure
 from FludCrypto import FludRSA
 import FludCrypto
 import ConnectionQueue
-import time, os, stat, httplib, sys, logging, tarfile
+import time, os, stat, httplib, sys, logging, tarfile, gzip
 from StringIO import StringIO
 from fencode import fencode, fdecode
 
@@ -27,7 +27,9 @@ loggervrfy = logging.getLogger("flud.client.op.vrfy")
 loggerauth = logging.getLogger("flud.client.op.auth")
 
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
-TARFILE_TO = 2       # timeout for checking aggregated tar files
+TARFILE_TO = 2        # timeout for checking aggregated tar files
+
+MAXAUTHRETRY = 4      # number of times to retry auth
 
 # FUTURE: check flud protocol version for backwards compatibility
 # XXX: need to make sure we have appropriate timeouts for all comms.
@@ -349,16 +351,26 @@ class AggregateStore:
 		loggerstoragg.debug("...didn't reset")
 		
 	def sendTar(self, tarball, nKu, node, host, port):
+		gtarball = tarball+".gz"
 		loggerstoragg.info(
 				"aggregation op triggered, sending tarfile %s to %s:%d" 
-				% (tarball, host, port))
-		self.deferred = SENDSTORE(nKu, node, host, port, tarball).deferred
+				% (gtarball, host, port))
+		# XXX: bad blocking io
+		gtar = gzip.GzipFile(gtarball, 'wb')
+		gtar.write(file(tarball, 'r').read())
+		gtar.close()
+		os.remove(tarball)
+		self.deferred = SENDSTORE(nKu, node, host, port, gtarball).deferred
 		self.deferred.addCallback(self.callbackTarfiles, tarball)
 		self.deferred.addErrback(self.errbackTarfiles, tarball)
 
+	# XXX: make aggDeferredMap use a non-.tar key, so that we don't have to
+	# keep passing 'tarball' around (since we removed it and are really only
+	# interested in gtarball now, use gtarball at the least)
 	def callbackTarfiles(self, result, tarball):
 		loggerstoragg.debug("callbackTarfiles")
-		tar = tarfile.open(tarball, "r:")
+		gtarball = tarball+".gz"
+		tar = tarfile.open(gtarball, "r:gz")
 		cbs = []
 		try: 
 			for tarinfo in tar:
@@ -375,14 +387,15 @@ class AggregateStore:
 			loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
 					str(aggDeferredMap[tarball].keys())))
 		tar.close()
-		loggerstoragg.debug("deleting tarball %s" % tarball)
-		os.remove(tarball)
+		loggerstoragg.debug("deleting tarball %s" % gtarball)
+		os.remove(gtarball)
 		for cb in cbs:
 			cb.callback(result)
 
 	def errbackTarfiles(self, failure, tarball):
 		loggerstoragg.debug("errbackTarfiles")
-		tar = tarfile.open(tarball, "r:")
+		gtarball = tarball+".gz"
+		tar = tarfile.open(gtarball, "r:")
 		cbs = []
 		try: 
 			for tarinfo in tar:
@@ -398,8 +411,8 @@ class AggregateStore:
 			loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
 					str(aggDeferredMap[tarball].keys())))
 		tar.close()
-		loggerstoragg.debug("NOT deleting tarball %s (for debug)" % tarball)
-		#os.remove(tarball)
+		loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
+		#os.remove(gtarball)
 		for cb in cbs:
 			cb.errback(failure)
 
@@ -513,6 +526,7 @@ class SENDDELETE(REQUEST):
 		url += "&Ku_n="+str(Ku['n'])
 		url += "&metakey="+str(metakey)
 		self.timeoutcount = 0
+		self.authRetry = 0
 
 		self.deferred = defer.Deferred()
 		ConnectionQueue.enqueue((self, self.headers, nKu, host, port, url))
@@ -550,7 +564,11 @@ class SENDDELETE(REQUEST):
 				#print "trying again [#%d]...." % self.timeoutcount
 				return self._sendRequest(headers, nKu, host, port, url) 
 		elif hasattr(factory, 'status') and \
-				eval(factory.status) == http.UNAUTHORIZED:
+				eval(factory.status) == http.UNAUTHORIZED and \
+				self.authRetry < MAXAUTHRETRY:
+			# XXX: add this authRetry stuff to all the other op classes (so
+			# that we don't DOS ourselves and another node
+			self.authRetry += 1
 			loggerdele.info("SENDDELETE unauthorized, sending credentials")
 			challenge = err.getErrorMessage()[4:]
 			d = answerChallengeDeferred(challenge, self.node.config.Kr,

@@ -63,7 +63,7 @@ def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash, newmeta):
 	if long(hash, 16) != long(res, 16):
 		raise failure.DefaultException("verify didn't match: %s != %s"
 				% (hash, res))
-	#print "checkVERIFY (%s) %s success" % (newmeta, fname)
+	print "checkVERIFY (%s) %s success" % (newmeta, fname)
 	if newmeta:
 		return testDELETE(res, nKu, fname, fkey, mkey, node, host, port, False)
 	else:
@@ -72,7 +72,11 @@ def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash, newmeta):
 def testVERIFY(nKu, fname, fkey, mkey, node, host, port, newmeta):
 	""" Test sendVerify """
 	# newmeta, if True, will generate new metadata to be stored during verify
-	print "starting testVERIFY (%s) %s.%s" % (newmeta, fname, mkey)
+	if newmeta: 
+		thismkey = mkey+fake_mkey_offset
+	else: 
+		thismkey = mkey
+	print "starting testVERIFY (%s) %s.%s" % (newmeta, fname, thismkey)
 	
 	fd = os.open(fname, os.O_RDONLY)
 	fsize = os.fstat(fd)[stat.ST_SIZE]
@@ -82,8 +86,6 @@ def testVERIFY(nKu, fname, fkey, mkey, node, host, port, newmeta):
 	data = os.read(fd, length)
 	os.close(fd)
 	hash = FludCrypto.hashstring(data)
-	if newmeta: thismkey = mkey+fake_mkey_offset
-	else: thismkey = mkey
 	deferred = node.client.sendVerify(fkey, offset, length, host, port, nKu,
 			(thismkey, StringIO(metadatablock)))
 	deferred.addCallback(checkVERIFY, nKu, fname, fkey, mkey, node, host, 
@@ -110,8 +112,6 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
 	f1.close()
 	f2.close()
 	if mkey != True:
-		# make sure the metadata is the same...
-		#mkey = crc32(fname)
 		expectedmeta = "%s.%s.meta" % (fkey, mkey)
 		metanames = [f for f in res if f[-len(expectedmeta):] == expectedmeta]
 		if not metanames:
@@ -121,7 +121,6 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
 		if md != metadatablock:
 			raise failure.DefaultException("upload/download metadata doesn't"
 					" match (%s != %s)" % (md, metadatablock))
-	#return testVERIFY(nKu, fname, fkey, mkey, node, host, port, False)
 	return nextCallable()
 
 def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable,
@@ -137,7 +136,6 @@ def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable,
 		deferred.addErrback(failedRETRIEVE, nextCallable)
 	return deferred
 
-# XXX: need to do another testSTORE with different mkey (to test multiple)
 def testSTORE2(nKu, fname, fkey, node, host, port):
 	mkey = crc32(fname)
 	mkey2 = mkey+(2*fake_mkey_offset)

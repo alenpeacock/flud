@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import TarfileUtils
 import tarfile, tempfile, random, os
 import gzip
@@ -10,7 +12,7 @@ def maketarball(numfiles, avgsize, hashnames=False, addmetas=False):
 	if addmetas:
 		metafname = tempfile.mktemp()
 		metaf = file(metafname, 'w')
-		metaf.write('m'*200)
+		metaf.write('m'*48)
 		metaf.close()
 	for i in xrange(numfiles):
 		fname = tempfile.mktemp()

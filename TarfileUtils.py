@@ -5,7 +5,7 @@ import gzip
 
 """
 TarfileUtils.py (c) 2003-2006 Alen Peacock.  This program is distributed under
-the terms of the GNU General Public License (the GPL).
+the terms of the GNU General Public License (the GPL), version 2.
 
 Provides additional tarfile functionality (deletion of a member from a
 tarball, and concatenation of tarballs).
@@ -14,21 +14,16 @@ tarball, and concatenation of tarballs).
 def delete(tarball, membernames):
 	"""
 	Deletes a member file[s] from a tarball.  Returns the names of deleted
-	members if they areremoved, False if the file[s] aren't members.  If
+	members if they are removed, False if the file[s] aren't members.  If
 	membernames contains all the members in the tarball, the entire tarball is
 	deleted
 	"""
 	gzipped = False
 	if tarball[-7:] == ".tar.gz":
 		gzipped = True
-		f = gzip.GzipFile(tarball, 'rb')
-		f2 = file(tarball[:-3], 'wb')
-		f2.write(f.read())
-		f2.close()
-		f.close()
-		os.remove(tarball)
-		tarball = tarball[:-3]
-	f = tarfile.open(tarball, 'r')
+		f = tarfile.open(tarball, 'r:gz')
+	else:
+		f = tarfile.open(tarball, 'r')
 	if not isinstance(membernames, list):
 		membernames = [membernames]
 	tarnames = f.getnames()
@@ -43,6 +38,8 @@ def delete(tarball, membernames):
 		os.remove(tarball)
 		return True
 	f.close()
+	if gzipped:
+		tarball = gunzipTarball(tarball)
 	f = open(tarball, 'r+')
 	tfile = tempfile.mktemp()
 	if gzipped:
@@ -90,9 +87,9 @@ def concatenate(tarfile1, tarfile2):
 		gzipped = True
 		f1 = gzip.GzipFile(tarfile1, 'r')
 		tarfile1 = tarfile1[:-3]
-		f2 = file(tarfile1, 'w')
-		f2.write(f1.read())
-		f2.close()
+		f1unzip = file(tarfile1, 'w')
+		f1unzip.write(f1.read())
+		f1unzip.close()
 		f1.close()
 		os.remove(tarfile1+".gz")
 
@@ -189,7 +186,8 @@ def verifyHashes(tarball, ignoreExt=None):
 			size = int(bytes[124:135], 8)
 			blocks = size / tarfile.BLOCKSIZE
 			if ignoreExt and name[-len(ignoreExt):] == ignoreExt:
-				f.seek(size, 1)
+				# gzip doesn't support f.seek(size, 1)
+				f.seek(f.tell()+size) 
 			else:
 				digest = hashstream(f, size)
 				digest = fencode(int(digest,16))
@@ -206,6 +204,23 @@ def verifyHashes(tarball, ignoreExt=None):
 	f.close()
 	return digests
 
+def gzipTarball(tarball):
+	if tarball[-4:] != '.tar':
+		return None
+	f = gzip.GzipFile(tarball+".gz", 'wb')
+	f.write(file(tarball, 'rb').read())
+	f.close()
+	os.remove(tarball)
+	return tarball+".gz"
+
+def gunzipTarball(tarball):
+	if tarball[-3:] != '.gz':
+		return None
+	f = gzip.GzipFile(tarball, 'rb')
+	file(tarball[:-3], 'wb').write(f.read())
+	f.close()
+	os.remove(tarball)
+	return tarball[:-3]
 
 if __name__ == "__main__":
 	if (len(sys.argv) < 4 or sys.argv[1] != "-d") \

@@ -13,11 +13,11 @@ Test code for primitive operations.  These ops include all of the descendents
 of ROOT and REQUEST in FludProtocol.
 """
 
-stay_alive = 5
+stay_alive = 1
 filename = "/tmp/tempstoredata"
 filekey = os.path.basename(filename)
 key = 87328673569979667228965797330646992089697345905484734072690869757741450870337L
-testval = {'b': { 802484L: 465705L, 780638L: 465705L, 169688L: 465705L, 
+testval = { 802484L: 465705L, 780638L: 465705L, 169688L: 465705L, 
 267175L: 465705L, 648636L: 465705L, 838315L: 465705L, 477619L: 465705L, 
 329906L: 465705L, 610565L: 465705L, 217811L: 465705L, 374124L: 465705L, 
 357214L: 465705L, 147307L: 465705L, 427751L: 465705L, 927853L: 465705L, 
@@ -27,8 +27,7 @@ testval = {'b': { 802484L: 465705L, 780638L: 465705L, 169688L: 465705L,
 337485L: 465705L, 911014L: 465705L, 594065L: 465705L, 375876L: 465705L, 
 726818L: 465705L, 835759L: 465705L, 814060L: 465705L, 237176L: 465705L, 
 538268L: 465705L, 272650L: 465705L, 314058L: 465705L, 257714L: 465705L, 
-439931L: 465705L}, 
-'m': {'meta': 'sMk-yXrPchYd416-55P2v_kZysNLvkkuEyD01CawjIP_5SRqoq8LR8UsRQdsX31XZMf67zKz-DePhXUrMeI3Mqbj6-bXbzkutAw9hHTueH6mxRrEXwQlk_1l2dDgsiGfAyWlN_3OyQkbEWNLD5NK_E7uV8ynqDOyNbvDWdIJ70_QY_5lKMOrRqNUOfpcji9AQcR99uw72Hfc_1lG464uUv4_Wc4PS77EjSHoDzYmWXheTS_gWeswJKj0MX1VEFn7YAHoSDCeLIAVjwxLrJfSKn_6C0-RCQN5ZfdUnYQg0NFIogxtPHpxorxpNDNs9hWOK46QbcS2b8z9ODA9JPFq94w==', 'eeK': 'sTTVTmNUXTmzUMqPVaSwhruXdTWCoC8Jo9zgNppRAhco4BfrX1gbz9njvCg3tQj7fuXS2OP-MrNqBYINSAfCnMuD9pdYGRGWyf8hsJJ4g2MBdUAqBAlK1iILMlWK0hL5Z4L2n2zZbIKB26bocsDy8akS5aK91KDgX5ubq7HkL4NE='}}
+439931L: 465705L}
 
 logger = logging.getLogger('test')
 screenhandler = logging.StreamHandler()
@@ -144,8 +143,6 @@ def runTests(host, port=None, listenport=None):
 	logger.info("testing against %s:%s, localport=%s" % (host, 
 		port, listenport))
 	node.run()
-	m = testval.pop('m')
-	testval[node.config.Ku.id()] = m
 	d = testGetID(node, host, port)
 	d.addBoth(cleanup, node)
 	#testkFindVal("blah", node.config.Ku, node, host, port)

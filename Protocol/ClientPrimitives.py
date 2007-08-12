@@ -395,7 +395,7 @@ class AggregateStore:
 	def errbackTarfiles(self, failure, tarball):
 		loggerstoragg.debug("errbackTarfiles")
 		gtarball = tarball+".gz"
-		tar = tarfile.open(gtarball, "r:")
+		tar = tarfile.open(gtarball, "r:gz")
 		cbs = []
 		try: 
 			for tarinfo in tar:

@@ -148,6 +148,8 @@ class FludScheduler:
 
 	def storefileFailed(self, err, file):
 		print "storing %s failed: %s" % (file, err)
+		err.printTraceback()
+		#print dir(err)
 
 	def storefileYay(self, r, file):
 		print "storing %s success" % file

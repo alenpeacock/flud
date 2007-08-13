@@ -373,8 +373,19 @@ class StoreFile:
 	def _piggybackStoreMetadata(self, piggybackMeta):
 		# piggybackMeta is a (nodeID, {blockID: storingNodeID, })
 		logger.debug("%s got piggyBackMeta data", self.mkey)
-		# XXX: need some self.sfiles for the rest of this to work
-		return self._verifyAndStoreBlocks(piggybackMeta[1], True)
+		meta = piggybackMeta[1]
+		logger.debug("meta is %s" % meta)
+		sortedKeys = {}
+		n = meta['n']
+		m = meta['m']
+		logger.debug("n=%s, m=%s" % (n,m))
+		for i in [x for x in meta if x != 'm' and x != 'n']:
+			sortedKeys[i[0]] = i
+		logger.debug("sortedKeys=%s" % sortedKeys)
+		for i in xrange(n+m):
+			self.sfiles.append(fencode(sortedKeys[i][1]))
+		logger.debug("sfiles is %s" % self.sfiles)
+		return self._verifyAndStoreBlocks(meta, True)
 
 	# 5b -- findnode on all stored blocks. 
 	def _verifyAndStoreBlocks(self, storedMetadata, noopVerify=False):
@@ -435,18 +446,23 @@ class StoreFile:
 		nKu = FludRSA.importPublicKey(node[3])
 
 		logger.info("%s verifying %s on %s:%d", self.mkey, seg, host, port)
-		fd = os.open(sfile, os.O_RDONLY)
-		fsize = os.fstat(fd)[stat.ST_SIZE]
-		if fsize > 20: # XXX: 20?
-			length = 20  # XXX: 20?
-			offset = random.randrange(fsize-length)
+		if noopVerify:
+			offset = length = 0
+			verhash = long(FludCrypto.hashstring(''), 16)
+			self.sfiles = []
 		else:
-			length = fsize
-			offset = 0
-		os.lseek(fd, offset, 0)
-		data = os.read(fd, length)
-		os.close(fd)
-		verhash = long(FludCrypto.hashstring(data), 16)
+			fd = os.open(sfile, os.O_RDONLY)
+			fsize = os.fstat(fd)[stat.ST_SIZE]
+			if fsize > 20: # XXX: 20?
+				length = 20  # XXX: 20?
+				offset = random.randrange(fsize-length)
+			else:
+				length = fsize
+				offset = 0
+			os.lseek(fd, offset, 0)
+			data = os.read(fd, length)
+			os.close(fd)
+			verhash = long(FludCrypto.hashstring(data), 16)
 		
 		deferred = self.node.client.sendVerify(seg, offset, length, 
 					host, port, nKu, (self.mkey, mfile)) 

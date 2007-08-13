@@ -764,6 +764,7 @@ class VERIFY(ROOT):
 						msg = "Bad request: bad offset/length in VERIFY"
 						request.setResponseCode(http.BAD_REQUEST, msg) 
 						return msg
+					# XXX: could avoid seek/read if length == 0
 					tarf.seek(offset)
 					# XXX: bad blocking read
 					data = tarf.read(length)
@@ -838,6 +839,7 @@ class VERIFY(ROOT):
 			return msg
 		else:
 			# XXX: blocking
+			# XXX: could avoid seek/read if length == 0 (noop for meta update)
 			f.seek(offset)
 			data = f.read(length)
 			if meta:

@@ -19,7 +19,7 @@ from fencode import fencode, fdecode
 logger = logging.getLogger('flud.fileops')
 
 # erasure coding constants
-code_k = 20
+code_n = 20
 code_m = 20
 code_l = 5
 # temp filenaming defaults
@@ -102,6 +102,10 @@ class StoreFile:
 	the DHT layer.
 	"""
 
+	# XXX: instead of doing all debugging with '"%s ...", self.mkey, ...', make
+	# some props (debug(), warn(), etc) that add the mkey to whatever msg is
+	# passed
+
 	# XXX: should follow this currentOps model for the other FludFileOps
 	currentOps = {}
 
@@ -148,7 +152,7 @@ class StoreFile:
 		f.close();
 
 		# erasure code the metadata
-		c = Coder(code_k, code_m, code_l)
+		c = Coder(code_n, code_m, code_l)
 		self.encodedir = os.path.join(self.parentcodedir, self.flatname)
 		try:
 			os.mkdir(self.encodedir)
@@ -159,7 +163,6 @@ class StoreFile:
 		# this)
 		self.mfiles = c.codeData(self.mfilename,
 				os.path.join(self.encodedir, 'm'))
-		logger.debug("mfiles = %s" % self.mfiles)
 
 		# XXX: piggybacking doesn't work with new metadata scheme, must fix it
 		# to append metadata, or if already in progress, redo via verify ops
@@ -220,7 +223,6 @@ class StoreFile:
 			os.rename(sfile, destfile)
 			self.sfiles[i] = destfile
 
-			logger.debug("mfiles = %s" % str(self.mfiles))
 			mfile = self.mfiles[i]
 			os.rename(mfile, destfile+".m")
 			self.mfiles[i] = destfile+".m"
@@ -259,7 +261,7 @@ class StoreFile:
 	def _storeBlocksSKIP(self, storedMetadata):
 		# for testing -- skip stores so we can get to storeMeta
 		dlist = []
-		self.blockMetadata = {}
+		self.blockMetadata = {'m': 20, 'n': 20}
 		for i in range(len(self.segHashesLocal)):
 			hash = self.segHashesLocal[i]
 			sfile = self.sfiles[i]
@@ -268,24 +270,24 @@ class StoreFile:
 			port = node[1]
 			nID = node[2]
 			nKu = FludRSA.importPublicKey(node[3])
-			self.blockMetadata[hash] = (long(nKu.id(), 16), host, port)
+			self.blockMetadata[(i, hash)] = long(nKu.id(), 16)
 		return self._storeMetadata(None)
 
 	# 5a -- store all blocks
 	def _storeBlocks(self, storedMetadata):
 		dlist = []
-		self.blockMetadata = {}
+		self.blockMetadata = {'m': 20, 'n': 20}
 		for i in range(len(self.segHashesLocal)):
 			hash = self.segHashesLocal[i]
 			sfile = self.sfiles[i]
-			deferred = self._storeBlock(hash, sfile, self.mfiles[i])
+			deferred = self._storeBlock(i, hash, sfile, self.mfiles[i])
 			dlist.append(deferred)
 		logger.debug("%s _storeBlocksAll", self.mkey)
 		dl = defer.DeferredList(dlist)
 		dl.addCallback(self._storeMetadata)
 		return dl
 
-	def _storeBlock(self, hash, sfile, mfile, retry=2):
+	def _storeBlock(self, i, hash, sfile, mfile, retry=2):
 		nodeChoices = self.routing.knownExternalNodes()
 		if not nodeChoices:
 			return defer.fail(failure.DefaultException(
@@ -301,19 +303,19 @@ class StoreFile:
 		logger.debug("%s mfile is %s", self.mkey, mfile)
 		deferred = self.node.client.sendStore(sfile, (self.mkey, mfile), host, 
 				port, nKu) 
-		deferred.addCallback(self._fileStored, hash, location)
-		deferred.addErrback(self._retryStoreBlock, hash, location, sfile, mfile,
-				"%s (%s:%d)" % (fencode(nID), host, port), retry)
+		deferred.addCallback(self._fileStored, i, hash, location)
+		deferred.addErrback(self._retryStoreBlock, i, hash, location, 
+				sfile, mfile, "%s (%s:%d)" % (fencode(nID), host, port), retry)
 		return deferred
 
-	def _retryStoreBlock(self, error, hash, location, sfile, mfile, badtarget, 
-			retry=None): 
+	def _retryStoreBlock(self, error, i, hash, location, sfile, mfile, 
+			badtarget, retry=None): 
 		retry = retry - 1
 		if retry > 0:
 			logger.warn("%s STORE to %s failed, trying again", self.mkey, 
 					badtarget)
 			d = self._storeBlock(hash, sfile, mfile, retry)
-			d.addCallback(self._fileStored, hash, location)
+			d.addCallback(self._fileStored, i, hash, location)
 			# This will fail the entire operation.  This is correct
 			# behavior because we've tried on at least N nodes and couldn't
 			# get the block to store -- the caller will have to try the entire
@@ -331,9 +333,9 @@ class StoreFile:
 			d.errback()
 			return d
 
-	def _fileStored(self, result, blockhash, location):
+	def _fileStored(self, result, i, blockhash, location):
 		logger.debug("%s _filestored %s", self.mkey, fencode(blockhash))
-		self.blockMetadata[blockhash] = location
+		self.blockMetadata[(i, blockhash)] = location
 		return fencode(blockhash)
 
 	def _compareMetadata(self, storedFiles, fileNames):
@@ -346,14 +348,16 @@ class StoreFile:
 		logger.debug('%s # remote block names: %d', self.mkey, len(storedFiles))
 		logger.debug('%s # local blocks: %d', self.mkey, len(fileNames))
 		result = True
-		for i in storedFiles:
-			fname = os.path.join(self.encodedir,fencode(i))
+		n = storedFiles.pop('n')
+		m = storedFiles.pop('m')
+		for (i, f) in storedFiles:
+			fname = os.path.join(self.encodedir,fencode(f))
 			if not fname in fileNames:
 				logger.warn("%s %s not in sfiles", self.mkey, fencode(i))
 				result = False
-		for i in fileNames:
-			hname = os.path.basename(i)
-			if not storedFiles.has_key(fdecode(hname)):
+		for i, fname in enumerate(fileNames):
+			hname = os.path.basename(fname)
+			if not storedFiles.has_key((i, fdecode(hname))):
 				logger.warn("%s %s not in storedMetadata", self.mkey, hname)
 				result = False
 		if result == False:
@@ -362,14 +366,14 @@ class StoreFile:
 			for i in fileNames:
 				logger.debug("%s localBlock  = %s", self.mkey,
 						os.path.basename(i))
+		storedFiles['n'] = n
+		storedFiles['m'] = m
 		return result
 
 	def _piggybackStoreMetadata(self, piggybackMeta):
-		logger.debug("%s need to parse this %s: %s", self.mkey, 
-				type(piggybackMeta), piggybackMeta)
-		#self.blockMetadata = piggybackMeta[1]
-		logger.debug("%s which is %s, i think", self.mkey, piggybackMeta[1])
-		#return self._storeMetadata([])
+		# piggybackMeta is a (nodeID, {blockID: storingNodeID, })
+		logger.debug("%s got piggyBackMeta data", self.mkey)
+		# XXX: need some self.sfiles for the rest of this to work
 		return self._verifyAndStoreBlocks(piggybackMeta[1], True)
 
 	# 5b -- findnode on all stored blocks. 
@@ -383,7 +387,7 @@ class StoreFile:
 			f.close()
 			seg = os.path.basename(sfile)
 			segl = fdecode(seg)
-			nid = self.blockMetadata[segl]
+			nid = self.blockMetadata[(i, segl)]
 			if isinstance(nid, list):
 				logger.info("%s multiple location choices, choosing one"
 					"randomly.", self.mkey)
@@ -497,6 +501,7 @@ class StoreFile:
 		logger.debug("%s storing metadata at %s", self.mkey, fencode(self.sK))
 		logger.debug("%s len(segMetadata) = %d", self.mkey,
 				len(self.blockMetadata))
+		logger.debug("%s segMetadata = %s", self.mkey, self.blockMetadata)
 		d = self.node.client.kStore(self.sK, self.blockMetadata) 
 		d.addCallback(self._updateMaster, self.blockMetadata)
 		d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
@@ -617,12 +622,17 @@ class RetrieveFile:
 		# metadata list.  If not, we should move those blocks elsewhere.
 		if self.meta == None:
 			raise LookupError("couldn't recover metadata for %s" % self.sK)
+		n = self.meta.pop('n')
+		m = self.meta.pop('m')
+		if n != code_n or m != code_m:
+			# XXX: 
+			raise ValueError("unsupported coding scheme %d/%d" % (m/n))
 		logger.info("got metadata %s" % self.meta)
 		self.decoded = False
 		self.decoder = Decoder(os.path.join(self.parentcodedir,
-			fencode(self.sK))+".rec1", code_k, code_m, code_l)
+			fencode(self.sK))+".rec1", code_n, code_m, code_l)
 		self.mdecoder = Decoder(os.path.join(self.parentcodedir,
-			fencode(self.sK))+".m", code_k, code_m, code_l)
+			fencode(self.sK))+".m", code_n, code_m, code_l)
 		#return self._getSomeBlocks()
 		return self._getSomeBlocks(25) # XXX: magic 25. Should derive from k & m
 
@@ -633,7 +643,7 @@ class RetrieveFile:
 		dlist = []
 		for i in range(reqs):
 			c = random.choice(self.meta.keys())
-			block = fencode(c)
+			block = fencode(c[1])
 			id = self.meta[c]
 			if isinstance(id, list):
 				logger.info("multiple location choices, choosing one randomly.")

@@ -172,10 +172,9 @@ class kSTORE(ROOT):
 			md = fdecode(params['val'])
 			if not self.dataAllowed(params['key'], md, params['nodeID']):
 				msg = "malformed store data"
-				print "bad data was: %s" % md
+				logger.info("bad data was: %s" % md)
 				request.setResponseCode(http.BAD_REQUEST, msg)
 				return msg
-			# XXX: do all the format checking on params['val']
 			# XXX: see if there isn't already a 'val' for 'key' present
 			#      - if so, compare to val.  Metadata can differ.  Blocks
 			#        shouldn't.  However, if blocks do differ, just add the
@@ -205,16 +204,31 @@ class kSTORE(ROOT):
 				return False  # not a valid key/nodeid
 			return True
 
-		def validMetadata(data, nodeID):
+		def validMetadata(blockdata, nodeID):
 			# returns true if the format of data conforms to the standard for
 			# metadata 
 			blocks = 0
-			blockdata = data
-			for i in blockdata:
-				if not validValue(i):
+			try:
+				n = blockdata.pop('n')
+				m = blockdata.pop('m')
+				if n != 20 or m != 20:
+					# XXX: to support other than 20/20, need to constrain an
+					# upper bound and store multiple records with different m/n
+					# under the same key 
+					return False
+				t = n+m
+			except:
+				return False
+			if not isinstance(n, int) or not isinstance(m, int):
+				return False
+
+			for (i, b) in blockdata:
+				if i > t:
+					return False
+				if not validValue(b):
 					#print "%s is invalid key" %i
 					return False
-				location = blockdata[i]
+				location = blockdata[(i,b)]
 				if isinstance(location, list):
 					if len(location) > 5:
 						#print "too many (list) nodeIDs" % j
@@ -227,8 +241,10 @@ class kSTORE(ROOT):
 					#print "%s is invalid nodeID" % location
 					return False
 				blocks += 1
-			if blocks != 40: # XXX magic number -- needs to be k+m
+			if blocks != t:
 				return False   # not the right number of blocks
+			blockdata['n'] = n
+			blockdata['m'] = m
 			return True
 
 		def validMasterCAS(key, data, nodeID):

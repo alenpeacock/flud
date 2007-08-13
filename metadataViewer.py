@@ -47,9 +47,12 @@ if __name__ == "__main__":
 	if raw:
 		print data
 	else:
-		for i in data:
-			print "%s stored on:" % fencode(i)
-			d = data[i]
+		m = data.pop('m')
+		n = data.pop('n')
+		print "encoded %d/%d" % (m, n)
+		for (i, h) in data:
+			print "%d %s stored on:" % (i, fencode(h))
+			d = data[(i,h)]
 			print "        %s" % fencode(d)
 		print
 		print "%d blocks" % len(data)

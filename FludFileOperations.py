@@ -374,17 +374,13 @@ class StoreFile:
 		# piggybackMeta is a (nodeID, {blockID: storingNodeID, })
 		logger.debug("%s got piggyBackMeta data", self.mkey)
 		meta = piggybackMeta[1]
-		logger.debug("meta is %s" % meta)
 		sortedKeys = {}
 		n = meta['n']
 		m = meta['m']
-		logger.debug("n=%s, m=%s" % (n,m))
 		for i in [x for x in meta if x != 'm' and x != 'n']:
 			sortedKeys[i[0]] = i
-		logger.debug("sortedKeys=%s" % sortedKeys)
 		for i in xrange(n+m):
 			self.sfiles.append(fencode(sortedKeys[i][1]))
-		logger.debug("sfiles is %s" % self.sfiles)
 		return self._verifyAndStoreBlocks(meta, True)
 
 	# 5b -- findnode on all stored blocks. 
@@ -501,14 +497,6 @@ class StoreFile:
 				logger.info("%s failed store/verify", self.mkey)
 				return False
 
-		# clean up locally coded files and encrypted file
-		for sfile in self.sfiles:
-			os.remove(sfile)
-		for mfile in self.mfiles:
-			os.remove(mfile)
-		if self.encodedir: os.rmdir(self.encodedir)
-		if self.efilename: os.remove(self.efilename)
-
 		# storeMetadata part of storeMetadata
 		# XXX: should sign metadata to prevent forged entries.
 		#for i in self.blockMetadata:
@@ -517,7 +505,6 @@ class StoreFile:
 		logger.debug("%s storing metadata at %s", self.mkey, fencode(self.sK))
 		logger.debug("%s len(segMetadata) = %d", self.mkey,
 				len(self.blockMetadata))
-		logger.debug("%s segMetadata = %s", self.mkey, self.blockMetadata)
 		d = self.node.client.kStore(self.sK, self.blockMetadata) 
 		d.addCallback(self._updateMaster, self.blockMetadata)
 		d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
@@ -525,6 +512,14 @@ class StoreFile:
 
 	# 7 - update local master file record (store it to the network later).
 	def _updateMaster(self, res, meta):
+		# clean up locally coded files and encrypted file
+		for sfile in self.sfiles:
+			os.remove(sfile)
+		for mfile in self.mfiles:
+			os.remove(mfile)
+		if self.encodedir: os.rmdir(self.encodedir)
+		if self.efilename: os.remove(self.efilename)
+
 		key = fencode(self.sK)
 		logger.info("%s updating local master metadata with %s", self.mkey, key)
 		# store the filekey locally

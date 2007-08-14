@@ -52,7 +52,7 @@ class FludTestGauges(wx.Frame):
 		wx.Frame.__init__(self, parent, wx.ID_ANY, title, size=(width,height),
 				style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE)
 
-		self.storebarend = 8192	
+		self.storebarend = 1024
 		self.smultiplier = 100.0 / self.storebarend
 		self.sdivisor = 1
 		self.sbytelabel = ""

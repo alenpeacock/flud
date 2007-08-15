@@ -1177,7 +1177,11 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 				validator, name)
 	
 	def expandRoot(self, config):
-		self.rootID = self.AddRoot("/")
+		self.defaultImageList, self.checkboxes, self.icondict \
+				= createDefaultImageList()
+		self.AssignImageList(self.defaultImageList)
+		self.il = self.GetImageList()
+		self.rootID = self.AddRoot("/", self.icondict['computer'])
 		self.Expand(self.rootID)
 		master = listMeta(config)
 		for i in master:
@@ -1188,11 +1192,16 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 					traversal.remove('')
 				for n in traversal:
 					if n == traversal[-1]:
-						self.AppendItem(node, n)
+						child = self.AppendItem(node, n)
+						idx = getFileIcon(i, self.il, self.checkboxes, 
+								self.icondict)
+						self.SetItemImage(child, idx, wx.TreeItemIcon_Normal)
 					else:
 						children = self.getChildren(node)
 						if not n in children:
 							child = self.AppendItem(node, n)
+							self.SetItemImage(child, self.icondict['folder'],
+									wx.TreeItemIcon_Normal)
 						else:
 							child = children[n]
 						node = child

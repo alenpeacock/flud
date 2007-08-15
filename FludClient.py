@@ -1226,50 +1226,6 @@ class RestorePanel(wx.Panel):
 		self.gbSizer.AddGrowableCol(0)
 		self.SetSizerAndFit(self.gbSizer)
 
-		#self.populateTree()
-
-	def populateTree(self):
-		self.rootID = self.tree.AddRoot("/")
-		self.tree.Expand(self.rootID)
-		master = listMeta(self.config)
-		#dirtree = {}
-		for i in master:
-			# going to build a data structure that, for a list of files like:
-			# /tmp/nrpy.pdf
-			# /tmp/t1/f1
-			# /tmp/t1/f2
-			# would look like:
-			# {'tmp': {'nrpy.pdf': None, 't1': {'f1': None, 'f2': None}}}
-			if not isinstance(master[i], dict):
-				traversal = i.split(os.path.sep)
-				#curnode = dirtree
-				node = self.rootID
-				if traversal[0] == '':
-					traversal.remove('')
-				for n in traversal:
-					if n == traversal[-1]:
-						#curnode.update({n: None})
-						self.tree.AppendItem(node, n)
-					else:
-						#if not n in curnode:
-						#	curnode.update({n: {}})
-						children = self.getChildren(node)
-						if not n in children:
-							child = self.tree.AppendItem(node, n)
-						else:
-							child = children[n]
-						#curnode = curnode[n]
-						node = child
-		#print dirtree
-
-	def getChildren(self, node):
-		result = {}
-		child, cookie = self.tree.GetFirstChild(node)
-		while child:
-			result[self.tree.GetItemText(child)] = child
-			child, cookie = self.tree.GetNextChild(node, cookie)
-		return result
-
 	def OnSize(self, event):
 		w,h = self.GetClientSizeTuple()
 		event.Skip()

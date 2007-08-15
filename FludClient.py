@@ -1181,38 +1181,46 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 				= createDefaultImageList()
 		self.AssignImageList(self.defaultImageList)
 		self.il = self.GetImageList()
-		self.rootID = self.AddRoot("/", self.icondict['computer'])
+		self.rootID = self.AddRoot("/", self.icondict['computer'], -1,
+				wx.TreeItemData(("", True, False, CheckboxState.UNSELECTED)))
 		self.Expand(self.rootID)
 		master = listMeta(config)
 		for i in master:
 			if not isinstance(master[i], dict):
 				traversal = i.split(os.path.sep)
 				node = self.rootID
+				path = "/"
 				if traversal[0] == '':
 					traversal.remove('')
 				for n in traversal:
+					path = os.path.join(path, n)
 					if n == traversal[-1]:
 						child = self.AppendItem(node, n)
+						self.SetPyData(child, (path, False, False, 0)) 
 						idx = getFileIcon(i, self.il, self.checkboxes, 
 								self.icondict)
 						self.SetItemImage(child, idx, wx.TreeItemIcon_Normal)
 					else:
-						children = self.getChildren(node)
+						children = self.getChildrenDict(node)
 						if not n in children:
 							child = self.AppendItem(node, n)
+							self.SetPyData(child, (path, True, False, 0)) 
 							self.SetItemImage(child, self.icondict['folder'],
 									wx.TreeItemIcon_Normal)
 						else:
 							child = children[n]
 						node = child
 
-	def getChildren(self, node):
+	def getChildrenDict(self, node):
 		result = {}
 		child, cookie = self.GetFirstChild(node)
 		while child:
 			result[self.GetItemText(child)] = child
 			child, cookie = self.GetNextChild(node, cookie)
 		return result
+
+	def onExpand(self, event):
+		pass
 
 
 class RestorePanel(wx.Panel):

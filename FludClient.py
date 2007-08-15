@@ -11,6 +11,8 @@ import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
+from Protocol.LocalClient import listMeta
+from FludConfig import FludConfig
 
 
 mimeMgr = wx.MimeTypesManager()
@@ -1132,7 +1134,7 @@ class FilePanel(wx.SplitterWindow):
 				searchButtonAction=searchButtonAction)
 
 		self.SetMinimumPaneSize(20)
-		self.SplitVertically(self.tree, self.searchPanel, 300)
+		self.SplitVertically(self.tree, self.searchPanel) #, 300)
 
 	def getFludHome(self):
 		if os.environ.has_key('FLUDHOME'):
@@ -1160,6 +1162,118 @@ class FilePanel(wx.SplitterWindow):
 			self.tree.SetDimensions(0, 0, w, h)
 		event.Skip()
 
+class RestoreCheckboxCtrl(DirCheckboxCtrl):
+	def __init__(self, parent, id=-1, config=None, pos=wx.DefaultPosition,
+			size=wx.DefaultSize,
+			style=(wx.TR_MULTIPLE 
+				| wx.TR_HAS_BUTTONS 
+				| wx.TR_TWIST_BUTTONS 
+				| wx.TR_NO_LINES 
+				| wx.TR_FULL_ROW_HIGHLIGHT
+				| wx.SUNKEN_BORDER), 
+			validator=wx.DefaultValidator, name=wx.ControlNameStr):
+		self.config = config
+		DirCheckboxCtrl.__init__(self, parent, id, config, pos, size, style,
+				validator, name)
+	
+	def expandRoot(self, config):
+		self.rootID = self.AddRoot("/")
+		self.Expand(self.rootID)
+		master = listMeta(config)
+		for i in master:
+			if not isinstance(master[i], dict):
+				traversal = i.split(os.path.sep)
+				node = self.rootID
+				if traversal[0] == '':
+					traversal.remove('')
+				for n in traversal:
+					if n == traversal[-1]:
+						self.AppendItem(node, n)
+					else:
+						children = self.getChildren(node)
+						if not n in children:
+							child = self.AppendItem(node, n)
+						else:
+							child = children[n]
+						node = child
+
+	def getChildren(self, node):
+		result = {}
+		child, cookie = self.GetFirstChild(node)
+		while child:
+			result[self.GetItemText(child)] = child
+			child, cookie = self.GetNextChild(node, cookie)
+		return result
+
+
+class RestorePanel(wx.Panel):
+	def __init__(self, parent, config):
+		self.config = config
+		wx.Panel.__init__(self, parent, -1)
+		self.Bind(wx.EVT_SIZE, self.OnSize)
+
+		self.tree = RestoreCheckboxCtrl(self, -1, config, #wx.TreeCtrl(self, -1,
+				style=(wx.TR_MULTIPLE
+					| wx.TR_HAS_BUTTONS
+					| wx.TR_TWIST_BUTTONS
+					| wx.TR_NO_LINES
+					| wx.TR_FULL_ROW_HIGHLIGHT
+					| wx.SUNKEN_BORDER))
+
+		self.gbSizer = wx.GridBagSizer(1,1)
+		self.gbSizer.Add(self.tree, (0,0), flag=wx.EXPAND|wx.ALL, border=0)
+		self.gbSizer.AddGrowableRow(0)
+		self.gbSizer.AddGrowableCol(0)
+		self.SetSizerAndFit(self.gbSizer)
+
+		#self.populateTree()
+
+	def populateTree(self):
+		self.rootID = self.tree.AddRoot("/")
+		self.tree.Expand(self.rootID)
+		master = listMeta(self.config)
+		#dirtree = {}
+		for i in master:
+			# going to build a data structure that, for a list of files like:
+			# /tmp/nrpy.pdf
+			# /tmp/t1/f1
+			# /tmp/t1/f2
+			# would look like:
+			# {'tmp': {'nrpy.pdf': None, 't1': {'f1': None, 'f2': None}}}
+			if not isinstance(master[i], dict):
+				traversal = i.split(os.path.sep)
+				#curnode = dirtree
+				node = self.rootID
+				if traversal[0] == '':
+					traversal.remove('')
+				for n in traversal:
+					if n == traversal[-1]:
+						#curnode.update({n: None})
+						self.tree.AppendItem(node, n)
+					else:
+						#if not n in curnode:
+						#	curnode.update({n: {}})
+						children = self.getChildren(node)
+						if not n in children:
+							child = self.tree.AppendItem(node, n)
+						else:
+							child = children[n]
+						#curnode = curnode[n]
+						node = child
+		#print dirtree
+
+	def getChildren(self, node):
+		result = {}
+		child, cookie = self.tree.GetFirstChild(node)
+		while child:
+			result[self.tree.GetItemText(child)] = child
+			child, cookie = self.tree.GetNextChild(node, cookie)
+		return result
+
+	def OnSize(self, event):
+		w,h = self.GetClientSizeTuple()
+		event.Skip()
+
 class SchedulePanel(wx.Panel):
 	def __init__(self, parent):
 		wx.Panel.__init__(self, parent, -1)
@@ -1179,30 +1293,22 @@ class FeedbackPanel(wx.Panel):
 		w,h = self.GetClientSizeTuple()
 		event.Skip()
 
-class RestorePanel(wx.Panel):
-	def __init__(self, parent):
-		wx.Panel.__init__(self, parent, -1)
-		self.Bind(wx.EVT_SIZE, self.OnSize)
-
-	def OnSize(self, event):
-		w,h = self.GetClientSizeTuple()
-		event.Skip()
-
 
 class FludNotebook(wx.Notebook):
 	def __init__(self, parent, id=-1, pos=wx.DefaultPosition, 
 			size=wx.DefaultSize, style=wx.NB_BOTTOM|wx.NO_BORDER):
 		self.parent = parent
+		self.config = parent.config
 		wx.Notebook.__init__(self, parent, id, pos, style=style)
 		self.filePanel = FilePanel(self, 
 				searchButtonAction=parent.searchButtonAction)
 		self.AddPage(self.filePanel, "Select Files")
+		self.restorePanel = RestorePanel(self, self.config)
+		self.AddPage(self.restorePanel, "Restore")
 		self.schedulePanel = SchedulePanel(self)
 		self.AddPage(self.schedulePanel, "Backup Schedule")
 		self.feedbackPanel = FeedbackPanel(self)
 		self.AddPage(self.feedbackPanel, "Feedback")
-		self.restorePanel = RestorePanel(self)
-		self.AddPage(self.restorePanel, "Restore")
 
 	def shutdown(self, event):
 		self.filePanel.shutdown(event)
@@ -1269,7 +1375,8 @@ class FludLogoPanel(wx.Panel):
 class FludFrame(wx.Frame):
 	def __init__(self, parent, id=wx.ID_ANY, label="flud bakcup client", 
 			size=wx.Size(800,600), 
-			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE):
+			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
+			config=None):
 		wx.Frame.__init__(self, parent, id, label, size=size, style=style)
 
 		wx.ToolTip.SetDelay(2000)
@@ -1279,6 +1386,7 @@ class FludFrame(wx.Frame):
 		self.logoPanel = FludLogoPanel(self)
 		self.SetMessage('Welcome.')
 
+		self.config = config
 		self.notebook = FludNotebook(self)
 
 		self.operationStatus = wx.StatusBar(name='operationStatus', 
@@ -1315,9 +1423,13 @@ class FludFrame(wx.Frame):
 
 if __name__ == '__main__':
 	app = wx.PySimpleApp()
+	
+	config = FludConfig()
+	config.load(doLogging=False)
 
 	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(800,600),
-			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE)
+			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
+			config=config)
 
 	app.MainLoop()
 

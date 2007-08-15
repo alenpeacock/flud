@@ -144,7 +144,9 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 				| wx.TR_NO_LINES 
 				| wx.TR_FULL_ROW_HIGHLIGHT
 				| wx.SUNKEN_BORDER), 
-			validator=wx.DefaultValidator, name=wx.ControlNameStr):
+			validator=wx.DefaultValidator, name=wx.ControlNameStr,
+			allowExclude=True):
+		self.allowExclude = allowExclude
 		wx.TreeCtrl.__init__(self, parent, id, pos, size, style, validator,
 				name)
 		self.listeners = []
@@ -514,8 +516,16 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 			if self.checkChildrenStates(item, [CheckboxState.SELECTED, 
 					CheckboxState.SELECTEDPARENT], selections):
 				newstate = CheckboxState.SELECTEDPARENT
-			else:
+			elif self.allowExclude:
 				newstate = CheckboxState.EXCLUDED
+			else:
+				if parent in selections or \
+						(parentstate == CheckboxState.UNSELECTED or \
+						parentstate == CheckboxState.SELECTEDPARENT):
+					newstate = CheckboxState.UNSELECTED
+				elif parentstate == CheckboxState.SELECTED or \
+						parentstate == CheckboxState.SELECTEDCHILD:
+					newstate = CheckboxState.SELECTEDCHILD
 		elif state == CheckboxState.EXCLUDED:
 			if parent in selections or \
 					(parentstate == CheckboxState.UNSELECTED or \
@@ -1174,7 +1184,7 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 			validator=wx.DefaultValidator, name=wx.ControlNameStr):
 		self.config = config
 		DirCheckboxCtrl.__init__(self, parent, id, config, pos, size, style,
-				validator, name)
+				validator, name, allowExclude=False)
 	
 	def expandRoot(self, config):
 		self.defaultImageList, self.checkboxes, self.icondict \

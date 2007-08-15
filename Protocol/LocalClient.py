@@ -351,7 +351,7 @@ class LocalClientFactory(ClientFactory):
 		self.die = True
 
 def listMeta(config):
-	fmaster = open(config.metadir+"/"+config.metamaster, 'r')
+	fmaster = open(os.path.join(config.metadir,config.metamaster), 'r')
 	master = fmaster.read()
 	fmaster.close()
 	if master == "":

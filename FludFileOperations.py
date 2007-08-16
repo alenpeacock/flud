@@ -616,6 +616,7 @@ class RetrieveFile:
 		
 	def _retrieveFile(self):
 		# 1: Query DHT for sK
+		logger.debug("querying DHT for %s", self.sK)
 		d = self.node.client.kFindValue(self.sK)
 		d.addCallback(self._retrieveFileBlocks)
 		d.addErrback(self._retrieveFileErr, "file retrieve failed")
@@ -827,7 +828,7 @@ class RetrieveFile:
 				# no need to copy:
 				os.remove(os.path.join(self.parentcodedir,skey+".rec3")) 
 		else:
-			# recover parent directories of not present
+			# recover parent directories if not present
 			fmaster = open(self.metamaster, 'r')
 			master = fmaster.read()
 			fmaster.close()
@@ -864,8 +865,8 @@ class RetrieveFile:
 
 class RetrieveFilename:
 	"""
-	Retrieves a File given its local name.  Only works if the local master index
-	contains an entry for this filename.
+	Retrieves a File given its local name.  Only works if the local master
+	index contains an entry for this filename.
 	"""
 
 	def __init__(self, node, filename):
@@ -885,14 +886,33 @@ class RetrieveFilename:
 		else:
 			master = fdecode(master)
 		if master.has_key(self.filename):
-			filekey = master[self.filename]
-			metakey = crc32(self.filename)
-			logger
-			if filekey != None and filekey != "":
-				d = RetrieveFile(self.node, fencode(filekey), metakey).deferred
-				return d
-			return defer.fail(LookupError("bad filekey %s for %s" 
-					% (filekey, self.filename)))
+			if isinstance(master[self.filename], dict):
+				logger.debug("%s is a directory in master metadata", 
+						self.filename)
+				# RetrieveFile will restore parent dirs, so we don't need to
+				dlist = []
+				dirname = self.filename+os.path.sep
+				for i in [x for x in master.keys() 
+						if dirname == x[:len(dirname)]]:
+					filekey = master[i]
+					metakey = crc32(i)
+					logger.debug("calling RetrieveFile %s" % filekey)
+					d = RetrieveFile(self.node, fencode(filekey),
+							metakey).deferred
+					dlist.append(d)
+				dl = defer.DeferredList(dlist)
+				return dl
+			else:
+				logger.debug("%s is file in master metadata", self.filename)
+				filekey = master[self.filename]
+				metakey = crc32(self.filename)
+				if filekey != None and filekey != "":
+					logger.debug("calling RetrieveFile %s" % filekey)
+					d = RetrieveFile(self.node, fencode(filekey), 
+							metakey).deferred
+					return d
+				return defer.fail(LookupError("bad filekey %s for %s" 
+						% (filekey, self.filename)))
 		return defer.fail(LookupError("no record of %s" % self.filename))
 
 

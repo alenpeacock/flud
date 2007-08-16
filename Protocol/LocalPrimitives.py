@@ -55,13 +55,13 @@ class LocalProtocol(basic.LineReceiver):
 	def doOp(self, command, fname):
 		#print "got command '%s'" % command
 		if command == "PUTF":
-			logger.debug("PUTF");
+			logger.debug("PUTF %s", fname);
 			return StoreFile(self.factory.node, fname).deferred
 		elif command == "GETI":
-			logger.debug("GETI");
+			logger.debug("GETI %s", fname);
 			return RetrieveFile(self.factory.node, fname).deferred
 		elif command == "GETF":
-			logger.debug("GETF");
+			logger.debug("GETF %s", fname);
 			return RetrieveFilename(self.factory.node, fname).deferred
 		elif command == "FNDN":
 			logger.debug("FNDN %s" % fname);
@@ -78,7 +78,7 @@ class LocalProtocol(basic.LineReceiver):
 			#dlist = defer.DeferredList(dl)
 			#return dlist
 		elif command == "FNDV":
-			logger.debug("FNDV %s" % fname);
+			logger.debug("FNDV %s", fname);
 			try: 
 				intval = long(fname, 16)
 			except: 
@@ -88,7 +88,7 @@ class LocalProtocol(basic.LineReceiver):
 			passphrase, email = fdecode(fname)
 			# XXX: allow an optional passphrase hint to be sent in email.
 			passphrase = self.factory.node.config.Kr.decrypt(passphrase)
-			logger.debug("CRED %s to %s" % (passphrase, email));
+			logger.debug("CRED %s to %s", passphrase, email);
 			Kr = self.factory.node.config.Kr.exportPrivateKey()
 			Kr['g'] = self.factory.node.config.groupIDr
 			fKr = fencode(Kr)

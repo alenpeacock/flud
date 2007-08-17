@@ -14,7 +14,7 @@ import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
-from Protocol.LocalClient import listMeta
+from Protocol.LocalClient import *
 from FludConfig import FludConfig
 
 
@@ -1176,6 +1176,17 @@ class FilePanel(wx.SplitterWindow):
 		event.Skip()
 
 class RestoreCheckboxCtrl(DirCheckboxCtrl):
+	# XXX: child/parent selection/deselection isn't quite right still, esp wrt
+	# root node.  repro:
+	# -/
+	#   -d1
+	#     -f1
+	#   -d2
+	#     -d3
+	#       -f2
+	#       -f3
+	# with nothing selected, select d3 and f3, then select root, then deselect
+	# d3 and f3
 	def __init__(self, parent, id=-1, config=None, pos=wx.DefaultPosition,
 			size=wx.DefaultSize,
 			style=(wx.TR_MULTIPLE 
@@ -1235,10 +1246,28 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 	def onExpand(self, event):
 		pass
 
+	def getSelected(self, startNode=None):
+		if not startNode:
+			startNode = self.rootID
+		children = self.getChildren(startNode)
+		selected = []
+		for n in children:
+			(path, isDir, expanded, state) = self.GetItemData(n).GetData()
+			if not isDir and (state == CheckboxState.SELECTED \
+					or state == CheckboxState.SELECTEDCHILD):
+				selected.append(path)
+			if isDir and (state == CheckboxState.SELECTED \
+					or state == CheckboxState.SELECTEDPARENT \
+					or state == CheckboxState.SELECTEDCHILD):
+				selected += self.getSelected(n)
+		return selected
+
 
 class RestorePanel(wx.Panel):
-	def __init__(self, parent, config):
+	def __init__(self, parent, config, factory):
 		self.config = config
+		self.factory = factory
+
 		wx.Panel.__init__(self, parent, -1)
 		self.Bind(wx.EVT_SIZE, self.OnSize)
 
@@ -1250,8 +1279,14 @@ class RestorePanel(wx.Panel):
 					| wx.TR_FULL_ROW_HIGHLIGHT
 					| wx.SUNKEN_BORDER))
 
-		self.gbSizer = wx.GridBagSizer(1,1)
+		self.restoreButton = wx.Button(self, -1, 'restore selected files', 
+				name='restoreButton')
+		self.Bind(wx.EVT_BUTTON, self.onRestoreClick, self.restoreButton)
+
+		self.gbSizer = wx.GridBagSizer(2,1)
 		self.gbSizer.Add(self.tree, (0,0), flag=wx.EXPAND|wx.ALL, border=0)
+		self.gbSizer.Add(self.restoreButton, (1,0), flag=wx.EXPAND|wx.ALL, 
+				border=0)
 		self.gbSizer.AddGrowableRow(0)
 		self.gbSizer.AddGrowableCol(0)
 		self.SetSizerAndFit(self.gbSizer)
@@ -1259,6 +1294,19 @@ class RestorePanel(wx.Panel):
 	def OnSize(self, event):
 		w,h = self.GetClientSizeTuple()
 		event.Skip()
+
+	def onRestoreClick(self, event):
+		for f in self.tree.getSelected():
+			print "restoreing %s" % f
+			d = self.factory.sendGETF(f)
+			d.addCallback(self.restored, f)
+			d.addErrback(self.restoreFailed, f)
+
+	def restored(self, res, f):
+		print "yay, %s" % f
+
+	def restoreFailed(self, err, f):
+		print "boo, %s: %s" % (f, err)
 
 class SchedulePanel(wx.Panel):
 	def __init__(self, parent):
@@ -1285,11 +1333,16 @@ class FludNotebook(wx.Notebook):
 			size=wx.DefaultSize, style=wx.NB_BOTTOM|wx.NO_BORDER):
 		self.parent = parent
 		self.config = parent.config
+
+		self.factory = LocalClientFactory(self.config)
+		print "connecting to localhost:%d" % config.clientport
+		reactor.connectTCP('localhost', config.clientport, self.factory)
+
 		wx.Notebook.__init__(self, parent, id, pos, style=style)
 		self.filePanel = FilePanel(self, 
 				searchButtonAction=parent.searchButtonAction)
 		self.AddPage(self.filePanel, "Select Files")
-		self.restorePanel = RestorePanel(self, self.config)
+		self.restorePanel = RestorePanel(self, self.config, self.factory)
 		self.AddPage(self.restorePanel, "Restore")
 		self.schedulePanel = SchedulePanel(self)
 		self.AddPage(self.schedulePanel, "Backup Schedule")

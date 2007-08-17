@@ -1253,9 +1253,10 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		selected = []
 		for n in children:
 			(path, isDir, expanded, state) = self.GetItemData(n).GetData()
-			if not isDir and (state == CheckboxState.SELECTED \
+			if not isDir and self.GetItemTextColour(n) != wx.BLUE \
+					and (state == CheckboxState.SELECTED \
 					or state == CheckboxState.SELECTEDCHILD):
-				selected.append(path)
+				selected.append(n)
 			if isDir and (state == CheckboxState.SELECTED \
 					or state == CheckboxState.SELECTEDPARENT \
 					or state == CheckboxState.SELECTEDCHILD):
@@ -1296,17 +1297,22 @@ class RestorePanel(wx.Panel):
 		event.Skip()
 
 	def onRestoreClick(self, event):
-		for f in self.tree.getSelected():
-			print "restoreing %s" % f
-			d = self.factory.sendGETF(f)
-			d.addCallback(self.restored, f)
-			d.addErrback(self.restoreFailed, f)
+		for n in self.tree.getSelected():
+			(path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
+			print "restoring %s" % path
+			d = self.factory.sendGETF(path)
+			d.addCallback(self.restored, n)
+			d.addErrback(self.restoreFailed, n)
 
-	def restored(self, res, f):
-		print "yay, %s" % f
+	def restored(self, res, n):
+		(path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
+		print "yay, %s" % path
+		self.tree.SetItemTextColour(n, wx.BLUE)
 
-	def restoreFailed(self, err, f):
-		print "boo, %s: %s" % (f, err)
+	def restoreFailed(self, err, n):
+		(path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
+		print "boo, %s: %s" % (path, err)
+		self.tree.SetItemTextColour(n, wx.RED)
 
 class SchedulePanel(wx.Panel):
 	def __init__(self, parent):

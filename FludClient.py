@@ -7,6 +7,9 @@ the terms of the GNU General Public License (the GPL), version 2.
 FludClient provides a GUI Client for interacting with FludNode.
 """
 
+from twisted.internet import wxreactor
+wxreactor.install()
+
 import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
@@ -1414,5 +1417,7 @@ if __name__ == '__main__':
 			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
 			config=config)
 
-	app.MainLoop()
+	from twisted.internet import reactor
+	reactor.registerWxApp(app)
+	reactor.run()
 

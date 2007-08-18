@@ -108,6 +108,7 @@ class FludScheduler:
 		elif os.path.isfile(self.fileconfigfile):
 			if self.fileChanged(self.fileconfigfile, self.fileconfigfileMTime):
 				print "fileconfigfile changed"
+				mtime = time.time()
 				self.readFileConfig(mtime)
 				return True
 		return False

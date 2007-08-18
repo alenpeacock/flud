@@ -122,18 +122,6 @@ class StoreFile:
 
 		self.deferred = self._storeFile()
 
-	def loggit(self, logfunc, *args):
-		form = args[0]
-		args = args[1:]
-		mkey = "%d: " % self.mkey
-		logfunc(mkey+form, *args)
-		
-	def critical(self, *args): self.loggit(logger.critical, *args)
-	def error(self, *args): self.loggit(logger.error, *args)
-	def warn(self, *args): self.loggit(logger.warn, *args)
-	def info(self, *args): self.loggit(logger.info, *args)
-	def debug(self, *args): self.loggit(logger.debug, *args)
-		
 	def _storeFile(self):
 		if not os.path.isfile(self.filename):
 			return defer.fail(ValueError("%s is not a file" % self.filename))
@@ -141,11 +129,11 @@ class StoreFile:
 		# 1: create encryption key (eK) and storage key (sK).  Query DHT using
 		#    sK
 		self.eK = FludCrypto.hashfile(self.filename)
-		self.debug("_storefile %s (%s)", self.filename, self.eK)
+		logger.debug("_storefile %s (%s)", self.filename, self.eK)
 		self.sK = long(FludCrypto.hashstring(self.eK), 16)
 		self.eeK = self.Ku.encrypt(binascii.unhexlify(self.eK))
 		self.eKey = AES.new(binascii.unhexlify(self.eK))
-		#self.debug("file %s eK:%s, storage key:%d" 
+		#logger.debug("file %s eK:%s, storage key:%d" 
 		#		% (self.filename, self.eK, self.sK))
 
 		# 2: create filesystem metadata locally.
@@ -180,7 +168,7 @@ class StoreFile:
 		# to append metadata, or if already in progress, redo via verify ops
 		# if already storing identical file by CAS, piggyback on it
 		if self.currentOps.has_key(self.eK):
-			self.debug("reusing callback on %s", self.eK)
+			logger.debug("reusing callback on %s", self.eK)
 			(d, counter) = self.currentOps[self.eK]
 			self.currentOps[self.eK] = (d, counter+1)
 			# setting sfile, encodedir, and efilename to empty vals is kinda
@@ -200,7 +188,7 @@ class StoreFile:
 		fsize = fstat[stat.ST_SIZE]
 		# create a pad at front of file to make it an even multiple of 16
 		fpad = int(16 - fsize%16);
-		#self.debug("fsize=%d, padding with %d bytes" % (fsize, fpad))
+		#logger.debug("fsize=%d, padding with %d bytes" % (fsize, fpad))
 		paddata = chr(fpad)+(fpad-1)*'\x00'
 		buf = paddata + os.read(fd,16-len(paddata))
 		e.write(self.eKey.encrypt(buf));
@@ -218,18 +206,18 @@ class StoreFile:
 		# XXX: codeData should be run outside of event loop
 		self.sfiles = c.codeData(self.efilename, 
 				os.path.join(self.encodedir, 'c'))
-		#self.debug("coded to: %s" % str(self.sfiles))
+		#logger.debug("coded to: %s" % str(self.sfiles))
 		# take hashes and rename coded blocks
 		self.segHashesLocal = []
 		for i in range(len(self.sfiles)):
 			sfile = self.sfiles[i]
 			h = long(FludCrypto.hashfile(sfile),16)
-			self.debug("file block %s hashes to %s", i, fencode(h))
+			logger.debug("file block %s hashes to %s", i, fencode(h))
 			destfile = os.path.join(self.encodedir,fencode(h))
 			if os.path.exists(destfile):
 				self.warn("%s exists (%s)", destfile, fencode(h))
 			self.segHashesLocal.append(h)
-			#self.debug("moved %s to %s" % (sfile, destfile))
+			#logger.debug("moved %s to %s" % (sfile, destfile))
 			os.rename(sfile, destfile)
 			self.sfiles[i] = destfile
 
@@ -248,17 +236,17 @@ class StoreFile:
 	#     for lhash, dhash in zip(segHashesLocal, segHashesDHT):
 	def _checkForExistingFileMetadata(self, storedMetadata):
 		if storedMetadata == None or isinstance(storedMetadata, dict):
-			self.info("metadata doesn't yet exist, storing all data")
+			logger.info("metadata doesn't yet exist, storing all data")
 			d = self._storeBlocks(storedMetadata)
 			#d = self._storeBlocksSKIP(storedMetadata)
 			return d
 		else:
 			storedMetadata = fdecode(storedMetadata)
-			self.info("metadata exists, verifying all data")
+			logger.info("metadata exists, verifying all data")
 			if not self._compareMetadata(storedMetadata, self.sfiles):
 				raise ValueError("stored and local metadata do not match")
 			else:
-				self.info("stored and local metadata match.")
+				logger.info("stored and local metadata match.")
 			# XXX: need to check for diversity.  It could be that data stored
 			# previously to a smaller network (<k+m nodes) and that we should
 			# try to increase diversity and re-store the data.
@@ -291,7 +279,7 @@ class StoreFile:
 			sfile = self.sfiles[i]
 			deferred = self._storeBlock(i, hash, sfile, self.mfiles[i])
 			dlist.append(deferred)
-		self.debug("_storeBlocksAll")
+		logger.debug("_storeBlocksAll")
 		dl = defer.DeferredList(dlist)
 		dl.addCallback(self._storeMetadata)
 		return dl
@@ -307,8 +295,8 @@ class StoreFile:
 		nID = node[2]
 		nKu = FludRSA.importPublicKey(node[3])
 		location = long(nKu.id(), 16)
-		self.info("STOREing under %s on %s:%d", fencode(hash), host, port)
-		self.debug("mfile is %s", mfile)
+		logger.info("STOREing under %s on %s:%d", fencode(hash), host, port)
+		logger.debug("mfile is %s", mfile)
 		deferred = self.node.client.sendStore(sfile, (self.mkey, mfile), host, 
 				port, nKu) 
 		deferred.addCallback(self._fileStored, i, hash, location)
@@ -340,7 +328,7 @@ class StoreFile:
 			return d
 
 	def _fileStored(self, result, i, blockhash, location):
-		self.debug("_filestored %s", fencode(blockhash))
+		logger.debug("_filestored %s", fencode(blockhash))
 		self.blockMetadata[(i, blockhash)] = location
 		return fencode(blockhash)
 
@@ -351,8 +339,8 @@ class StoreFile:
 		# @param fileNames: local filenames.  Only the os.path.basename part 
 		#                     will be used for comparison
 		# @return true if they match up perfectly, false otherwise
-		self.debug('# remote block names: %d', len(storedFiles))
-		self.debug('# local blocks: %d', len(fileNames))
+		logger.debug('# remote block names: %d', len(storedFiles))
+		logger.debug('# local blocks: %d', len(fileNames))
 		result = True
 		n = storedFiles.pop('n')
 		m = storedFiles.pop('m')
@@ -368,16 +356,16 @@ class StoreFile:
 				result = False
 		if result == False:
 			for i in storedFiles:
-				self.debug("storedBlock = %s", fencode(i))
+				logger.debug("storedBlock = %s", fencode(i))
 			for i in fileNames:
-				self.debug("localBlock  = %s", os.path.basename(i))
+				logger.debug("localBlock  = %s", os.path.basename(i))
 		storedFiles['n'] = n
 		storedFiles['m'] = m
 		return result
 
 	def _piggybackStoreMetadata(self, piggybackMeta):
 		# piggybackMeta is a (nodeID, {blockID: storingNodeID, })
-		self.debug("got piggyBackMeta data")
+		logger.debug("got piggyBackMeta data")
 		meta = piggybackMeta[1]
 		sortedKeys = {}
 		n = meta['n']
@@ -401,12 +389,12 @@ class StoreFile:
 			segl = fdecode(seg)
 			nid = self.blockMetadata[(i, segl)]
 			if isinstance(nid, list):
-				self.info("multiple location choices, choosing one randomly.")
+				logger.info("multiple location choices, choosing one randomly.")
 				nid = random.choice(nid)
 				# XXX: for now, this just picks one of the alternatives at
 				#      random.  If the chosen one fails, should try each of the
 				#      others until it works
-			self.info("looking up %s...", ('%x' % nid)[:8])
+			logger.info("looking up %s...", ('%x' % nid)[:8])
 			deferred = self.node.client.kFindNode(nid)
 			deferred.addCallback(self._verifyBlock, sfile, mfile, 
 					seg, segl, nid, noopVerify)
@@ -425,11 +413,11 @@ class StoreFile:
 		# XXX: looks like we occasionally get in here on timed out connections.
 		#      Should go to _storeFileErr instead, eh?
 		if isinstance(kdata, str):
-			self.err("str kdata=%s", kdata)
+			logger.err("str kdata=%s", kdata)
 		#if len(kdata['k']) > 1:
-		#	#self.debug("type kdata: %s" % type(kdata))
-		#	#self.debug("kdata=%s" % kdata)
-		#	#self.debug("len(kdata['k'])=%d" % len(kdata['k']))
+		#	#logger.debug("type kdata: %s" % type(kdata))
+		#	#logger.debug("kdata=%s" % kdata)
+		#	#logger.debug("len(kdata['k'])=%d" % len(kdata['k']))
 		#	raise ValueError("couldn't find node %s" % ('%x' % nid))
 		#	#raise ValueError("this shouldn't really be a ValueError..."
 		#	#		" should be a GotMoreKnodesThanIBargainedForError"
@@ -441,11 +429,11 @@ class StoreFile:
 		port = node[1]
 		id = node[2]
 		if id != nid:
-			self.debug("couldn't find node %s", ('%x' %nid))
+			logger.debug("couldn't find node %s", ('%x' %nid))
 			raise ValueError("couldn't find node %s" % ('%x' % nid))
 		nKu = FludRSA.importPublicKey(node[3])
 
-		self.info("verifying %s on %s:%d", seg, host, port)
+		logger.info("verifying %s on %s:%d", seg, host, port)
 		if noopVerify:
 			offset = length = 0
 			verhash = long(FludCrypto.hashstring(''), 16)
@@ -473,39 +461,39 @@ class StoreFile:
 
 	def _checkVerify(self, result, nKu, host, port, seg, sfile, mfile, hash):
 		if hash != long(result, 16):
-			self.info("VERIFY hash didn't match for %s, performing STORE",
+			logger.info("VERIFY hash didn't match for %s, performing STORE",
 					fencode(seg))
 			d = self._storeBlock(seg, sfile, mfile)
 			return d
 		else:
-			#self.debug("block passed verify (%s == %s)" 
+			#logger.debug("block passed verify (%s == %s)" 
 			#		% (hash, long(result,16)))
 			return fencode(seg)
 
 	def _checkVerifyErr(self, failure, seg, sfile, mfile, hash):
-		self.debug("Couldn't VERIFY: %s", failure.getErrorMessage())
-		self.info("Couldn't VERIFY %s, performing STORE", fencode(seg))
+		logger.debug("Couldn't VERIFY: %s", failure.getErrorMessage())
+		logger.info("Couldn't VERIFY %s, performing STORE", fencode(seg))
 		d = self._storeBlock(seg, sfile, mfile)
 		return d
 
 	# 6 - store the metadata.
 	def _storeMetadata(self, dlistresults):
 		# cleanup part of storeMetadata:
-		self.debug("dlist=%s", str(dlistresults))
+		logger.debug("dlist=%s", str(dlistresults))
 		# XXX: for any "False" in dlistresults, need to invoke _storeBlocks
 		#      again on corresponding entries in sfiles.
 		for i in dlistresults:
 			if i[1] == None:
-				self.info("failed store/verify")
+				logger.info("failed store/verify")
 				return False
 
 		# storeMetadata part of storeMetadata
 		# XXX: should sign metadata to prevent forged entries.
 		#for i in self.blockMetadata:
-		#	self.debug("  %s: %s" 
+		#	logger.debug("  %s: %s" 
 		#			% (fencode(i), fencode(self.blockMetadata[i])))
-		self.debug("storing metadata at %s", fencode(self.sK))
-		self.debug("len(segMetadata) = %d", len(self.blockMetadata))
+		logger.debug("storing metadata at %s", fencode(self.sK))
+		logger.debug("len(segMetadata) = %d", len(self.blockMetadata))
 		d = self.node.client.kStore(self.sK, self.blockMetadata) 
 		d.addCallback(self._updateMaster, self.blockMetadata)
 		d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
@@ -522,7 +510,7 @@ class StoreFile:
 		if self.efilename: os.remove(self.efilename)
 
 		key = fencode(self.sK)
-		self.info("updating local master metadata with %s", key)
+		logger.info("updating local master metadata with %s", key)
 		# store the filekey locally
 		# XXX: this isn't too efficient -- read whole file, add record, write
 		#      whole file
@@ -557,10 +545,10 @@ class StoreFile:
 		(d, counter) = self.currentOps[self.eK]
 		counter = counter - 1
 		if counter == 0:
-			self.debug("counter 0 for currentOps %s", self.eK)
+			logger.debug("counter 0 for currentOps %s", self.eK)
 			self.currentOps.pop(self.eK)
 		else:
-			self.debug("setting counter = %d for %s", counter, self.eK)
+			logger.debug("setting counter = %d for %s", counter, self.eK)
 			self.currentOps[self.eK] = (d, counter)
 		return (key, meta)
 		
@@ -568,13 +556,13 @@ class StoreFile:
 		(d, counter) = self.currentOps[self.eK]
 		counter = counter - 1
 		if counter == 0:
-			self.debug("err counter 0 for currentOps %s", self.eK)
+			logger.debug("err counter 0 for currentOps %s", self.eK)
 			self.currentOps.pop(self.eK)
 		else:
-			self.debug("err setting counter = %d for %s", counter, self.eK)
+			logger.debug("err setting counter = %d for %s", counter, self.eK)
 			self.currentOps[self.eK] = (d, counter)
-		self.error("%s: %s", message, failure.getErrorMessage())
-		self.debug("%s", failure.getTraceback())
+		logger.error("%s: %s", message, failure.getErrorMessage())
+		logger.debug("%s", failure.getTraceback())
 		if raiseException:
 			raise failure
 

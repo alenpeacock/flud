@@ -217,7 +217,7 @@ class StoreFile:
 			logger.debug("file block %s hashes to %s", i, fencode(h))
 			destfile = os.path.join(self.encodedir,fencode(h))
 			if os.path.exists(destfile):
-				self.warn("%s exists (%s)", destfile, fencode(h))
+				logger.warn("%s exists (%s)", destfile, fencode(h))
 			self.segHashesLocal.append(h)
 			#logger.debug("moved %s to %s" % (sfile, destfile))
 			os.rename(sfile, destfile)
@@ -310,7 +310,7 @@ class StoreFile:
 			badtarget, retry=None): 
 		retry = retry - 1
 		if retry > 0:
-			self.warn("STORE to %s failed, trying again", badtarget)
+			logger.warn("STORE to %s failed, trying again", badtarget)
 			d = self._storeBlock(hash, sfile, mfile, retry)
 			d.addCallback(self._fileStored, i, hash, location)
 			# This will fail the entire operation.  This is correct
@@ -322,7 +322,7 @@ class StoreFile:
 					% fencode(hash))
 			return d
 		else:
-			self.warn("STORE to %s failed, giving up", badtarget)
+			logger.warn("STORE to %s failed, giving up", badtarget)
 			d = defer.Deferred()
 			d.addErrback(self._storeFileErr, "couldn't store block %s"
 					% fencode(hash))
@@ -349,12 +349,12 @@ class StoreFile:
 		for (i, f) in storedFiles:
 			fname = os.path.join(self.encodedir,fencode(f))
 			if not fname in fileNames:
-				self.warn("%s not in sfiles", fencode(i))
+				logger.warn("%s not in sfiles", fencode(i))
 				result = False
 		for i, fname in enumerate(fileNames):
 			hname = os.path.basename(fname)
 			if not storedFiles.has_key((i, fdecode(hname))):
-				self.warn("%s not in storedMetadata", hname)
+				logger.warn("%s not in storedMetadata", hname)
 				result = False
 		if result == False:
 			for i in storedFiles:

@@ -9,7 +9,7 @@ import os, stat, sys, logging, binascii, random, time
 from zlib import crc32
 from StringIO import StringIO
 import FludCrypto
-from twisted.internet import defer
+from twisted.internet import defer, threads
 from FludCrypto import FludRSA
 from FludFileCoder import Coder, Decoder
 from Protocol.FludCommUtil import *
@@ -153,6 +153,7 @@ class StoreFile:
 
 		# erasure code the metadata
 		c = Coder(code_n, code_m, code_l)
+		# XXX: bad blocking stuff, move into thread
 		self.encodedir = os.path.join(self.parentcodedir, self.flatname)
 		try:
 			os.mkdir(self.encodedir)
@@ -186,6 +187,7 @@ class StoreFile:
 		fd = os.open(self.filename, os.O_RDONLY)
 		fstat = os.fstat(fd)
 		fsize = fstat[stat.ST_SIZE]
+		# XXX: bad blocking stuff, move into thread
 		# create a pad at front of file to make it an even multiple of 16
 		fpad = int(16 - fsize%16);
 		#logger.debug("fsize=%d, padding with %d bytes" % (fsize, fpad))
@@ -203,7 +205,7 @@ class StoreFile:
 		os.close(fd)
 
 		# erasure code the file
-		# XXX: codeData should be run outside of event loop
+		# XXX: bad blocking stuff, move into thread
 		self.sfiles = c.codeData(self.efilename, 
 				os.path.join(self.encodedir, 'c'))
 		#logger.debug("coded to: %s" % str(self.sfiles))
@@ -711,6 +713,13 @@ class RetrieveFile:
 			raise RuntimeError("couldn't decode file after retreiving all %d" 
 					" available blocks" %self.numDecoded)
 
+	def decodeData(self, decoder, data):
+		return decoder.decodeData(data)
+
+	def _decodeError(self, err):
+		logger.warn("could not decode: %s", err)
+		return err
+
 	def _decodeBlock(self, msg, block, mkey):
 		logger.debug("decode block=%s, msg=%s" % (block, msg))
 		self.numDecoded += 1
@@ -719,8 +728,18 @@ class RetrieveFile:
 		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
 		if not metanames:
 			raise failure.DefaultException("expected metadata was missing")
-		metadecoded = self.mdecoder.decodeData(metanames[0])
-		decoded = self.decoder.decodeData(blockname) 
+		d = threads.deferToThread(self.decodeData, self.mdecoder, metanames[0])
+		d.addCallback(self._metadataDecoded, blockname)
+		d.addErrback(self._decodeError)
+		return d
+
+	def _metadataDecoded(self, metadecoded, blockname):
+		d = threads.deferToThread(self.decodeData, self.decoder, blockname)
+		d.addCallback(self._dataDecoded, metadecoded)
+		d.addErrback(self._decodeError)
+		return d
+
+	def _dataDecoded(self, decoded, metadecoded):
 		if not self.decoded and decoded and metadecoded:
 			self.decoded = True
 			logger.info("successfully decoded (retrieved %d blocks --"
@@ -752,6 +771,7 @@ class RetrieveFile:
 		d_eK = '\x00'*(32%len(d_eK))+d_eK # XXX: magic 32, should be keyspace/8
 		eK = binascii.hexlify(d_eK)
 		eKey = AES.new(binascii.unhexlify(eK))
+		# XXX: bad blocking stuff, move into thread
 		while 1:
 			buf = f1.read(16)
 			if buf == "":

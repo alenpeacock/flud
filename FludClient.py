@@ -16,6 +16,7 @@ import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
 from Protocol.LocalClient import *
 from FludConfig import FludConfig
+from CheckboxState import CheckboxState
 
 
 mimeMgr = wx.MimeTypesManager()
@@ -128,14 +129,6 @@ def createDefaultImageList():
 		il.Add(i)
 		j = j+1
 	return il, checkboxes, icondict
-
-class CheckboxState:
-	(UNSELECTED, SELECTED, SELECTEDCHILD, SELECTEDPARENT, EXCLUDED, 
-			EXCLUDEDCHILD) = range(6)
-	
-	def offset(oldstate, newstate):
-		return newstate - oldstate
-	offset = staticmethod(offset)
 
 class DirCheckboxCtrl(wx.TreeCtrl):
 	

@@ -8,9 +8,9 @@ from fencode import *
 from FludCrypto import *
 
 from Protocol.LocalClient import *
-from FludClient import CheckboxState  # XXX: CheckboxState belongs elsewhere?
+from CheckboxState import CheckboxState
 
-CHECKTIME=60
+CHECKTIME=2
 
 class FludScheduler:
 

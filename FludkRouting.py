@@ -6,17 +6,20 @@ Implements kademlia-style kbuckets (the routing table for the DHT layer).
 
 Although this is not a derivative of Khashmir (written by Andrew Loewenstern,
 Aaron Swartz, et. al.), we would like to give Khashmir a nod for inspiring
-minor portions of the design.  Khashmir is distributed under the MIT License
-and is a nice piece of work.  Take a look at http://khashmir.sourceforge.net/
-for more information.
+portions of the design.  Khashmir is distributed under the MIT License and is a
+very nice piece of work.  Take a look at http://khashmir.sourceforge.net/ for
+more information.
 """
 
 from bisect import *
+import logging
 
 #k = 5          # This is the max depth of a kBucket
 k = 12         # This is the max depth of a kBucket
 a = 3          # alpha, the system-wide concurrency parameter
 idspace = 256  # using sha-256
+
+logger = logging.getLogger("flud.k")
 
 def kCompare(a, b, target):
 	"""
@@ -43,7 +46,7 @@ class kRouting:
 	updating, and removing nodes.  Most importantly, performs kademlia-style
 	routing by returning the node[s] closest to a particular id.
 	
-	>>> table = kRouting(('1.2.3.4', 34, 123456), 20)
+	>>> table = kRouting(('1.2.3.4', 34, 123456), 20, 5)
 	>>> table.insertNode(('2.2.3.4', 34,  23456))
 	>>> table.insertNode(('3.2.3.4', 34, 223456))
 	>>> table.insertNode(('4.2.3.4', 34, 723456))
@@ -74,12 +77,16 @@ class kRouting:
 	>>> table.knownExternalNodes()
 	[('2.2.3.4', 34, 23456), ('3.2.3.4', 34, 223456), ('5.2.3.4', 34, 423456), ('6.2.3.4', 34, 323456), ('7.2.3.4', 34, 733456), ('8.2.3.4', 34, 743456), ('9.2.3.4', 34, 753456), ('10.2.3.4', 34, 763456), ('11.2.3.4', 34, 773456)]
 	"""
-	def __init__(self, node, bits=idspace):
+	def __init__(self, node, bits=idspace, depth=k):
 		"""
 		@param node a (ip, port, id) triple, where id is an int (this is 
 		needed to know when to split a bucket).
 		"""
-		self.kBuckets = [kBucket(0, 2**bits),]
+		self.k = depth
+		self.kBuckets = [kBucket(0, 2**bits, depth),]
+		#self.kBuckets = [kBucket(0, 1, depth),]
+		#for i in xrange(1,bits):
+		#	self.kBuckets.append(kBucket(2**i, 2**(i+1)-1, depth))
 		self.insertNode(node)
 		self.node = node
 	
@@ -105,6 +112,8 @@ class kRouting:
 				# split and try adding it again.
 				self._splitBucket(bucket)
 				self.insertNode(node)
+				logger.debug("split and added %x" % node[2])
+				return
 			# XXX: need to also split for some other cases, see sections 2.4 
 			# and 4.2.
 			else:
@@ -112,7 +121,10 @@ class kRouting:
 				# so that the caller can determine if it should be expunged.
 				# If the old node is not reachable, caller should call 
 				# replaceNode()
+				logger.debug("didn't add %x" % node[2])
 				return bucket.contents[0]
+			logger.debug("didn't add %x" % node[2])
+			return bucket.contents[0]
 
 	def removeNode(self, node):
 		"""
@@ -143,10 +155,11 @@ class kRouting:
 		#	nodes.append(n)
 
 		nodes += bucket.contents
-		if len(nodes) < k:
+		if len(nodes) < self.k:
 			nextbucket = self._nextbucket(bucket)
 			prevbucket = self._prevbucket(bucket)
-			while len(nodes) < k and (nextbucket != None or prevbucket != None):
+			while len(nodes) < self.k \
+					and (nextbucket != None or prevbucket != None):
 				if nextbucket != None:
 					nodes += nextbucket.contents
 				if prevbucket != None: 
@@ -155,7 +168,7 @@ class kRouting:
 				prevbucket = self._prevbucket(prevbucket)
 			
 		nodes.sort(lambda a, b, n=nodeID: cmp(n ^ a[2], n ^ b[2]))
-		return nodes[:k]
+		return nodes[:self.k]
 
 	def findNodeOld(self, nodeID):
 		"""
@@ -172,10 +185,11 @@ class kRouting:
 		# nodeID isn't in our routing table, so return the k closest matches
 		nodes = []
 		nodes += bucket.contents
-		if len(nodes) < k:
+		if len(nodes) < self.k:
 			nextbucket = self._nextbucket(bucket)
 			prevbucket = self._prevbucket(bucket)
-			while len(nodes) < k and (nextbucket != None or prevbucket != None):
+			while len(nodes) < self.k \
+					and (nextbucket != None or prevbucket != None):
 				if nextbucket != None:
 					nodes += nextbucket.contents
 				if prevbucket != None: 
@@ -184,7 +198,7 @@ class kRouting:
 				prevbucket = self._prevbucket(prevbucket)
 			
 		nodes.sort(lambda a, b, n=nodeID: cmp(n ^ a[2], n ^ b[2]))
-		return nodes[:k]
+		return nodes[:self.k]
 
 	def updateNode(self, node):
 		"""
@@ -243,12 +257,12 @@ class kRouting:
 		be split into two new buckets.
 		"""
 		halfpoint = (bucket.end - bucket.begin) / 2
-		newbucket = kBucket(bucket.end - halfpoint + 1, bucket.end)
+		newbucket = kBucket(bucket.end - halfpoint + 1, bucket.end, self.k)
 		self.kBuckets.insert(self.kBuckets.index(bucket.begin) + 1, newbucket)
 		bucket.end -= halfpoint
 
 		for node in bucket.contents[:]:
-			if node[2] >= bucket.end:
+			if node[2] > bucket.end:
 				bucket.delNode(node)
 				newbucket.addNode(node)
 
@@ -259,7 +273,7 @@ class kBucket:
 	last seen (most recent at tail).  Every kBucket has a begin and end
 	number, indicating the chunk of the id space that it contains.
 	
-	>>> b = kBucket(0,100)
+	>>> b = kBucket(0,100,5)
 	>>> b
 	{'0-64': []}
 	>>> n1 = ('1.2.3.4', 45, 'd234a53546e4c23')
@@ -290,9 +304,9 @@ class kBucket:
 	>>> f = b.findNode(n3[2])
 	>>> f == n3
 	True
-	>>> c = kBucket(101,200)
-	>>> d = kBucket(150,250)       # wouldn't really have overlap in practice
-	>>> e = kBucket(251, 2**256) 	
+	>>> c = kBucket(101,200,5)
+	>>> d = kBucket(150,250,5)       # wouldn't really have overlap in practice
+	>>> e = kBucket(251, 2**256,5) 	
 	>>> buckets = (b, c, d, e)     # if not added insort, must sort for bisect
 	>>> b1 = b
 	>>> b1 == b
@@ -335,7 +349,8 @@ class kBucket:
 	3
 	"""
 	
-	def __init__(self, begin, end):
+	def __init__(self, begin, end, depth=k):
+		self.k = depth
 		self.begin = begin
 		self.end = end
 		self.contents = []
@@ -355,7 +370,7 @@ class kBucket:
 		if node in self.contents:
 			self.contents.remove(node)
 			self.contents.append(node)
-		elif len(self.contents) >= k:
+		elif len(self.contents) >= self.k:
 			raise BucketFullException()
 		else:
 			ids = [x[2] for x in self.contents]

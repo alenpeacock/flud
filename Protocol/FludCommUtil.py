@@ -136,51 +136,6 @@ def replaceNode(error, routing, replacee, replacer):
 	routing.replaceNode(replacee, replacer)	
 	print "replaced node in ktable"
 
-def encode(d):
-	# XXX: deprecate this
-	"""
-	takes string data or a number and encodes it to a URL-friendly format
-	"""
-	if isinstance(d, int) or isinstance(d, long):
-		#return hex(d)	
-		return "%x" % d
-		#return binascii.b2a_base64(binascii.unhexlify("%x" %d)).replace('/','-')
-	if d == None:
-		return d
-	return binascii.hexlify(d)
-	#return binascii.b2a_base64(d).replace('/','-')
-
-	# XXX: should do base64 (or at least 32) encoding instead
-	# something like:
-	#if isinstance(d, int) or isinstance(d, long):
-	#	print "encoding number: %s" % d
-	#	d = '%s' % d
-	#else:
-	#	print "encoding string: %s" % d
-	#d1 = d.decode('hex')
-	#d2 = binascii.b2a_base64(d1)
-	#d3 = d2.replace('/','-')
-	#return d3
-
-	
-def decode(d):
-	# XXX: deprecate this
-	"""
-	takes URL-friendly string data and decodes it to a number 
-	"""
-	try:
-		return binascii.unhexlify(d)
-	except TypeError, t:
-		logging.getLogger('flud').log(logging.WARN, t.args[0])
-		return None
-
-	# XXX: should do base64 (or at least 32) encoding instead
-	# something like:
-	#e3 = d.replace('-','/')
-	#e2 = binascii.a2b_base64(e3)
-	#e1 = e2.encode('hex')
-	#return e1
-
 def requireParams(request, paramNames):
 	# Looks for the named parameters in request.  If found, returns
 	# a dict of param/value mappings.  If any named parameter is missing,

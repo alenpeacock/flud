@@ -311,7 +311,7 @@ class StoreFile:
 		retry = retry - 1
 		if retry > 0:
 			logger.warn("STORE to %s failed, trying again", badtarget)
-			d = self._storeBlock(hash, sfile, mfile, retry)
+			d = self._storeBlock(i, hash, sfile, mfile, retry)
 			d.addCallback(self._fileStored, i, hash, location)
 			# This will fail the entire operation.  This is correct
 			# behavior because we've tried on at least N nodes and couldn't
@@ -398,7 +398,7 @@ class StoreFile:
 				#      others until it works
 			logger.info("looking up %s...", ('%x' % nid)[:8])
 			deferred = self.node.client.kFindNode(nid)
-			deferred.addCallback(self._verifyBlock, sfile, mfile, 
+			deferred.addCallback(self._verifyBlock, i, sfile, mfile, 
 					seg, segl, nid, noopVerify)
 			deferred.addErrback(self._storeFileErr, 
 					"couldn't find node %s... for VERIFY" % ('%x' % nid)[:8], 
@@ -411,7 +411,7 @@ class StoreFile:
 		return dl
 
 	# 5c -- verify all blocks, store any that fail verify.
-	def _verifyBlock(self, kdata, sfile, mfile, seg, segl, nid, noopVerify):
+	def _verifyBlock(self, kdata, i, sfile, mfile, seg, segl, nid, noopVerify):
 		# XXX: looks like we occasionally get in here on timed out connections.
 		#      Should go to _storeFileErr instead, eh?
 		if isinstance(kdata, str):
@@ -456,26 +456,27 @@ class StoreFile:
 		
 		deferred = self.node.client.sendVerify(seg, offset, length, 
 					host, port, nKu, (self.mkey, mfile)) 
-		deferred.addCallback(self._checkVerify, nKu, host, port, segl, 
+		deferred.addCallback(self._checkVerify, nKu, host, port, i, segl, 
 				sfile, mfile, verhash)
-		deferred.addErrback(self._checkVerifyErr, segl, sfile, mfile, verhash)
+		deferred.addErrback(self._checkVerifyErr, i, segl, sfile, mfile,
+				verhash)
 		return deferred
 
-	def _checkVerify(self, result, nKu, host, port, seg, sfile, mfile, hash):
+	def _checkVerify(self, result, nKu, host, port, i, seg, sfile, mfile, hash):
 		if hash != long(result, 16):
 			logger.info("VERIFY hash didn't match for %s, performing STORE",
 					fencode(seg))
-			d = self._storeBlock(seg, sfile, mfile)
+			d = self._storeBlock(i, seg, sfile, mfile)
 			return d
 		else:
 			#logger.debug("block passed verify (%s == %s)" 
 			#		% (hash, long(result,16)))
 			return fencode(seg)
 
-	def _checkVerifyErr(self, failure, seg, sfile, mfile, hash):
+	def _checkVerifyErr(self, failure, i, seg, sfile, mfile, hash):
 		logger.debug("Couldn't VERIFY: %s", failure.getErrorMessage())
 		logger.info("Couldn't VERIFY %s, performing STORE", fencode(seg))
-		d = self._storeBlock(seg, sfile, mfile)
+		d = self._storeBlock(i, seg, sfile, mfile)
 		return d
 
 	# 6 - store the metadata.

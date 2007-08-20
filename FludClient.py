@@ -1014,7 +1014,7 @@ class SearchPanel(wx.Panel):
 		self.searchField.SetToolTipString('find files within directories'
 				' selected to the left by entering search terms here')
 		self.searchField.Bind(wx.EVT_TEXT_ENTER, self.onSearchClick)
-		self.searchField.Bind(wx.EVT_COMMAND_LEFT_CLICK, self.selectAllText)
+		self.searchField.Bind(wx.EVT_LEFT_DOWN, self.selectAllText)
 
 		self.searchButton = wx.Button(self, -1, 'find!', name='searchButton')
 		self.Bind(wx.EVT_BUTTON, self.onSearchClick, self.searchButton)
@@ -1074,8 +1074,12 @@ class SearchPanel(wx.Panel):
 		self.groupSelection.Enable()
 
 	def selectAllText(self, event):
-		print "heya"
-		self.searchField.SetSelection(-1,-1)
+		if wx.Window.FindFocus() != self.searchField:
+			self.searchField.SetSelection(-1,-1)
+			self.searchField.SetFocus()
+		else:
+			self.searchField.SetSelection(0,0)
+			event.Skip()
 
 	def setGroup(self, state):
 		b = wx.BusyCursor()

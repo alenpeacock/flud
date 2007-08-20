@@ -925,7 +925,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 		image = getFileIcon(path, self.il, self.checkboxes, 
 				self.icondict) + state
 		self.SetItemImage(item, image)
-		return  self.searchSourceItems
+		return self.searchSourceItems
 
 
 class GroupSelectionCheckbox(wx.Panel):
@@ -1015,6 +1015,7 @@ class SearchPanel(wx.Panel):
 				' selected to the left by entering search terms here')
 		self.searchField.Bind(wx.EVT_TEXT_ENTER, self.onSearchClick)
 		self.searchField.Bind(wx.EVT_LEFT_DOWN, self.selectAllText)
+		self.searchField.Bind(wx.EVT_KILL_FOCUS, self.unfocused)
 
 		self.searchButton = wx.Button(self, -1, 'find!', name='searchButton')
 		self.Bind(wx.EVT_BUTTON, self.onSearchClick, self.searchButton)
@@ -1080,6 +1081,9 @@ class SearchPanel(wx.Panel):
 		else:
 			self.searchField.SetSelection(0,0)
 			event.Skip()
+
+	def unfocused(self, event):
+		self.searchField.SetSelection(0,0)
 
 	def setGroup(self, state):
 		b = wx.BusyCursor()

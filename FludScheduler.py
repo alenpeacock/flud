@@ -10,7 +10,7 @@ from FludCrypto import *
 from Protocol.LocalClient import *
 from CheckboxState import CheckboxState
 
-CHECKTIME=2
+CHECKTIME=5
 
 class FludScheduler:
 

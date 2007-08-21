@@ -794,6 +794,8 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 		#self.SetColumnWidth(1, -1) #wx.LIST_AUTOSIZE)
 		self.Bind(wx.EVT_MOTION, self.mouseMotion)
 
+		self.searchSourceItems = []
+
 	def itemChanged(self, item, data):
 		(path, isDir, expanded, state) = data
 		if self.itemdict.has_key(path):
@@ -865,7 +867,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 		if len(selections) == 0:
 			return ("Please tell me where to search.  Select one or more"
 					" folders in the left-hand panel (hold down SHIFT or"
-					" CTRL for multiple selection), then click the search"
+					" CTRL for multiple selection), then click the 'find!'"
 					" button again.", None)
 		else:
 			self.DeleteAllItems()
@@ -878,6 +880,8 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 			self.searchSourceItems = [self.peerctrl.GetItemData(s).GetData()[0]
 					for s in searchSourceItems]
 			print "sources: %s" % self.searchSourceItems
+			return ("Search results will appear as files that match your"
+					" search are found.", None)
 		return (None, None)
 
 	def addResults(self, ditem, searchstring):
@@ -1348,7 +1352,7 @@ class FludNotebook(wx.Notebook):
 		wx.Notebook.__init__(self, parent, id, pos, style=style)
 		self.filePanel = FilePanel(self, 
 				searchButtonAction=parent.searchButtonAction)
-		self.AddPage(self.filePanel, "Select Files")
+		self.AddPage(self.filePanel, "Backup Files")
 		self.restorePanel = RestorePanel(self, self.config, self.factory)
 		self.AddPage(self.restorePanel, "Restore")
 		self.schedulePanel = SchedulePanel(self)
@@ -1356,8 +1360,28 @@ class FludNotebook(wx.Notebook):
 		self.feedbackPanel = FeedbackPanel(self)
 		self.AddPage(self.feedbackPanel, "Feedback")
 
+		self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.changedPage)
+
 	def shutdown(self, event):
 		self.filePanel.shutdown(event)
+
+	def changedPage(self, event):
+		page = event.GetSelection()
+		if page == 0:
+			self.SetMessage("Select files and directories for backup"
+					" with the filesystem view on the left, or set up criteria"
+					" for finding files for backup directly with simple"
+					" searches, below right.")
+		elif page == 1:
+			self.SetMessage("Select files/directories to be restored to"
+					" your computer, then click on 'restore!'  Files will turn"
+					" blue as they arrive.")
+		elif page == 2:
+			self.SetMessage("Configure how often your computer should backup."
+					" (not implemented)")
+		elif page == 3:
+			self.SetMessage("Send feedback to flud programmers. (not"
+					" implemented)")
 
 	def SetMessage(self, msg):
 		self.parent.SetMessage(msg)

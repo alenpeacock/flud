@@ -40,7 +40,7 @@ if __name__ == "__main__":
 	f = os.open(fname, os.O_RDONLY)
 	data = os.read(f,1280000)
 	os.close(f)
-	print "data is '%s'" % data
+	#print "fencoded data is '%s'" % data
 	data = fdecode(data)
 	for i in data:
 		if isinstance(data[i],dict):
@@ -48,5 +48,5 @@ if __name__ == "__main__":
 	print "--------------------"
 	for i in data:
 		if not isinstance(data[i],dict):
-			print "%s <- %s" % (fencode(data[i]), i)
+			print "%s (%d) <- %s" % (fencode(data[i][0]), data[i][1], i)
 

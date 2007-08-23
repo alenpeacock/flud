@@ -101,7 +101,8 @@ class CmdClientFactory(LocalClientFactory):
 			master = listMeta(self.config)
 			for i in master:
 				if not isinstance(master[i], dict):
-					print "%s: %s" % (i, fencode(master[i]))
+					print "%s: %s (%d)" % (i, fencode(master[i][0]),
+							master[i][1])
 		elif commandkey == 'putm':
 			# store master metadata
 			self.callFactory(self.sendPUTM, commands, self.msgs)

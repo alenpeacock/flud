@@ -524,13 +524,21 @@ class StoreFile:
 			master = {}
 		else:
 			master = fdecode(master)
-		master[self.filename]=self.sK
-		# XXX: need to store directory info for all parents of this file if
-		#      not already present (perms, owner, timestamps, etc).
+		
+		# update entry for file
+		logger.info("master[%s] -> (%s, %s)", self.filename, self.sK, 
+				int(time.time()))
+		master[self.filename] = (self.sK, int(time.time()))
+		logger.info("master is %s" % master)
+
+		# update entry for parent dirs
 		paths = pathsplit(self.filename)
 		for i in paths:
 			if not i in master:
 				master[i] = filemetadata(i)
+		logger.info("master is %s" % master)
+		logger.info("f(master) is %s" % fencode(master))
+
 		fmaster = open(self.metamaster, 'w')
 		fmaster.write(fencode(master))
 		fmaster.close()
@@ -911,7 +919,7 @@ class RetrieveFilename:
 				return dl
 			else:
 				logger.debug("%s is file in master metadata", self.filename)
-				filekey = master[self.filename]
+				(filekey, backuptime) = master[self.filename]
 				metakey = crc32(self.filename)
 				if filekey != None and filekey != "":
 					logger.debug("calling RetrieveFile %s" % filekey)

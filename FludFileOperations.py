@@ -117,7 +117,6 @@ class StoreFile:
 		self.Ku = node.config.Ku
 		self.routing = self.config.routing
 		self.metadir = self.config.metadir
-		self.metamaster = os.path.join(self.metadir,self.config.metamaster)
 		self.parentcodedir = self.config.clientdir # XXX: clientdir?
 
 		self.deferred = self._storeFile()
@@ -514,34 +513,21 @@ class StoreFile:
 
 		key = fencode(self.sK)
 		logger.info("updating local master metadata with %s", key)
+
 		# store the filekey locally
-		# XXX: this isn't too efficient -- read whole file, add record, write
-		#      whole file
-		fmaster = open(self.metamaster, 'r')
-		master = fmaster.read()
-		fmaster.close()
-		if master == "":
-			master = {}
-		else:
-			master = fdecode(master)
-		
+
 		# update entry for file
-		logger.info("master[%s] -> (%s, %s)", self.filename, self.sK, 
-				int(time.time()))
-		master[self.filename] = (self.sK, int(time.time()))
-		logger.info("master is %s" % master)
+		self.config.updateMasterMeta(self.filename, (self.sK, int(time.time())))
 
 		# update entry for parent dirs
 		paths = pathsplit(self.filename)
 		for i in paths:
-			if not i in master:
-				master[i] = filemetadata(i)
-		logger.info("master is %s" % master)
-		logger.info("f(master) is %s" % fencode(master))
+			if not self.config.getFromMasterMeta(i):
+				self.config.updateMasterMeta(i, filemetadata(i))
 
-		fmaster = open(self.metamaster, 'w')
-		fmaster.write(fencode(master))
-		fmaster.close()
+		# XXX: not too efficient to write this out for every file.  consider
+		# local caching and periodic syncing instead
+		self.config.syncMasterMeta()
 
 		# cache the metadata locally (optional)
 		fname = os.path.join(self.metadir,key)
@@ -605,7 +591,6 @@ class RetrieveFile:
 		self.Kr = node.config.Kr
 		self.routing = self.config.routing.knownNodes()
 		self.metadir = self.config.metadir
-		self.metamaster = os.path.join(self.metadir,self.config.metamaster)
 		self.parentcodedir = self.config.clientdir
 		self.numDecoded = 0
 
@@ -844,20 +829,15 @@ class RetrieveFile:
 				os.remove(os.path.join(self.parentcodedir,skey+".rec3")) 
 		else:
 			# recover parent directories if not present
-			fmaster = open(self.metamaster, 'r')
-			master = fmaster.read()
-			fmaster.close()
-			if master == "":
-				master = {}
-			else:
-				master = fdecode(master)
 			paths = pathsplit(fmeta['path'])
 			for i in paths:
 				if not os.path.exists(i) and i != fmeta['path']:
 					os.mkdir(i) # best effort dir creation, even if missing
 					              # directory metadata
-					if i in master:
-						dirmeta = master[i]
+					# XXX: should be using an accessor method on config for
+					# master
+					if i in self.config.master:
+						dirmeta = self.config.getMasterMetadata(i)
 						os.chmod(i,dirmeta['mode'])	
 						os.chown(i,dirmeta['uid'],dirmeta['gid']) # XXX: windows
 						# XXX: atim, mtim, ctim
@@ -888,28 +868,23 @@ class RetrieveFilename:
 		self.node = node
 		self.filename = filename
 		self.metadir = self.node.config.metadir
-		self.metamaster = os.path.join(self.metadir,self.node.config.metamaster)
+		self.config = self.node.config
 
 		self.deferred = self._recoverFile()
 		
 	def _recoverFile(self):
-		fmaster = open(self.metamaster, 'r')
-		master = fmaster.read()
-		fmaster.close()
-		if master == "":
-			master = {}
-		else:
-			master = fdecode(master)
-		if master.has_key(self.filename):
-			if isinstance(master[self.filename], dict):
+		fmeta = self.config.getFromMasterMeta(self.filename)
+		if fmeta:
+			if isinstance(fmeta, dict):
 				logger.debug("%s is a directory in master metadata", 
 						self.filename)
 				# RetrieveFile will restore parent dirs, so we don't need to
 				dlist = []
 				dirname = self.filename+os.path.sep
-				for i in [x for x in master.keys() 
+				# XXX: this should be calling a config.getAllFromMasterMeta()
+				for i in [x for x in self.config.master.keys() 
 						if dirname == x[:len(dirname)]]:
-					filekey = master[i]
+					filekey = self.config.getFromMasterMeta[i]
 					metakey = crc32(i)
 					logger.debug("calling RetrieveFile %s" % filekey)
 					d = RetrieveFile(self.node, fencode(filekey),
@@ -919,7 +894,8 @@ class RetrieveFilename:
 				return dl
 			else:
 				logger.debug("%s is file in master metadata", self.filename)
-				(filekey, backuptime) = master[self.filename]
+				(filekey, backuptime) = self.config.getFromMasterMeta(
+						self.filename)
 				metakey = crc32(self.filename)
 				if filekey != None and filekey != "":
 					logger.debug("calling RetrieveFile %s" % filekey)

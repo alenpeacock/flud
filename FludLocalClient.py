@@ -98,11 +98,7 @@ class CmdClientFactory(LocalClientFactory):
 			self.callFactory(func, commands, self.msgs)
 		elif commandkey == 'list':
 			# list stored files
-			master = listMeta(self.config)
-			for i in master:
-				if not isinstance(master[i], dict):
-					print "%s: %s (%d)" % (i, fencode(master[i][0]),
-							master[i][1])
+			self.callFactory(self.sendLIST, commands, self.msgs)
 		elif commandkey == 'putm':
 			# store master metadata
 			self.callFactory(self.sendPUTM, commands, self.msgs)

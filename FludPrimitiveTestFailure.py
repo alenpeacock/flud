@@ -205,7 +205,7 @@ def testSTOREBadKeySmall(nKu, node, host, port):
 	return deferred
 
 def testSTORESuccess(res, nKu, node, host, port):
-	print "testSTORE suceeded: %s" % res
+	print "testSTORE succeeded: %s" % res
 	return testSTOREBadKeySmall(nKu, node, host, port)
 
 def testSTORE(nKu, node, host, port):

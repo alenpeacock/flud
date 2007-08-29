@@ -43,7 +43,8 @@ class LocalProtocol(basic.LineReceiver):
 			'GETI': [0, MAXCONCURRENT, []], 'FNDN': [0, 1, []], 
 			'STOR': [0, MAXCONCURRENT, []], 'RTRV': [0, MAXCONCURRENT, []], 
 			'VRFY': [0, MAXCONCURRENT, []], 'FNDV': [0, 1, []], 
-			'CRED': [0, 1, []], 'GETM': [0, 1, []], 'PUTM': [0, 1, []] }
+			'CRED': [0, 1, []], 'LIST': [0, 1, []], 'GETM': [0, 1, []], 
+			'PUTM': [0, 1, []] }
 
 	def connectionMade(self):
 		logger.info("client connected")
@@ -134,11 +135,14 @@ class LocalProtocol(basic.LineReceiver):
 			# then use the key to .decrypt(fdecode(cred)) and call this dcred,
 			# then fdecode(dcred[dcred.find('d'):]) and call this ddcred, and
 			# finally importPrivateKey(ddcred) and set groupIDr to ddcred['g'].
+		elif command == "LIST":
+			logger.debug("LIST")
+			return defer.succeed(self.factory.config.master)
 		elif command == "GETM":
-			logger.debug("GETM");
+			logger.debug("GETM")
 			return RetrieveMasterIndex(self.factory.node).deferred
 		elif command == "PUTM":
-			logger.debug("PUTM");
+			logger.debug("PUTM")
 			return UpdateMasterIndex(self.factory.node).deferred
 		else:
 			#print "fname is '%s'" % fname

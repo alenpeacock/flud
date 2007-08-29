@@ -147,7 +147,8 @@ class LocalClientFactory(ClientFactory):
 		self.die = False
 		self.pending = {'PUTF': {}, 'CRED': {}, 'GETI': {}, 'GETF': {}, 
 				'FNDN': {}, 'STOR': {}, 'RTRV': {}, 'VRFY': {}, 'FNDV': {}, 
-				'CRED': {}, 'GETM': {}, 'PUTM': {}, 'NODE': {}, 'BKTS': {}}
+				'CRED': {}, 'LIST': {}, 'GETM': {}, 'PUTM': {}, 'NODE': {}, 
+				'BKTS': {}}
 
 	def clientConnectionFailed(self, connector, reason):
 		#print "connection failed: %s" % reason
@@ -265,13 +266,24 @@ class LocalClientFactory(ClientFactory):
 			return d
 		else:
 			return self.pending['FNDN'][nID]
+
+	def sendLIST(self):
+		logger.debug("sendLIST")
+		if not self.pending['LIST'].has_key(""):
+			d = defer.Deferred()
+			self.pending['LIST'][''] = d
+			logger.debug("LIST['']=%s" % d)
+			self._sendMessage("LIST?")
+			return d
+		else:
+			return self.pending['LIST']['']
 	
 	def sendGETM(self):
 		logger.debug("sendGETM")
 		if not self.pending['GETM'].has_key(''):
 			d = defer.Deferred()
 			self.pending['GETM'][''] = d
-			logger.debug("GETM[pending]=%s" % d)
+			logger.debug("GETM['']=%s" % d)
 			self._sendMessage("GETM?")
 			return d
 		else:
@@ -350,6 +362,12 @@ class LocalClientFactory(ClientFactory):
 	def setDie(self):
 		self.die = True
 
+# XXX: this should move into FludNode side of things (LocalClientPrimitives).
+# anything that calls this should make calls ('LIST', others as necessary) to
+# get at master metadata, otherwise we could have multiple writer problems.
+# FludNode should make the file ro while running, too.
+# And everyone that does anything with the master metadata should do it through
+# methods of FludConfig, instead of by direct access to the file.
 def listMeta(config):
 	fmaster = open(os.path.join(config.metadir,config.metamaster), 'r')
 	master = fmaster.read()

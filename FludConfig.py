@@ -10,6 +10,7 @@ import ConfigParser
 import FludCrypto
 from FludCrypto import FludRSA
 from FludkRouting import kRouting
+from fencode import *
 
 """ default mapping of relative URLs """
 def_commandmap = {'ID': 'ID', 'GROUPID': 'GROUPID', 'STORE': 'STORE', 
@@ -198,6 +199,8 @@ class FludConfig:
 
 		self.save()
 		os.chmod(self.fludconfig, 0600)
+
+		self.loadMasterMeta()
 
 	def save(self):
 		conffile = file(self.fludconfig, "w")
@@ -456,6 +459,40 @@ class FludConfig:
 			logger.warn("Couldn't read %s from config file:" % section)
 
 		return result
+
+	# XXX: note that this master metadata all-in-mem scheme doesn't really work
+	# long term; these methods should eventually go to a local db or db-like
+	# something
+	def updateMasterMeta(self, fname, val): 
+		self.master[fname] = val
+
+	def getFromMasterMeta(self, fname):
+		try:
+			return self.master[fname]
+		except:
+			return None
+
+	def deleteFromMasterMeta(self, fname):
+		try: 
+			self.master.pop(fname)
+		except:
+			pass
+
+	def loadMasterMeta(self):
+		fmaster = open(os.path.join(self.metadir, self.metamaster), 'r')
+		master = fmaster.read()
+		fmaster.close()
+		if master == "":
+			master = {}
+		else:
+			master = fdecode(master)
+		self.master = master
+
+	def syncMasterMeta(self):
+		master = fencode(self.master)
+		fmaster = open(os.path.join(self.metadir, self.metamaster), 'w')
+		fmaster.write(master)
+		fmaster.close()
 		
 	def _test(self):
 		import doctest

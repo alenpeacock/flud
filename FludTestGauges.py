@@ -26,12 +26,12 @@ def du(dir):
 
 # XXX: too much manual layout.  should convert to a managed layout to allow for
 # resizing, etc.
-SGAUGEWIDTH = 260  # storage gauge
+SGAUGEWIDTH = 230  # storage gauge
 DGAUGEWIDTH = 100  # dht gauge
 GAUGEHEIGHT = 20
 ROWHEIGHT = 30
 SEP = 5
-LABELWIDTH = 45
+LABELWIDTH = 35
 POWERWIDTH = 70
 RATIOBARHEIGHT = 70
 COLWIDTH = SGAUGEWIDTH+DGAUGEWIDTH+LABELWIDTH+POWERWIDTH

@@ -25,16 +25,19 @@ class FludScheduler:
 		self.fileconfigSelected = set()
 		self.fileconfigExcluded = set()
 		
-		self.readMasterMetadata()
+		d = self.getMasterMetadata()
+		d.addCallback(self.gotMasterMetadata)
+		d.addErrback(self.errMasterMetadata)
 
-	def readMasterMetadata(self):
-		f = open(os.path.join(self.config.metadir, self.config.metamaster), 'r')
-		data = f.read()
-		f.close()
-		if data:
-			self.mastermetadata = fdecode(data)
-		else:
-			self.mastermetadata = {}
+	def getMasterMetadata(self):
+		return self.factory.sendLIST()	
+
+	def gotMasterMetadata(self, master):
+		self.mastermetadata = master
+
+	def errMasterMetadata(self, err):
+		print err
+		reactor.stop()
 
 	def readFileConfig(self, mtime=None):
 		print "reading FileConfig"
@@ -64,6 +67,7 @@ class FludScheduler:
 			mtime = os.stat(file)[stat.ST_MTIME]
 			if not fileChangeTime:
 				fileChangeTime = self.fileChangeTime
+			print "mtime = %s, ctime = %s (%s)" % (mtime, fileChangeTime, file)
 			if mtime > fileChangeTime:
 				return True
 		return False
@@ -121,14 +125,16 @@ class FludScheduler:
 			#print "checkList: %s" % list
 			#print "checkedFiles: %s" % checkedFiles
 			for entry in list:
-				# XXX: if entry is in manifest, and its mtime is not earlier
-				# than the time used by fileChanged, skip it (add 'and' clause)
+				# XXX: if entry is in master metadata, and its mtime is not
+				# earlier than the time used by fileChanged, skip it (add 'and'
+				# clause)
 				if entry not in checkedFiles and \
 						entry not in self.fileconfigExcluded and\
 						entry not in self.mastermetadata:
 					# XXX: 'not in self.mastermetadata' isn't really right --
 					# what we want is 'file mod time > last backup time', but
 					# backuptime isn't currently stored in mastermetadata.
+					print "checkFilesystem for %s" % entry
 					if os.path.isdir(entry):
 						#print "dir %s" % entry
 						dirfiles = [os.path.join(entry, i) 
@@ -136,6 +142,7 @@ class FludScheduler:
 						checkedFiles.update([entry,])
 						checkList(dirfiles)
 					elif self.fileChanged(entry):
+						print "%s changed" % entry
 						if os.path.isfile(entry):
 							changedFiles.update([entry,])
 							#print "file %s changed" % entry

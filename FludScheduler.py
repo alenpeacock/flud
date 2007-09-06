@@ -25,12 +25,13 @@ class FludScheduler:
 		self.fileconfigSelected = set()
 		self.fileconfigExcluded = set()
 		
-		d = self.getMasterMetadata()
-		d.addCallback(self.gotMasterMetadata)
-		d.addErrback(self.errMasterMetadata)
+		self.getMasterMetadata()
 
 	def getMasterMetadata(self):
-		return self.factory.sendLIST()	
+		d = self.factory.sendLIST()	
+		d.addCallback(self.gotMasterMetadata)
+		d.addErrback(self.errMasterMetadata)
+		return d
 
 	def gotMasterMetadata(self, master):
 		self.mastermetadata = master
@@ -67,6 +68,10 @@ class FludScheduler:
 			mtime = os.stat(file)[stat.ST_MTIME]
 			if not fileChangeTime:
 				fileChangeTime = self.fileChangeTime
+			if file in self.mastermetadata:
+				fileChangeTime = self.mastermetadata[file][1]
+			else:
+				return True
 			print "mtime = %s, ctime = %s (%s)" % (mtime, fileChangeTime, file)
 			if mtime > fileChangeTime:
 				return True
@@ -129,11 +134,8 @@ class FludScheduler:
 				# earlier than the time used by fileChanged, skip it (add 'and'
 				# clause)
 				if entry not in checkedFiles and \
-						entry not in self.fileconfigExcluded and\
+						entry not in self.fileconfigExcluded and \
 						entry not in self.mastermetadata:
-					# XXX: 'not in self.mastermetadata' isn't really right --
-					# what we want is 'file mod time > last backup time', but
-					# backuptime isn't currently stored in mastermetadata.
 					print "checkFilesystem for %s" % entry
 					if os.path.isdir(entry):
 						#print "dir %s" % entry
@@ -179,12 +181,16 @@ class FludScheduler:
 		print "restarting timer (%d) to call run()" % CHECKTIME
 		reactor.callLater(CHECKTIME, self.run)
 
+	def updateMasterMetadata(self, v):
+		return self.getMasterMetadata()
+
 	def run(self):
 		print "run"
 		self.checkFileConfig()
 		changedFiles = self.checkFilesystem()
 		print "%s changed" % changedFiles
 		d = self.storeFiles(changedFiles)
+		d.addBoth(self.updateMasterMetadata)
 		d.addBoth(self.restartCheckTimer)
 
 def main():

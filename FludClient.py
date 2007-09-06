@@ -1212,7 +1212,10 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		self.il = self.GetImageList()
 		self.rootID = self.AddRoot("/", self.icondict['computer'], -1,
 				wx.TreeItemData(("", True, False, CheckboxState.UNSELECTED)))
-		master = listMeta(config)
+		self.update()
+
+	def update(self):
+		master = listMeta(self.config)
 		for i in master:
 			if not isinstance(master[i], dict):
 				traversal = i.split(os.path.sep)
@@ -1222,14 +1225,14 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 					traversal.remove('')
 				for n in traversal:
 					path = os.path.join(path, n)
-					if n == traversal[-1]:
+					children = self.getChildrenDict(node)
+					if n == traversal[-1] and not n in children:
 						child = self.AppendItem(node, n)
 						self.SetPyData(child, (path, False, False, 0)) 
 						idx = getFileIcon(i, self.il, self.checkboxes, 
 								self.icondict)
 						self.SetItemImage(child, idx, wx.TreeItemIcon_Normal)
 					else:
-						children = self.getChildrenDict(node)
 						if not n in children:
 							child = self.AppendItem(node, n)
 							self.SetPyData(child, (path, True, False, 0)) 
@@ -1296,6 +1299,9 @@ class RestorePanel(wx.Panel):
 		self.gbSizer.AddGrowableRow(0)
 		self.gbSizer.AddGrowableCol(0)
 		self.SetSizerAndFit(self.gbSizer)
+
+	def update(self):
+		self.tree.update()
 
 	def OnSize(self, event):
 		w,h = self.GetClientSizeTuple()
@@ -1376,6 +1382,7 @@ class FludNotebook(wx.Notebook):
 			self.SetMessage("Select files/directories to be restored to"
 					" your computer, then click on 'restore!'  Files will turn"
 					" blue as they arrive.")
+			self.restorePanel.update()
 		elif page == 2:
 			self.SetMessage("Configure how often your computer should backup."
 					"\n (not implemented)")

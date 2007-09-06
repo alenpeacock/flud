@@ -912,6 +912,16 @@ class VerifyFile:
 	#      I fail you'd still need to call StoreFile right after...
 	#      Or, do we keep me around and rip out all the verify stuff from
 	#      StoreFile and put it in here?
+	#      -- What we really want to do is look at trading partners for all our
+	#      files, and then check each one every day with some random bit of
+	#      data from some random file.  But we also want eventual coverage of
+	#      all stored files.  It seems like a good first approach would be to
+	#      scan over our local copies of all DHT records and make a list of
+	#      storing nodes, which will be of size N.  Then, do k VERIFY ops to
+	#      each node in N, using a random subset of the files we have stored.
+	#      The VerifyFile object's purpose may be orthogonal to that, or
+	#      completely unnecessary, as the described scheme can be accomplished
+	#      with plain VERIFY ops.
 
 	def verifyFile(self, filepath):
 		"""

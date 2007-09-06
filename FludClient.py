@@ -1378,9 +1378,9 @@ class FludNotebook(wx.Notebook):
 					" blue as they arrive.")
 		elif page == 2:
 			self.SetMessage("Configure how often your computer should backup."
-					" (not implemented)")
+					"\n (not implemented)")
 		elif page == 3:
-			self.SetMessage("Send feedback to flud programmers. (not"
+			self.SetMessage("Send feedback to flud programmers.  (not"
 					" implemented)")
 
 	def SetMessage(self, msg):
@@ -1406,7 +1406,8 @@ class FludLogoPanel(wx.Panel):
 		self.messagePanel.SetBackgroundColour(wx.BLACK)
 		self.messagePanel.SetForegroundColour(wx.WHITE)
 		self.message = wx.StaticText(self.messagePanel, -1,
-				"message text area", style=wx.ALIGN_CENTER)
+				"message text area", style=wx.ALIGN_CENTER|wx.ST_NO_AUTORESIZE,
+				size=(-1, self.logoheight-15))
 		self.message.Bind(wx.EVT_SIZE, self.resizeMessage)
 		self.bsizer = wx.BoxSizer(wx.VERTICAL)
 		self.bsizer.Add(self.message, flag=wx.EXPAND|wx.ALL, border=35)
@@ -1425,8 +1426,10 @@ class FludLogoPanel(wx.Panel):
 
 	def SetMessage(self, msg):
 		(w,h) = self.message.GetSizeTuple()
+		#print "msg area size is %d x %d" % (w,h)
 		self.message.SetLabel(msg)
 		self.message.Wrap(w) 
+		#print "msg is '%s'" % self.message.GetLabel()
 		self.message.Center()
 
 	def resizeMessage(self, evt):
@@ -1497,7 +1500,7 @@ if __name__ == '__main__':
 	config = FludConfig()
 	config.load(doLogging=False)
 
-	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(800,600),
+	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
 			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
 			config=config)
 

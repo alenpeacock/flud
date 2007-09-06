@@ -1212,7 +1212,6 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		self.il = self.GetImageList()
 		self.rootID = self.AddRoot("/", self.icondict['computer'], -1,
 				wx.TreeItemData(("", True, False, CheckboxState.UNSELECTED)))
-		self.Expand(self.rootID)
 		master = listMeta(config)
 		for i in master:
 			if not isinstance(master[i], dict):
@@ -1239,6 +1238,7 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 						else:
 							child = children[n]
 						node = child
+		self.Expand(self.rootID)
 
 	def getChildrenDict(self, node):
 		result = {}

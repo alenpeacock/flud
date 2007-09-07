@@ -18,6 +18,7 @@ from Protocol.LocalClient import *
 from FludConfig import FludConfig
 from CheckboxState import CheckboxState
 
+FLUSHCHECKTIME = 5  # s to wait to flush fludfile.conf
 
 mimeMgr = wx.MimeTypesManager()
 
@@ -146,6 +147,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 		wx.TreeCtrl.__init__(self, parent, id, pos, size, style, validator,
 				name)
 		self.listeners = []
+		self.parent = parent
 
 		#self.il = self.GetImageList()
 		#self.checkboxes = self.getDefaultCheckboxes()
@@ -173,6 +175,18 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 						CheckboxState.UNSELECTED)))
 		self.expandDir(self.rootID)
 		self.Expand(self.rootID)
+
+		self.stateChangeTime = time.time() 
+		self.flushTime = time.time()
+		reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
+	
+	def checkFlush(self):
+		print "checking for flush"
+		if self.stateChangeTime > self.flushTime:
+			self.flushTime = time.time()
+			print "flushing"
+			self.parent.flushFileConfig()
+		reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
 		
 	def expandDir(self, parentID, hideHidden=False, busycursor=True):
 		def isDriveAvailable(path):			
@@ -471,6 +485,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 			self.changeState(item, selections)
 
 	def changeState(self, item, selections=[]):
+		self.stateChangeTime = time.time()
 		(path, isDir, expanded, state) = self.GetItemData(item).GetData()
 		if item == self.rootID:
 			parent = None
@@ -1164,15 +1179,16 @@ class FilePanel(wx.SplitterWindow):
 		return fludhome	
 
 	def shutdown(self, event):
+		self.flushFileConfig()
+		event.Skip()
+
+	def flushFileConfig(self):
 		states = self.tree.getStates()
 		f = open(self.fludfiles, 'w')
 		f.write(str(states))
 		f.close()
 		for i in states:
-			# XXX: need to communicate the backup of the indicated files.
-			#      perhaps this is done entirely by the file we just saved...
 			print "%s %s" % (i, states[i])
-		event.Skip()
 
 	def OnSize(self, event):
 		w,h = self.GetClientSizeTuple()

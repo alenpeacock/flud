@@ -31,10 +31,11 @@ DGAUGEWIDTH = 100  # dht gauge
 GAUGEHEIGHT = 20
 ROWHEIGHT = 30
 SEP = 5
-LABELWIDTH = 35
+LABELWIDTH = 20
 POWERWIDTH = 70
 RATIOBARHEIGHT = 70
 COLWIDTH = SGAUGEWIDTH+DGAUGEWIDTH+LABELWIDTH+POWERWIDTH
+COLGAPFUDGE = 30
 
 class FludTestGauges(wx.Frame):
 
@@ -80,19 +81,21 @@ class FludTestGauges(wx.Frame):
 			conf = FludConfig()
 			conf.load(doLogging = False)
 			print "%s" % conf.nodeID
+			self.gauges[i].label = wx.StaticText(self, -1, "%2s" % dirs[i], 
+					(curCol*COLWIDTH, curRow+(rowheight/4)), 
+					size=(LABELWIDTH, -1))
 			self.gauges[i].idlabel = wx.StaticText(self, -1, "%s" % conf.nodeID,
 					(curCol*COLWIDTH+LABELWIDTH, curRow+20))
 			font = self.gauges[i].idlabel.GetFont()
 			font.SetPointSize(6)
 			self.gauges[i].idlabel.SetFont(font)
-			self.gauges[i].label = wx.StaticText(self, -1, "%s" % dirs[i], 
-					(curCol*COLWIDTH+15, curRow+(rowheight/4)))
 			self.gauges[i].dhtgauge = wx.Gauge(self, -1, 100,
-					(curCol*COLWIDTH+LABELWIDTH+SGAUGEWIDTH+SEP, curRow), 
+					(curCol*COLWIDTH+LABELWIDTH+SGAUGEWIDTH+SEP, 
+						curRow), 
 					(SGAUGEWIDTH/3, GAUGEHEIGHT))
 			self.gauges[i].power = wx.Button(self, i, "turn OFF",
 					(curCol*COLWIDTH
-						+LABELWIDTH+SGAUGEWIDTH+2*SEP+SGAUGEWIDTH/3, 
+						+LABELWIDTH+SGAUGEWIDTH+2*SEP+SGAUGEWIDTH/3,
 						curRow),
 					(POWERWIDTH, ROWHEIGHT))
 			#self.gauges[i].power = buttons.GenBitmapToggleButton(self, i, 

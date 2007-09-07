@@ -15,7 +15,8 @@ from bisect import *
 import logging
 
 #k = 5          # This is the max depth of a kBucket
-k = 12         # This is the max depth of a kBucket
+k = 12         # This is the max depth of a kBucket and the replication factor
+		       # XXX: need to split out k into two vars
 a = 3          # alpha, the system-wide concurrency parameter
 idspace = 256  # using sha-256
 

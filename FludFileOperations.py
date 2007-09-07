@@ -118,6 +118,7 @@ class StoreFile:
 		self.routing = self.config.routing
 		self.metadir = self.config.metadir
 		self.parentcodedir = self.config.clientdir # XXX: clientdir?
+		self.nodeChoices = self.routing.knownExternalNodes()
 
 		self.deferred = self._storeFile()
 
@@ -286,11 +287,13 @@ class StoreFile:
 		return dl
 
 	def _storeBlock(self, i, hash, sfile, mfile, retry=2):
-		nodeChoices = self.routing.knownExternalNodes()
-		if not nodeChoices:
+		if not self.nodeChoices:
+			self.nodeChoices = self.routing.knownExternalNodes()
+		if not self.nodeChoices:
 			return defer.fail(failure.DefaultException(
 				"cannot store blocks to 0 nodes"))
-		node = random.choice(nodeChoices)
+		node = random.choice(self.nodeChoices)
+		self.nodeChoices.remove(node)
 		host = node[0]
 		port = node[1]
 		nID = node[2]

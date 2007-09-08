@@ -230,6 +230,9 @@ class FludConfig:
 				# XXX: instead of pinging, put it in a replacement cache table
 				#      and when one of the nodes needs replaced (future query)
 				#      replace it with one of these. Sec 4.1
+				self.routing.replacementCache.insertNode(
+						(host, int(port), long(nodeID, 16),
+							Ku.exportPublicKey()['n']))
 			# XXX: should also create a corresponding reputation
 
 	def getLoggingConf(self):

@@ -22,6 +22,36 @@ idspace = 256  # using sha-256
 
 logger = logging.getLogger("flud.k")
 
+class NodeCache:
+	"""
+	An LRU cache for nodes
+	"""
+	def __init__(self, size):
+		self.size = size
+		self.cache = {}
+		self.cacheOrder = []
+
+	def insertNode(self, node):
+		"""
+		adds a node to the cache.  if this displaces a node, the displaced node
+		is returned
+		"""
+		if node[2] not in self.cache:
+			self.cache[node[2]] = node
+			self.cacheOrder.append(node[2])
+			if len(self.cacheOrder) > self.size:
+				popped = self.cacheOrder.pop(0)
+				self.cache.pop(popped)
+				return popped
+	
+	def removeNode(self, node):
+		if node[2] in self.cache:
+			self.cache.pop(node[2])
+			self.cacheOrder.pop(node[2])
+
+	def nodes(self):
+		return [self.cache[i] for i in self.cache]
+
 def kCompare(a, b, target):
 	"""
 	Uses the XOR metric to compare target to a and b (useful for sorting)
@@ -84,6 +114,7 @@ class kRouting:
 		needed to know when to split a bucket).
 		"""
 		self.k = depth
+		self.replacementCache = NodeCache(300)
 		self.kBuckets = [kBucket(0, 2**bits, depth),]
 		#self.kBuckets = [kBucket(0, 1, depth),]
 		#for i in xrange(1,bits):
@@ -107,6 +138,7 @@ class kRouting:
 		try:
 			# XXX: need to transfer key/vals that belong to new node?
 			bucket.updateNode(node)
+			self.replacementCache.removeNode(node)
 		except BucketFullException, e:
 			if (bucket.begin <= self.node[2] < bucket.end):
 				# bucket is full /and/ the local node is in this bucket, 
@@ -214,6 +246,7 @@ class kRouting:
 			for j in i.contents:
 				if j[2] != self.node[2]:
 					result.append(j)
+		result += self.replacementCache.nodes()
 		return result
 
 	def knownNodes(self):
@@ -221,6 +254,7 @@ class kRouting:
 		for i in self.kBuckets:
 			for j in i.contents:
 				result.append(j)
+		result += self.replacementCache.nodes()
 		return result
 
 	def _nextbucket(self, bucket):

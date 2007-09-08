@@ -289,6 +289,7 @@ class StoreFile:
 	def _storeBlock(self, i, hash, sfile, mfile, retry=2):
 		if not self.nodeChoices:
 			self.nodeChoices = self.routing.knownExternalNodes()
+			logger.warn("had to reuse nodes!, %d nodes found", self.nodeChoices)
 		if not self.nodeChoices:
 			return defer.fail(failure.DefaultException(
 				"cannot store blocks to 0 nodes"))

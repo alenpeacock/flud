@@ -18,7 +18,7 @@ from Protocol.LocalClient import *
 from FludConfig import FludConfig
 from CheckboxState import CheckboxState
 
-FLUSHCHECKTIME = 5  # s to wait to flush fludfile.conf
+FLUSHCHECKTIME = 5*60  # s to wait to flush fludfile.conf
 
 mimeMgr = wx.MimeTypesManager()
 
@@ -155,6 +155,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 		self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self.onExpand, self)
 		self.Bind(wx.EVT_LEFT_UP, self.onClick, self)
 		self.Bind(wx.EVT_TREE_ITEM_GETTOOLTIP, self.onTooltip, self)
+		self.Bind(wx.EVT_CHAR, self.onChar)
 
 	def expandRoot(self, dir):
 		if not os.path.isdir(dir):
@@ -483,6 +484,14 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 		if flags & wx.TREE_HITTEST_ONITEMICON:
 			selections = self.GetSelections()
 			self.changeState(item, selections)
+
+	def onChar(self, event):
+		if event.KeyCode() == ord('F') and event.ShiftDown() \
+				and event.ControlDown():
+			self.flushTime = time.time()
+			print "flushing"
+			self.parent.flushFileConfig()
+		event.Skip()
 
 	def changeState(self, item, selections=[]):
 		self.stateChangeTime = time.time()

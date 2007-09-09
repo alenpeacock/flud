@@ -1339,6 +1339,7 @@ class RestorePanel(wx.Panel):
 			d = self.factory.sendGETF(path)
 			d.addCallback(self.restored, n)
 			d.addErrback(self.restoreFailed, n)
+		self.tree.UnselectAll()
 
 	def restored(self, res, n):
 		(path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()

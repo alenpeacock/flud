@@ -201,6 +201,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 				if d in childrennames:
 					p = childrennames.index(d)
 					node = children[p]
+					self.expandDir(node)
 					self.Expand(node)
 				else:
 					print "couldn't traverse to HOME dir on %s" % d
@@ -1273,7 +1274,7 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		while True:
 			(ipath, isdir, expanded, istate) = self.GetItemData(node).GetData()
 			children = self.getChildren(node, False)
-			if len(children) > 1:
+			if len(children) > 1 or len(children) == 0:
 				break;
 			node = children[0]
 			self.Expand(node)
@@ -1448,7 +1449,7 @@ class FludNotebook(wx.Notebook):
 		elif page == 1:
 			self.SetMessage("Select files/directories to be restored to"
 					" your computer, then click on 'restore!'  Files will turn"
-					" blue as they arrive.")
+					" green as they arrive.")
 			self.restorePanel.update()
 		elif page == 2:
 			self.SetMessage("Configure how often your computer should backup."

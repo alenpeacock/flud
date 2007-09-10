@@ -151,11 +151,17 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 
 		#self.il = self.GetImageList()
 		#self.checkboxes = self.getDefaultCheckboxes()
-		self.expandRoot(dir)
+		self.initTree(dir)
 		self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self.onExpand, self)
 		self.Bind(wx.EVT_LEFT_UP, self.onClick, self)
 		self.Bind(wx.EVT_TREE_ITEM_GETTOOLTIP, self.onTooltip, self)
 		self.Bind(wx.EVT_CHAR, self.onChar)
+
+	def initTree(self, dir):
+		self.expandRoot(dir)
+		# XXX: should expandHome() on first run, then load expanded dir state
+		# from saved state on subsequent runs.
+		self.expandHome(dir)
 
 	def expandRoot(self, dir):
 		if not os.path.isdir(dir):
@@ -180,6 +186,25 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 		self.stateChangeTime = time.time() 
 		self.flushTime = time.time()
 		reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
+
+	def expandHome(self, dir):
+		home = os.environ['HOME']
+		if home:
+			traversal = home.split(os.path.sep)[1:]
+			node = self.rootID
+			for d in traversal:
+				(ipath, isdir, expanded, istate) \
+						= self.GetItemData(node).GetData()
+				self.expandDir(node)
+				children = self.getChildren(node, False)
+				childrennames = [self.GetItemText(x) for x in children]
+				if d in childrennames:
+					p = childrennames.index(d)
+					node = children[p]
+					self.Expand(node)
+				else:
+					print "couldn't traverse to HOME dir on %s" % d
+					break
 	
 	def checkFlush(self):
 		print "checking for flush"
@@ -786,9 +811,9 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 		CheckFileListCtrlMixin):
 	"""
 	Implements a file list control, with a peerctrl that contains the
-	filesystem model.  Currently, this peerctrl must implement an addListener(),
-	changeState(), GetItemData(), expandDir(), GetSelections(), and
-	GetChildren() API similar to that implemented by DirCheckBoxCtrl.
+	filesystem model.  Currently, this peerctrl must implement an
+	addListener(), changeState(), GetItemData(), expandDir(), GetSelections(),
+	and GetChildren() API similar to that implemented by DirCheckBoxCtrl.
 	"""
 	def __init__(self, parent, peerctrl, id=-1, pos=wx.DefaultPosition, 
 			size=wx.DefaultSize, style=wx.LC_REPORT, 
@@ -1229,6 +1254,10 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		self.config = config
 		DirCheckboxCtrl.__init__(self, parent, id, config, pos, size, style,
 				validator, name, allowExclude=False)
+
+	def initTree(self, config):
+		self.expandRoot(config)
+		self.expandUntilMultiple()
 	
 	def expandRoot(self, config):
 		self.defaultImageList, self.checkboxes, self.icondict \
@@ -1238,6 +1267,16 @@ class RestoreCheckboxCtrl(DirCheckboxCtrl):
 		self.rootID = self.AddRoot("/", self.icondict['computer'], -1,
 				wx.TreeItemData(("", True, False, CheckboxState.UNSELECTED)))
 		self.update()
+	
+	def expandUntilMultiple(self):
+		node = self.rootID
+		while True:
+			(ipath, isdir, expanded, istate) = self.GetItemData(node).GetData()
+			children = self.getChildren(node, False)
+			if len(children) > 1:
+				break;
+			node = children[0]
+			self.Expand(node)
 
 	def update(self):
 		master = listMeta(self.config)

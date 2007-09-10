@@ -1372,6 +1372,9 @@ class RestorePanel(wx.Panel):
 		w,h = self.GetClientSizeTuple()
 		event.Skip()
 
+	def onTooltip(self, event):
+		pass
+
 	def onRestoreClick(self, event):
 		for n in self.tree.getSelected():
 			(path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()

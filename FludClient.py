@@ -243,7 +243,8 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 		dirs = []
 		files = []
 		for i in dirlist:
-			if hideHidden:
+			if hideHidden and i[0] == '.':
+				# XXX: dotfile format check is *nix specific
 				# XXX: if this is a hidden file, don't add it.
 				pass
 			elif os.path.isdir(os.path.join(path,i)):

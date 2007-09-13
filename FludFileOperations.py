@@ -617,6 +617,7 @@ class RetrieveFile:
 		except Exception, inst:
 			self.deferred = defer.fail(inst)
 			return
+		self.ctx = Ctx(crc32(str(self.sK))).msg
 		self.config = node.config
 		self.Ku = node.config.Ku
 		self.Kr = node.config.Kr
@@ -629,7 +630,7 @@ class RetrieveFile:
 		
 	def _retrieveFile(self):
 		# 1: Query DHT for sK
-		logger.debug("querying DHT for %s", self.sK)
+		logger.debug(self.ctx("querying DHT for %s", self.sK))
 		d = self.node.client.kFindValue(self.sK)
 		d.addCallback(self._retrieveFileBlocks)
 		d.addErrback(self._retrieveFileErr, "file retrieve failed")
@@ -652,7 +653,7 @@ class RetrieveFile:
 		if n != code_n or m != code_m:
 			# XXX: 
 			raise ValueError("unsupported coding scheme %d/%d" % (m/n))
-		logger.info("got metadata %s" % self.meta)
+		logger.info(self.ctx("got metadata %s" % self.meta))
 		self.decoded = False
 		self.decoder = Decoder(os.path.join(self.parentcodedir,
 			fencode(self.sK))+".rec1", code_n, code_m, code_l)
@@ -671,13 +672,15 @@ class RetrieveFile:
 			block = fencode(c[1])
 			id = self.meta[c]
 			if isinstance(id, list):
-				logger.info("multiple location choices, choosing one randomly.")
+				logger.info(self.ctx(
+					"multiple location choices, choosing one randomly."))
 				id = random.choice(id)
 				# XXX: for now, this just picks one of the alternatives at
 				#      random.  If the chosen one fails, should try each of the
 				#      others until it works
-			#logger.info("retrieving %s from %s" % (block, fencode(id)))
-			logger.info("retrieving %s from %s" % (block, id))			
+			#logger.info(self.ctx("retrieving %s from %s" 
+			#		% (block, fencode(id))))
+			logger.info(self.ctx("retrieving %s from %s" % (block, id)))
 			# look up nodes by id, then do a retrieve.
 			deferred = self.node.client.kFindNode(id) 
 			deferred.addCallback(self._retrieveBlock, block, id)
@@ -717,23 +720,24 @@ class RetrieveFile:
 			return d
 
 	def _retrieveBlockErr(self, failure, message):
-		logger.info("%s: %s" % (message, failure.getErrorMessage()))
+		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.
 		#return failure
 
 	def _retrievedAll(self, success):
-		logger.info("tried retreiving %d blocks %s" % (len(success), success))
+		logger.info(self.ctx("tried retreiving %d blocks %s" 
+			% (len(success), success)))
 		if not self.decoded and len(self.meta) > 0:
 			tries = 5  # XXX: magic number. Should derive from k & m 
-			logger.info("requesting %d more blocks" % tries)
+			logger.info(self.ctx("requesting %d more blocks" % tries))
 			return self._getSomeBlocks(tries) 
 		if self.decoded:
-			logger.info("file successfully decoded")
+			logger.info(self.ctx("file successfully decoded"))
 			return self._decryptMeta() 
 		else:
-			logger.info("couldn't decode file after retreiving all %d"
-					" available blocks" %self.numDecoded)
+			logger.info(self.ctx("couldn't decode file after retreiving all %d"
+					" available blocks" %self.numDecoded))
 			#return False
 			raise RuntimeError("couldn't decode file after retreiving all %d" 
 					" available blocks" %self.numDecoded)
@@ -742,11 +746,11 @@ class RetrieveFile:
 		return decoder.decodeData(data)
 
 	def _decodeError(self, err):
-		logger.warn("could not decode: %s", err)
+		logger.warn(self.ctx("could not decode: %s", err))
 		return err
 
 	def _decodeBlock(self, msg, block, mkey):
-		logger.debug("decode block=%s, msg=%s" % (block, msg))
+		logger.debug(self.ctx("decode block=%s, msg=%s" % (block, msg)))
 		self.numDecoded += 1
 		blockname = [f for f in msg if f[-len(block):] == block][0]
 		expectedmeta = "%s.%s.meta" % (block, mkey)
@@ -767,11 +771,12 @@ class RetrieveFile:
 	def _dataDecoded(self, decoded, metadecoded):
 		if not self.decoded and decoded and metadecoded:
 			self.decoded = True
-			logger.info("successfully decoded (retrieved %d blocks --"
+			logger.info(self.ctx("successfully decoded (retrieved %d blocks --"
 					" all but %d blocks tried)" % (self.numDecoded, 
-						len(self.meta)))
+						len(self.meta))))
 		else:
-			logger.info("decoded=%s, mdecoded=%s" % (decoded, metadecoded))
+			logger.info(self.ctx("decoded=%s, mdecoded=%s" % (decoded, 
+				metadecoded)))
 
 	def _decryptMeta(self):
 		# XXX: decrypt the metadatafile with Kr to get all the nmeta stuff (eeK
@@ -779,7 +784,7 @@ class RetrieveFile:
 		mfile = open(os.path.join(self.parentcodedir, fencode(self.sK)+".m"))
 		meta = mfile.read()
 		mfile.close()
-		logger.info("meta is %s" % meta)
+		logger.info(self.ctx("meta is %s" % meta))
 		self.nmeta = fdecode(meta)
 		return self._decryptFile()
 	
@@ -789,7 +794,7 @@ class RetrieveFile:
 		skey = fencode(self.sK)
 		f1 = open(os.path.join(self.parentcodedir,skey+".rec1"), "r")
 		f2 = open(os.path.join(self.parentcodedir,skey+".rec2"), "w")
-		#logger.info("decoding nmeta eeK for %s" % dir(self))
+		#logger.info(self.ctx("decoding nmeta eeK for %s" % dir(self)))
 		eeK = fdecode(self.nmeta['eeK'])
 		# d_eK business is to ensure that eK is zero-padded to 32 bytes
 		d_eK = self.Kr.decrypt(eeK)
@@ -841,12 +846,14 @@ class RetrieveFile:
 			# just 'do the right thing' (use the latest version by timestamp,
 			# or always use the backup, or always use the local copy, or 
 			# define some other behavior for doing the right thing).
-			logger.info("hash rec=%s" % FludCrypto.hashfile(fmeta['path']))
-			logger.info("hash org=%s" % eK)
+			logger.info(self.ctx("hash rec=%s" 
+				% FludCrypto.hashfile(fmeta['path'])))
+			logger.info(self.ctx("hash org=%s" % eK))
 			if FludCrypto.hashfile(fmeta['path']) != eK:
 				# XXX: do something better than log it -- see above comment
-				logger.info('different version of file %s already present' 
-						% fmeta['path'])
+				logger.info(self.ctx(
+					'different version of file %s already present' 
+						% fmeta['path']))
 				# XXX: should generate '.recovered' extension more carefully,
 				#      so as not to overwrite coincidentally named files.
 				fmeta['path'] = fmeta['path']+".recovered"
@@ -854,8 +861,8 @@ class RetrieveFile:
 				os.rename(os.path.join(self.parentcodedir,skey+".rec3"),
 						fmeta['path'])
 			else:
-				logger.info('same version of file %s already present'
-						% fmeta['path']) 
+				logger.info(self.ctx('same version of file %s already present'
+						% fmeta['path']))
 				# no need to copy:
 				os.remove(os.path.join(self.parentcodedir,skey+".rec3")) 
 		else:
@@ -885,7 +892,7 @@ class RetrieveFile:
 		return tuple(result)
 
 	def _retrieveFileErr(self, failure, message, raiseException=True):
-		logger.error("%s: %s" % (message, failure.getErrorMessage()))
+		logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
 		if raiseException:
 			return failure
 

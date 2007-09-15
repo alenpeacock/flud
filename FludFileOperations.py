@@ -875,7 +875,7 @@ class RetrieveFile:
 					# XXX: should be using an accessor method on config for
 					# master
 					if i in self.config.master:
-						dirmeta = self.config.getMasterMetadata(i)
+						dirmeta = self.config.getFromMasterMeta(i)
 						os.chmod(i,dirmeta['mode'])	
 						os.chown(i,dirmeta['uid'],dirmeta['gid']) # XXX: windows
 						# XXX: atim, mtim, ctim

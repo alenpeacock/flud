@@ -8,7 +8,7 @@ filecoder = Extension('filecoder',
 		library_dirs = ['ldpc/bin/linux'],
 		language = ['c++'])
 
-setup (name = 'FileCoding',
+setup(name = 'FileCoding',
 		version = '1.0',
 		description = 'Module for file coding / decoding',
 		ext_modules = [filecoder])

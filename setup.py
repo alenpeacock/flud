@@ -1,4 +1,23 @@
 from distutils.core import setup, Extension
+import os, sys
+
+class AutoExtension(Extension):
+	def __init__(self, name, sources=[], extra_objects=[], include_dirs=[], 
+			libraries=[], library_dirs=[], language=[], pre_configure=[],
+			run_configure=[], run_make=[]):
+		for dir, cmd in pre_configure:
+			r = os.system('cd %s; %s' % (dir, cmd))
+			if r != 0: sys.exit()
+		for dir in run_configure:
+			r = os.system('cd %s; ./configure' % dir)
+			if r != 0: sys.exit()
+		for dir in run_make:
+			r = os.system('cd %s; make' % dir)
+			if r != 0: sys.exit()
+		Extension.__init__(self, name, sources=sources,
+				extra_objects=extra_objects, include_dirs=include_dirs,
+				libraries=libraries, library_dirs=library_dirs,
+				language=language)
 
 setup(name="Flud",
 		version="0.0.2", 
@@ -8,10 +27,14 @@ setup(name="Flud",
 		url='http://flud.org',
 		packages=['', 'Protocol'],
 		ext_package='filecoder',
-		ext_modules=[Extension('filecoder',
+		ext_modules=[AutoExtension('filecoder',
+			pre_configure = [('coding', './bootstrap')],
+			run_configure = ['coding'],
+			run_make = ['coding/ldpc', 'coding'],
 			sources = ['coding/filecodermodule.cpp'],
-			extra_objects = ['coding/CodedBlocks.o', 'coding/Coder.o', 'coding/Decoder.o'],
-			include_dirs = ['coding/ldpc/src'],
+			extra_objects = ['coding/CodedBlocks.o', 'coding/Coder.o', 
+				'coding/Decoder.o'],
+			include_dirs = ['coding/ldpc/src', 'coding'],
 			libraries = ['ldpc', 'stdc++'],
 			library_dirs = ['coding/ldpc/bin/linux'],
 			language = ['c++'])]

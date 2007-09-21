@@ -73,12 +73,14 @@ all: lib
 # Compile lib with LDPC code
 LDPC: ${OFILES} ${OFILES_LDPC}
 	@echo "** Create the LDPC library..."
+	@mkdir -p ${BINDIR}
 	${AR} -rcsv ${BINDIR}/libldpc.a ${OFILES} ${OFILES_LDPC}
 	@echo "done"
 
 # Compile lib without LDPC code (default)
 lib : ${OFILES}
 	@echo "** Create the LDPC library..."
+	@mkdir -p ${BINDIR}
 	${AR} -rcsv ${BINDIR}/libldpc.a ${OFILES}
 	@echo "done"
 

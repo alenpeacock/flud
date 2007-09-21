@@ -1,0 +1,11 @@
+include *.txt
+include MANIFEST.in
+include setup.py
+include setup.cfg
+
+recursive-include coding *.c *.c++ *.cpp *.h 
+recursive-include coding bootstrap
+recursive-include coding configure.ac
+recursive-include coding Makefile.am
+
+recursive-include coding/ldpc Makefile*

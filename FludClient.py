@@ -14,7 +14,7 @@ import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
-from Protocol.LocalClient import *
+from protocol.LocalClient import *
 from FludConfig import FludConfig
 from CheckboxState import CheckboxState
 

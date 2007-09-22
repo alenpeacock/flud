@@ -16,7 +16,7 @@ from fencode import *
 from FludCrypto import *
 from FludFileOperations import *
 import FludDefer
-from Protocol.LocalClient import listMeta
+from protocol.LocalClient import listMeta
 
 logger = logging.getLogger('flud')
 

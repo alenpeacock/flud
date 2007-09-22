@@ -8,9 +8,9 @@ FludNode is the process that runs to talk with other nodes in the flud backup ne
 """
 
 from FludConfig import FludConfig
-from Protocol.FludServer import FludServer
-from Protocol.FludClient import FludClient
-from Protocol.FludCommUtil import getCanonicalIP
+from protocol.FludServer import FludServer
+from protocol.FludClient import FludClient
+from protocol.FludCommUtil import getCanonicalIP
 import FludPrimitiveCLI
 from twisted.internet import reactor, defer
 import threading, signal, sys, time, os, random, logging

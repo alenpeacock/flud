@@ -14,7 +14,7 @@ from FludConfig import FludConfig
 from fencode import *
 from FludCrypto import *
 
-from Protocol.LocalClient import *
+from protocol.LocalClient import *
 
 logger = logging.getLogger('flud')
 

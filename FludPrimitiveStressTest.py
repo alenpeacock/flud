@@ -3,8 +3,8 @@
 import time, os, stat, random, sys, logging, socket
 import FludCrypto
 from FludNode import FludNode
-from Protocol.FludClient import FludClient
-from Protocol.FludCommUtil import *
+from protocol.FludClient import FludClient
+from protocol.FludCommUtil import *
 from twisted.python import failure
 from twisted.internet import defer
 from fencode import *

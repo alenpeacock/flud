@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 from FludNode import FludNode
-from Protocol.FludClient import FludClient
+from protocol.FludClient import FludClient
 import FludCrypto
-from Protocol.FludCommUtil import *
+from protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, shutil, tempfile
 from binascii import crc32
 from StringIO import StringIO
@@ -40,7 +40,7 @@ def testUnexpectedSuccess(res, message, node):
 	raise "bad"
 
 def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadRequestException'):
+	if failure.check('protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		# the end
 	else:
@@ -60,7 +60,7 @@ def testDELETEBadKey(nKu, node, host, port):
 	return deferred
 
 def testVERIFYBadKeyFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.NotFoundException'):
+	if failure.check('protocol.FludCommUtil.NotFoundException'):
 		print "%s" % msg
 		return testDELETEBadKey(nKu, node, host, port)
 	else:
@@ -79,7 +79,7 @@ def testVERIFYBadKey(nKu, node, host, port):
 	return deferred
 
 def testVERIFYBadLengthFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadRequestException'):
+	if failure.check('protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		return testVERIFYBadKey(nKu, node, host, port)
 	else:
@@ -97,7 +97,7 @@ def testVERIFYBadLength(nKu, node, host, port):
 	return deferred
 
 def testVERIFYBadOffsetFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadRequestException'):
+	if failure.check('protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		return testVERIFYBadLength(nKu, node, host, port)
 	else:
@@ -116,7 +116,7 @@ def testVERIFYBadOffset(nKu, node, host, port):
 	return deferred
 
 def testVERIFYNotFoundFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.NotFoundException'):
+	if failure.check('protocol.FludCommUtil.NotFoundException'):
 		print "%s" % msg
 		return testVERIFYBadOffset(nKu, node, host, port)
 	else:
@@ -133,7 +133,7 @@ def testVERIFYNotFound(nKu, node, host, port):
 	return deferred
 
 def testRETRIEVEIllegalPathFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadRequestException'):
+	if failure.check('protocol.FludCommUtil.BadRequestException'):
 		print "%s" % msg
 		return testVERIFYNotFound(nKu, node, host, port)
 	else:
@@ -151,7 +151,7 @@ def testRETRIEVEIllegalPath(nKu, node, host, port):
 	return deferred
 
 def testRETRIEVENotFoundFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.NotFoundException'):
+	if failure.check('protocol.FludCommUtil.NotFoundException'):
 		print "%s" % msg
 		return testRETRIEVEIllegalPath(nKu, node, host, port)
 	else:
@@ -168,7 +168,7 @@ def testRETRIEVENotFound(nKu, node, host, port):
 	return deferred
 
 def testSTORELargeFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadCASKeyException'):
+	if failure.check('protocol.FludCommUtil.BadCASKeyException'):
 		print "%s" % msg
 		return testRETRIEVENotFound(nKu, node, host, port)
 	else:
@@ -186,7 +186,7 @@ def testSTOREBadKeyLarge(nKu, node, host, port):
 	return deferred
 
 def testSTORESmallFailed(failure, msg, node, nKu, host, port):
-	if failure.check('Protocol.FludCommUtil.BadCASKeyException'):
+	if failure.check('protocol.FludCommUtil.BadCASKeyException'):
 		print "%s" % msg
 		return testSTOREBadKeyLarge(nKu, node, host, port)
 	else:

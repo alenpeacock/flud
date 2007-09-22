@@ -12,7 +12,7 @@ import FludCrypto
 from twisted.internet import defer, threads
 from FludCrypto import FludRSA
 from FludFileCoder import Coder, Decoder
-from Protocol.FludCommUtil import *
+from protocol.FludCommUtil import *
 from Crypto.Cipher import AES
 from fencode import fencode, fdecode
 
@@ -69,7 +69,7 @@ def filemetadata(fname):
 class StoreFile:
 	"""
 	Implements the meta operations of storing, retrieving, and verifying files.
-	In addition to using the data primitives laid out in the Protocol/
+	In addition to using the data primitives laid out in the protocol/
 	directory, manages the creation of file metadata for local and remote
 	storage.
 

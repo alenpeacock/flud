@@ -7,7 +7,7 @@ This is the application file used by twistd to daemonize FludNode.
 """
 
 import FludNode
-from Protocol.FludCommUtil import getCanonicalIP
+from protocol.FludCommUtil import getCanonicalIP
 from twisted.application import service, internet
 import os
 

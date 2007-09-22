@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 from FludNode import FludNode
-from Protocol.FludClient import FludClient
+from protocol.FludClient import FludClient
 import FludCrypto
-from Protocol.FludCommUtil import *
+from protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket
 from twisted.python import failure
 from fencode import *

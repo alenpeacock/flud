@@ -16,6 +16,7 @@ of ROOT and REQUEST in FludProtocol.
 """
 
 CONCURRENT=300
+CONCREPORT=50
 
 node = None
 files = None
@@ -48,8 +49,9 @@ def stageerror(failure, message):
 	#logger.info("DEBUG: %s" % failure)
 	return failure
 
-def itersuccess(res, message):
-	logger.info("itersuccess: %s" % message)
+def itersuccess(res, i, message):
+	if i % CONCREPORT == 0:
+		logger.info("itersuccess: %s" % message)
 	return res
 
 def itererror(failure, message):
@@ -88,7 +90,7 @@ def testVERIFY(res, nKu, host, port, num=CONCURRENT):
 		filekey = os.path.basename(files[i])
 		deferred = node.client.sendVerify(filekey, offset, length, host, 
 				port, nKu)
-		#deferred.addCallback(itersuccess, "succeeded at testVERIFY %d" % i)
+		deferred.addCallback(itersuccess, i, "succeeded at testVERIFY %d" % i)
 		deferred.addErrback(itererror, "failed at testVERIFY %d: %s" 
 				% (i, filekey))
 		dlist.append(deferred)
@@ -121,7 +123,7 @@ def testRETRIEVE(res, nKu, host, port, num=CONCURRENT):
 		#	port = 21
 		filekey = os.path.basename(files[i])
 		deferred = node.client.sendRetrieve(filekey, host, port, nKu)
-		#deferred.addCallback(itersuccess, "succeeded at testRETRIEVE %d" % i)
+		deferred.addCallback(itersuccess, i, "succeeded at testRETRIEVE %d" % i)
 		deferred.addErrback(itererror, "failed at testRETRIEVE %d: %s" 
 				% (i, filekey))
 		dlist.append(deferred)
@@ -138,7 +140,7 @@ def testSTORE(nKu, host, port, num=CONCURRENT):
 		#if i == 4:
 		#	port = 21
 		deferred = node.client.sendStore(files[i], None, host, port, nKu)
-		#deferred.addCallback(itersuccess, "succeeded at testSTORE %d" % i)
+		deferred.addCallback(itersuccess, i, "succeeded at testSTORE %d" % i)
 		deferred.addErrback(itererror, "failed at testSTORE %d" % i)
 		dlist.append(deferred)
 	d = ErrDeferredList(dlist)

@@ -3,8 +3,8 @@
 import time, os, stat, random, sys, logging, socket
 import FludCrypto
 from FludNode import FludNode
-from Protocol.FludClient import FludClient
-from Protocol.FludCommUtil import *
+from protocol.FludClient import FludClient
+from protocol.FludCommUtil import *
 from fencode import *
 from twisted.python import failure
 from twisted.internet import defer
@@ -20,6 +20,7 @@ of ROOT and REQUEST in FludProtocol.
 # XXX: should make a random file each time this is run...
 
 CONCURRENT=50
+CONCREPORT=10
 
 node = None
 
@@ -69,8 +70,9 @@ def stageerror(failure, message):
 	#logger.info("DEBUG: %s" % failure)
 	return failure
 
-def itersuccess(res, message):
-	logger.info("itersuccess: %s" % message)
+def itersuccess(res, i, message):
+	if i % CONCREPORT == 0:
+		logger.info("itersuccess: %s" % message)
 	return res
 
 def itererror(failure, message):

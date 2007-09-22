@@ -7,7 +7,7 @@ from FludConfig import FludConfig
 from fencode import *
 from FludCrypto import *
 
-from Protocol.LocalClient import *
+from protocol.LocalClient import *
 from CheckboxState import CheckboxState
 
 CHECKTIME=5

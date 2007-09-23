@@ -1,15 +1,15 @@
 #!/usr/bin/python
 
-from FludNode import FludNode
-from protocol.FludClient import FludClient
-import FludCrypto
-from protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
-from fencode import *
 from StringIO import StringIO
 from zlib import crc32
-from FludDefer import ErrDeferredList
+from flud.FludNode import FludNode
+from flud.protocol.FludClient import FludClient
+import flud.FludCrypto
+from flud.fencode import fencode, fdecode
+from flud.protocol.FludCommUtil import *
+from flud.FludDefer import ErrDeferredList
 
 """
 Test code for primitive operations.  These ops include all of the descendents

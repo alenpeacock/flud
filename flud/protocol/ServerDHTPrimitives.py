@@ -12,8 +12,6 @@ from twisted.internet import reactor, defer
 from twisted.python import failure
 
 from flud.FludCrypto import FludRSA
-import flud.FludCrypto
-import flud.FludkRouting
 from flud.fencode import fencode, fdecode
 
 from ServerPrimitives import ROOT

@@ -10,9 +10,8 @@ from twisted.python import failure
 import binascii, httplib, logging, os, stat, random, socket
 import inspect
 
-import flud.FludCrypto
 from flud.FludExceptions import FludException
-from flud.FludCrypto import FludRSA
+from flud.FludCrypto import FludRSA, generateRandom
 from flud.HTTPMultipartDownloader import HTTPMultipartDownloader
 
 """
@@ -235,7 +234,7 @@ def fileUpload(host, port, selector, files, form=(), headers={}):
 	# XXX: set timeout (based on filesize?)
 	port = int(port)
 
-	rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
+	rand_bound = binascii.hexlify(generateRandom(13))
 	boundary = "---------------------------"+rand_bound
 	CRLF = '\r\n'
 	body_content_type = "application/octet-stream"

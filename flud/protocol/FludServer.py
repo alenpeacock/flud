@@ -13,7 +13,6 @@ from twisted.web import http
 from twisted.python import threadable, failure
 
 from flud.FludCrypto import FludRSA
-import flud.FludCrypto
 import flud.FludkRouting
 
 from ServerPrimitives import *

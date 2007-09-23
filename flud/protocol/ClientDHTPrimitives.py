@@ -11,9 +11,9 @@ from twisted.python import failure
 import inspect, pdb
 
 from flud.FludCrypto import FludRSA
-import flud.FludkRouting
+import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode, fdecode
-import flud.FludDefer
+import flud.FludDefer as FludDefer
 
 import ConnectionQueue
 from ClientPrimitives import REQUEST

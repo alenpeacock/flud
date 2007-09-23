@@ -146,9 +146,9 @@ class StoreFile:
 
 		# 1: create encryption key (eK) and storage key (sK).  Query DHT using
 		#    sK
-		self.eK = FludCrypto.hashfile(self.filename)
+		self.eK = hashfile(self.filename)
 		logger.debug(self.ctx("_storefile %s (%s)", self.filename, self.eK))
-		self.sK = long(FludCrypto.hashstring(self.eK), 16)
+		self.sK = long(hashstring(self.eK), 16)
 		self.eeK = self.Ku.encrypt(binascii.unhexlify(self.eK))
 		self.eKey = AES.new(binascii.unhexlify(self.eK))
 		#logger.debug(self.ctx("file %s eK:%s, storage key:%d" 
@@ -232,7 +232,7 @@ class StoreFile:
 		self.segHashesLocal = []
 		for i in range(len(self.sfiles)):
 			sfile = self.sfiles[i]
-			h = long(FludCrypto.hashfile(sfile),16)
+			h = long(hashfile(sfile),16)
 			logger.debug(self.ctx("file block %s hashes to %s", i, fencode(h)))
 			destfile = os.path.join(self.encodedir,fencode(h))
 			if os.path.exists(destfile):
@@ -464,7 +464,7 @@ class StoreFile:
 		logger.info(self.ctx("verifying %s on %s:%d", seg, host, port))
 		if noopVerify:
 			offset = length = 0
-			verhash = long(FludCrypto.hashstring(''), 16)
+			verhash = long(hashstring(''), 16)
 			self.sfiles = []
 		else:
 			fd = os.open(sfile, os.O_RDONLY)
@@ -478,7 +478,7 @@ class StoreFile:
 			os.lseek(fd, offset, 0)
 			data = os.read(fd, length)
 			os.close(fd)
-			verhash = long(FludCrypto.hashstring(data), 16)
+			verhash = long(hashstring(data), 16)
 		
 		deferred = self.node.client.sendVerify(seg, offset, length, 
 					host, port, nKu, (self.mkey, mfile)) 
@@ -846,10 +846,9 @@ class RetrieveFile:
 			# just 'do the right thing' (use the latest version by timestamp,
 			# or always use the backup, or always use the local copy, or 
 			# define some other behavior for doing the right thing).
-			logger.info(self.ctx("hash rec=%s" 
-				% FludCrypto.hashfile(fmeta['path'])))
+			logger.info(self.ctx("hash rec=%s" % hashfile(fmeta['path'])))
 			logger.info(self.ctx("hash org=%s" % eK))
-			if FludCrypto.hashfile(fmeta['path']) != eK:
+			if hashfile(fmeta['path']) != eK:
 				# XXX: do something better than log it -- see above comment
 				logger.info(self.ctx(
 					'different version of file %s already present' 
@@ -1068,8 +1067,8 @@ if __name__ == "__main__":
 		raise failure
 
 	def fileKey(fname):
-		EK = FludCrypto.hashfile(fname)
-		return fencode(long(FludCrypto.hashstring(EK), 16))
+		EK = hashfile(fname)
+		return fencode(long(hashstring(EK), 16))
 
 	def clearMeta(fname):
 		# delete any metadata that might exist for this file.

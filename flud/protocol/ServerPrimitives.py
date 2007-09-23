@@ -14,10 +14,8 @@ from twisted.internet import reactor, threads, defer
 from twisted.web import http
 from twisted.python import failure
 
-from flud.FludCrypto import FludRSA
-import flud.FludCrypto
-import flud.FludkRouting
-import flud.TarfileUtils
+from flud.FludCrypto import FludRSA, hashstring, hashfile, generateRandom
+import flud.TarfileUtils as TarfileUtils
 from flud.fencode import fencode, fdecode
 
 import BlockFile
@@ -344,7 +342,7 @@ class STORE(ROOT):
 				os.rename(tmpfile, targetTar)
 		else:
 			# client sent regular file
-			h = FludCrypto.hashfile(tmpfile)
+			h = hashfile(tmpfile)
 			if request.args.has_key('meta') and request.args.has_key('metakey'):
 				metakey = request.args.get('metakey')[0]
 				meta = request.args.get('meta')[0]  # XXX: file in mem! 
@@ -489,7 +487,7 @@ class RETRIEVE(ROOT):
 		if returnMeta:
 			loggerretr.debug("returnMeta = %s" % returnMeta)
 			request.setHeader('Content-type', 'Multipart/Related')
-			rand_bound = binascii.hexlify(FludCrypto.generateRandom(13))
+			rand_bound = binascii.hexlify(generateRandom(13))
 			request.setHeader('boundary', rand_bound)
 		if not os.path.exists(fname):
 			# check for tarball for originator
@@ -821,7 +819,7 @@ class VERIFY(ROOT):
 										tarball)
 						
 					tar.close()
-					hash = FludCrypto.hashstring(data)
+					hash = hashstring(data)
 					loggervrfy.info("successful VERIFY (from %s)" % tarball)
 					return hash
 				except:
@@ -850,7 +848,7 @@ class VERIFY(ROOT):
 				f.addNode(int(nodeID, 16) , {meta[0]: meta[1]})
 			# XXX: blocking
 			f.close()
-			hash = FludCrypto.hashstring(data)
+			hash = hashstring(data)
 			loggervrfy.debug("returning VERIFY")
 			return hash
 	
@@ -1012,7 +1010,7 @@ def authenticate(request, reqKu, reqID, host, port, client, config, callable,
 	else:
 		if getChallenge(challengeResponse):
 			expireChallenge(challengeResponse)
-			if groupResponse == FludCrypto.hashstring(
+			if groupResponse == hashstring(
 					str(reqKu.exportPublicKey())
 					+str(config.groupIDr)): 
 				updateNode(client, config, host, port, reqKu, reqID)
@@ -1035,10 +1033,10 @@ def authenticate(request, reqKu, reqID, host, port, client, config, callable,
 
 
 def sendChallenge(request, reqKu, id):
-	challenge = FludCrypto.generateRandom(challengelength) 
+	challenge = generateRandom(challengelength) 
 	while challenge[0] == '\x00':
 		# make sure we have at least challengelength bytes
-		challenge = FludCrypto.generateRandom(challengelength)
+		challenge = generateRandom(challengelength)
 	addChallenge(challenge)
 	loggerauth.debug("unencrypted challenge is %s" 
 			% fencode(binascii.unhexlify(id)+challenge))

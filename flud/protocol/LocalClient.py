@@ -14,7 +14,7 @@ from twisted.internet import reactor
 from twisted.python import threadable
 threadable.init()
 
-from flud.fencode import *
+from flud.fencode import fencode, fdecode
 
 from LocalPrimitives import *
 

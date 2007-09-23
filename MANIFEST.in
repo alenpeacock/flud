@@ -3,9 +3,9 @@ include MANIFEST.in
 include setup.py
 include setup.cfg
 
-recursive-include coding *.c *.c++ *.cpp *.h 
-recursive-include coding bootstrap
-recursive-include coding configure.ac
-recursive-include coding Makefile.am
+recursive-include flud/coding *.c *.c++ *.cpp *.h 
+recursive-include flud/coding bootstrap
+recursive-include flud/coding configure.ac
+recursive-include flud/coding Makefile.am
 
-recursive-include coding/ldpc Makefile*
+recursive-include flud/coding/ldpc Makefile*

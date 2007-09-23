@@ -20,8 +20,7 @@ from twisted.mail import smtp
 from twisted.python import failure
 from Crypto.Cipher import AES
 
-from flud.FludCrypto import FludRSA
-import flud.FludCrypto
+from flud.FludCrypto import FludRSA, hashstring, generateRandom
 import flud.FludkRouting
 from flud.fencode import fencode, fdecode
 from flud.FludFileOperations import *
@@ -94,7 +93,7 @@ class LocalProtocol(basic.LineReceiver):
 			Kr = self.factory.node.config.Kr.exportPrivateKey()
 			Kr['g'] = self.factory.node.config.groupIDr
 			fKr = fencode(Kr)
-			key = AES.new(binascii.unhexlify(FludCrypto.hashstring(passphrase)))
+			key = AES.new(binascii.unhexlify(hashstring(passphrase)))
 			fKr = '\x00'*(16-(len(fKr)%16))+fKr
 			efKr = fencode(key.encrypt(fKr))
 			logger.debug("efKr = %s " % efKr)
@@ -276,7 +275,7 @@ class LocalFactory(protocol.ServerFactory):
 		self.config = node.config
 
 	def sendChallenge(self):
-		self.challenge = fencode(FludCrypto.generateRandom(challengelength))
+		self.challenge = fencode(generateRandom(challengelength))
 		echallenge = self.config.Ku.encrypt(self.challenge)[0]
 		echallenge = fencode(echallenge)
 		return echallenge

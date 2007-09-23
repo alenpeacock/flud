@@ -12,7 +12,6 @@ import time, os, stat, httplib, sys, logging, tarfile, gzip
 from StringIO import StringIO
 
 from flud.FludCrypto import FludRSA
-import flud.FludCrypto
 from flud.fencode import fencode, fdecode
 
 import ConnectionQueue

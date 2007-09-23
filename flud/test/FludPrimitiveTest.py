@@ -7,7 +7,7 @@ from zlib import crc32
 
 from flud.FludNode import FludNode
 from flud.protocol.FludClient import FludClient
-import flud.FludCrypto
+import flud.FludCrypto as FludCrypto
 from flud.fencode import fencode, fdecode
 from flud.protocol.FludCommUtil import *
 from flud.FludDefer import ErrDeferredList
@@ -225,10 +225,7 @@ def runTests(host, port=None, listenport=None):
 		smallFilename])
 	node.join()
 
-"""
-Main currently invokes test code
-"""
-if __name__ == '__main__':
+def main():
 	localhost = socket.getfqdn()
 	if len(sys.argv) == 1:
 		runTests(localhost) # test by talking to self
@@ -239,3 +236,6 @@ if __name__ == '__main__':
 	elif len(sys.argv) == 4: 
 		# talk to [1] on port [2], listen on port [3]
 		runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+
+if __name__ == '__main__':
+	main()

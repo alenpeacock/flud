@@ -8,10 +8,10 @@ manages configuration file for flud backup.
 import os, sys, socket, re, logging
 import ConfigParser
 
-import flud.FludCrypto
+import flud.FludCrypto as FludCrypt
 from flud.FludCrypto import FludRSA
 from flud.FludkRouting import kRouting
-from flud.fencode import *
+from flud.fencode import fencode, fdecode
 
 """ default mapping of relative URLs """
 def_commandmap = {'ID': 'ID', 'GROUPID': 'GROUPID', 'STORE': 'STORE', 

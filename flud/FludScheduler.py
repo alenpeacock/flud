@@ -4,8 +4,6 @@ import sys, os, time, stat
 from twisted.internet import reactor
 
 from flud.FludConfig import FludConfig
-from flud.fencode import *
-from flud.FludCrypto import *
 
 from flud.protocol.LocalClient import *
 from flud.CheckboxState import CheckboxState

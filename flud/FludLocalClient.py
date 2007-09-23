@@ -11,8 +11,8 @@ import sys, os, time
 from twisted.internet import reactor
 
 from flud.FludConfig import FludConfig
-from flud.fencode import *
-from flud.FludCrypto import *
+from flud.fencode import fencode, fdecode
+from flud.FludCrypto import hashfile
 
 from protocol.LocalClient import *
 

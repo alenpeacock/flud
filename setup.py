@@ -21,10 +21,11 @@ class AutoExtension(Extension):
 
 setup(name="flud",
 		version="0.0.2", 
-		description="Flud Backup", 
+		description="flud decentralized backup", 
 		author="Alen Peacock",
 		author_email="apeacock@flud.org",
 		url='http://flud.org',
+		copyright='(c)2004-2007 Alen Peacock, licensed GPL v3',
 		packages=['flud', 'flud.protocol', 'flud.test'],
 		ext_modules=[AutoExtension('filecoder',
 			pre_configure = [('flud/coding', './bootstrap')],

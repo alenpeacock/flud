@@ -1,12 +1,14 @@
 #!/usr/bin/python
 
-from FludNode import FludNode
-from protocol.FludClient import FludClient
-import FludCrypto
-from protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket
 from twisted.python import failure
-from fencode import *
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
+	os.path.abspath(__file__)))))
+from flud.FludNode import FludNode
+from flud.protocol.FludClient import FludClient
+from flud.protocol.FludCommUtil import *
+from flud.fencode import fencode, fdecode
 
 """
 Test code for primitive DHT operations. 

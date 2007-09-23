@@ -10,13 +10,15 @@ System tests for FludFileOperations
 import sys, os, time, logging, tempfile, shutil
 from twisted.internet import reactor
 
-from FludConfig import FludConfig
-from FludNode import FludNode
-from fencode import *
-from FludCrypto import *
-from FludFileOperations import *
-import FludDefer
-from protocol.LocalClient import listMeta
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
+	os.path.abspath(__file__)))))
+from flud.FludConfig import FludConfig
+from flud.FludNode import FludNode
+from flud.fencode import fencode, fdecode
+from flud.FludCrypto import generateRandom
+from flud.FludFileOperations import *
+import flud.FludDefer as FludDefer
+from flud.protocol.LocalClient import listMeta
 
 logger = logging.getLogger('flud')
 
@@ -80,7 +82,7 @@ def cleanup(_, node, filenamelist):
 def generateTestFile(minSize):
 	fname = tempfile.mktemp()
 	f = open(fname, 'w')
-	data = FludCrypto.generateRandom(minSize/50)
+	data = generateRandom(minSize/50)
 	for i in range(0, 51+random.randrange(50)):
 		f.write(data)
 	f.close()

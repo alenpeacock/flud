@@ -7,7 +7,6 @@ from zlib import crc32
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
 	os.path.abspath(__file__)))))
-print sys.path
 from flud.FludNode import FludNode
 from flud.protocol.FludClient import FludClient
 import flud.FludCrypto as FludCrypto

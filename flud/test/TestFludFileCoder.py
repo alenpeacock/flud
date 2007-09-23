@@ -1,7 +1,10 @@
 #!/usr/bin/python
 
 import sys
-from FludFileCoder import Coder, Decoder
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
+	os.path.abspath(__file__)))))
+from flud.FludFileCoder import Coder, Decoder
 
 if __name__ == '__main__':
 	if len(sys.argv) != 2:

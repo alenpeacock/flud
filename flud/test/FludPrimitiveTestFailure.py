@@ -1,14 +1,17 @@
 #!/usr/bin/python
 
-from FludNode import FludNode
-from protocol.FludClient import FludClient
-import FludCrypto
-from protocol.FludCommUtil import *
 import time, os, stat, random, sys, logging, socket, shutil, tempfile
 from binascii import crc32
 from StringIO import StringIO
 from twisted.python import failure
-from fencode import fencode
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
+	os.path.abspath(__file__)))))
+from flud.FludNode import FludNode
+from flud.protocol.FludClient import FludClient
+from flud.FludCrypto import generateRandom, hashfile
+from flud.protocol.FludCommUtil import *
+from flud.fencode import fencode
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -246,9 +249,9 @@ def generateTestData():
 		fname = tempfile.mktemp()
 		f = open(fname, 'w')
 		f.write('\0'*minsize)
-		f.write(FludCrypto.generateRandom(random.randrange(256)+1))
+		f.write(generateRandom(random.randrange(256)+1))
 		f.close()
-		filekey = FludCrypto.hashfile(fname)
+		filekey = hashfile(fname)
 		filekey = fencode(int(filekey, 16))
 		filename = os.path.join("/tmp",filekey)
 		os.rename(fname,filename)

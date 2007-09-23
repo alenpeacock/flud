@@ -19,14 +19,13 @@ class AutoExtension(Extension):
 				libraries=libraries, library_dirs=library_dirs,
 				language=language)
 
-setup(name="Flud",
+setup(name="flud",
 		version="0.0.2", 
 		description="Flud Backup", 
 		author="Alen Peacock",
 		author_email="apeacock@flud.org",
 		url='http://flud.org',
 		packages=['flud', 'flud.protocol', 'flud.test'],
-		ext_package='filecoder',
 		ext_modules=[AutoExtension('filecoder',
 			pre_configure = [('flud/coding', './bootstrap')],
 			run_configure = ['flud/coding'],

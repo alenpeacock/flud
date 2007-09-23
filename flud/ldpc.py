@@ -1,5 +1,5 @@
 import sys
-from FludFileCoder import Coder, Decoder
+from flud.FludFileCoder import Coder, Decoder
 
 def encode(n,m,fname,stem):
 	coder = Coder(n,m,7)

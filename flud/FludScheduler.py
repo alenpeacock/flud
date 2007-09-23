@@ -3,12 +3,12 @@
 import sys, os, time, stat
 from twisted.internet import reactor
 
-from FludConfig import FludConfig
-from fencode import *
-from FludCrypto import *
+from flud.FludConfig import FludConfig
+from flud.fencode import *
+from flud.FludCrypto import *
 
-from protocol.LocalClient import *
-from CheckboxState import CheckboxState
+from flud.protocol.LocalClient import *
+from flud.CheckboxState import CheckboxState
 
 CHECKTIME=5
 

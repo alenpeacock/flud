@@ -5,15 +5,16 @@ the terms of the GNU General Public License (the GPL), version 2.
 flud server operations
 """
 
+import threading, binascii, time, os, stat, httplib, gc, re, sys, logging, sets
 from twisted.web import server, resource, client
 from twisted.web.resource import Resource
 from twisted.internet import reactor, threads, defer
 from twisted.web import http
 from twisted.python import threadable, failure
-from FludCrypto import FludRSA
-import FludCrypto
-import FludkRouting
-import threading, binascii, time, os, stat, httplib, gc, re, sys, logging, sets
+
+from flud.FludCrypto import FludRSA
+import flud.FludCrypto
+import flud.FludkRouting
 
 from ServerPrimitives import *
 from ServerDHTPrimitives import *

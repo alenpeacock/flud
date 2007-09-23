@@ -9,14 +9,15 @@ from twisted.web import http, client
 from twisted.internet import reactor, threads, defer
 from twisted.python import failure
 import inspect, pdb
-import ConnectionQueue
 
-from FludCrypto import FludRSA
-import FludkRouting
+from flud.FludCrypto import FludRSA
+import flud.FludkRouting
+from flud.fencode import fencode, fdecode
+import flud.FludDefer
+
+import ConnectionQueue
 from ClientPrimitives import REQUEST
-from fencode import fencode, fdecode
 from FludCommUtil import *
-import FludDefer
 
 logger = logging.getLogger("flud.client.dht")
 

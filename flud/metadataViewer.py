@@ -6,10 +6,11 @@ under the terms of the GNU General Public License (the GPL).
 utility for viewing metadata.
 """
 
-from fencode import fencode, fdecode
-from FludCrypto import FludRSA
 import sys, os
 import ConfigParser
+
+from flud.fencode import fencode, fdecode
+from flud.FludCrypto import FludRSA
 
 if __name__ == "__main__":
 	if len(sys.argv) < 2 or len(sys.argv) > 3:

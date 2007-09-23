@@ -1,7 +1,8 @@
 import os, stat, sys, tarfile, tempfile
-from FludCrypto import hashstream
-from fencode import fencode
 import gzip
+
+from flud.FludCrypto import hashstream
+from flud.fencode import fencode
 
 """
 TarfileUtils.py (c) 2003-2006 Alen Peacock.  This program is distributed under

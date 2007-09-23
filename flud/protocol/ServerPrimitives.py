@@ -13,12 +13,14 @@ from twisted.web import server, resource, client
 from twisted.internet import reactor, threads, defer
 from twisted.web import http
 from twisted.python import failure
-from FludCrypto import FludRSA
-import FludCrypto
-import FludkRouting
-import TarfileUtils
+
+from flud.FludCrypto import FludRSA
+import flud.FludCrypto
+import flud.FludkRouting
+import flud.TarfileUtils
+from flud.fencode import fencode, fdecode
+
 import BlockFile
-from fencode import fencode, fdecode
 from FludCommUtil import *
 
 logger = logging.getLogger("flud.server.op")

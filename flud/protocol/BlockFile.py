@@ -1,7 +1,8 @@
 import os, __builtin__, tempfile, stat, sys, struct
-sys.path.append("..")
-from fencode import *
 from binascii import crc32
+
+sys.path.append("..")
+from flud.fencode import *
 
 """
 BlockFile.py (c) 2003-2006 Alen Peacock.  This program is distributed under the

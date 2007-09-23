@@ -9,10 +9,11 @@ from twisted.internet import reactor, defer
 from twisted.python import failure
 import binascii, httplib, logging, os, stat, random, socket
 import inspect
-import FludCrypto
-from FludExceptions import FludException
-from FludCrypto import FludRSA
-from HTTPMultipartDownloader import HTTPMultipartDownloader
+
+import flud.FludCrypto
+from flud.FludExceptions import FludException
+from flud.FludCrypto import FludRSA
+from flud.HTTPMultipartDownloader import HTTPMultipartDownloader
 
 """
 Some constants used by the Flud Protocol classes

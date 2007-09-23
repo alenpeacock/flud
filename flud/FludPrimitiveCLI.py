@@ -7,7 +7,7 @@ all basic operations.
 """
 
 import time
-from FludCrypto import FludRSA
+from flud.FludCrypto import FludRSA
 
 def _default_oldvals(nlist, olist):
 	"""

@@ -5,18 +5,19 @@ under the terms of the GNU General Public License (the GPL), version 2.
 Primitive server DHT protocol
 """
 
+import binascii, time, os, stat, httplib, gc, re, sys, logging, random, sets
 from twisted.web.resource import Resource
 from twisted.web import server, resource, http, client
 from twisted.internet import reactor, defer
 from twisted.python import failure
-from FludCrypto import FludRSA
-import FludCrypto
-import FludkRouting
-import binascii, time, os, stat, httplib, gc, re, sys, logging, random, sets
+
+from flud.FludCrypto import FludRSA
+import flud.FludCrypto
+import flud.FludkRouting
+from flud.fencode import fencode, fdecode
 
 from ServerPrimitives import ROOT
 from FludCommUtil import *
-from fencode import fencode, fdecode
 
 logger = logging.getLogger("flud.server.dht")
 

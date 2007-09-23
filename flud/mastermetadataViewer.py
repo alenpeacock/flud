@@ -7,10 +7,11 @@ distributed under the terms of the GNU General Public License (the GPL).
 Utility for displaying master metadata.
 """
 
-from fencode import fencode, fdecode
-from FludCrypto import FludRSA
 import sys, os
 import ConfigParser
+
+from flud.fencode import fencode, fdecode
+from flud.FludCrypto import FludRSA
 
 if __name__ == "__main__":
 	if len(sys.argv) < 2:

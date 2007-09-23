@@ -14,9 +14,10 @@ import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
-from protocol.LocalClient import *
-from FludConfig import FludConfig
-from CheckboxState import CheckboxState
+
+from flud.protocol.LocalClient import *
+from flud.FludConfig import FludConfig
+from flud.CheckboxState import CheckboxState
 
 FLUSHCHECKTIME = 5*60  # s to wait to flush fludfile.conf
 

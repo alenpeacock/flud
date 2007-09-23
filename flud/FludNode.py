@@ -7,13 +7,14 @@ terms of the GNU General Public License (the GPL).
 FludNode is the process that runs to talk with other nodes in the flud backup network.
 """
 
-from FludConfig import FludConfig
-from protocol.FludServer import FludServer
-from protocol.FludClient import FludClient
-from protocol.FludCommUtil import getCanonicalIP
-import FludPrimitiveCLI
 from twisted.internet import reactor, defer
 import threading, signal, sys, time, os, random, logging
+
+from flud.FludConfig import FludConfig
+from flud.protocol.FludServer import FludServer
+from flud.protocol.FludClient import FludClient
+from flud.protocol.FludCommUtil import getCanonicalIP
+import flud.FludPrimitiveCLI
 
 
 PINGTIME=60

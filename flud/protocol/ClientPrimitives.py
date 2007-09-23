@@ -8,13 +8,14 @@ Primitive client storage protocol
 from twisted.web import http, client
 from twisted.internet import reactor, threads, defer, error
 from twisted.python import failure
-from FludCrypto import FludRSA
-import FludCrypto
-import ConnectionQueue
 import time, os, stat, httplib, sys, logging, tarfile, gzip
 from StringIO import StringIO
-from fencode import fencode, fdecode
 
+from flud.FludCrypto import FludRSA
+import flud.FludCrypto
+from flud.fencode import fencode, fdecode
+
+import ConnectionQueue
 from FludCommUtil import *
 
 logger = logging.getLogger("flud.client.op")

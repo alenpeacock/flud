@@ -9,7 +9,8 @@ the same host.  This is really only useful for demos and testing.
 import sys, os, signal, stat, random
 import wx
 import wx.lib.buttons as buttons
-from FludConfig import FludConfig
+
+from flud.FludConfig import FludConfig
 
 dutotal = 0
 def visit(arg, top, files):

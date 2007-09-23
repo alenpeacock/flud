@@ -4,6 +4,7 @@ import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
 from StringIO import StringIO
 from zlib import crc32
+
 from flud.FludNode import FludNode
 from flud.protocol.FludClient import FludClient
 import flud.FludCrypto

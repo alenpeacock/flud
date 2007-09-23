@@ -1,10 +1,11 @@
 #!/usr/bin/python
 
-import TarfileUtils
-import tarfile, tempfile, random, os
 import gzip
 from Crypto.Hash import SHA256
-from fencode import fencode
+import tarfile, tempfile, random, os
+
+from flud.fencode import fencode
+import flud.TarfileUtils
 
 def maketarball(numfiles, avgsize, hashnames=False, addmetas=False):
 	tarballname = tempfile.mktemp()+".tar"

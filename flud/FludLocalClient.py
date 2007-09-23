@@ -10,9 +10,9 @@ FludLocalClient provides a command-line client for interacting with FludNode.
 import sys, os, time
 from twisted.internet import reactor
 
-from FludConfig import FludConfig
-from fencode import *
-from FludCrypto import *
+from flud.FludConfig import FludConfig
+from flud.fencode import *
+from flud.FludCrypto import *
 
 from protocol.LocalClient import *
 

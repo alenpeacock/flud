@@ -11,22 +11,23 @@ command.  These are followed by a status byte, which is either '?'=request,
 the status byte.
 """
 
+import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import protocol, reactor, threads, defer
 from twisted.protocols import basic
 from twisted.mail import smtp
 from twisted.python import failure
-from FludCrypto import FludRSA
 from Crypto.Cipher import AES
-import FludCrypto
-import FludkRouting
-import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
-from fencode import fencode, fdecode
+
+from flud.FludCrypto import FludRSA
+import flud.FludCrypto
+import flud.FludkRouting
+from flud.fencode import fencode, fdecode
+from flud.FludFileOperations import *
 
 from FludCommUtil import *
 from FludServer import *
-from FludFileOperations import *
 
 logger = logging.getLogger("flud.local.server")
 

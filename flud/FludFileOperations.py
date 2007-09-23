@@ -8,13 +8,13 @@ Implements file storage and retrieval operations using flud primitives.
 import os, stat, sys, logging, binascii, random, time
 from zlib import crc32
 from StringIO import StringIO
-import FludCrypto
 from twisted.internet import defer, threads
-from FludCrypto import FludRSA
-from FludFileCoder import Coder, Decoder
-from protocol.FludCommUtil import *
 from Crypto.Cipher import AES
-from fencode import fencode, fdecode
+
+from flud.FludCrypto import FludRSA, hashstring, hashfile
+from flud.FludFileCoder import Coder, Decoder
+from flud.protocol.FludCommUtil import *
+from flud.fencode import fencode, fdecode
 
 logger = logging.getLogger('flud.fileops')
 

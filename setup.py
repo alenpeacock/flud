@@ -1,7 +1,11 @@
 from distutils.core import setup, Extension
 import os, sys
 
-class AutoExtension(Extension):
+class AutoToolsExtension(Extension):
+	'''
+	provides simple hooks for running ./configure, make, and any pre-configure
+	scripts (such as ./bootstrap) necessary to build an Extension package.
+	'''
 	def __init__(self, name, sources=[], extra_objects=[], include_dirs=[], 
 			libraries=[], library_dirs=[], language=[], pre_configure=[],
 			run_configure=[], run_make=[]):
@@ -19,15 +23,30 @@ class AutoExtension(Extension):
 				libraries=libraries, library_dirs=library_dirs,
 				language=language)
 
+#images = [os.path.join('flud','images',f) for f in os.listdir('flud/images')
+#		if f.endswith('.png')]
+
 setup(name="flud",
 		version="0.0.2", 
 		description="flud decentralized backup", 
+		long_description='a 100% decentralized backup system',
 		author="Alen Peacock",
 		author_email="apeacock@flud.org",
 		url='http://flud.org',
 		copyright='(c)2004-2007 Alen Peacock, licensed GPL v3',
-		packages=['flud', 'flud.protocol', 'flud.test'],
-		ext_modules=[AutoExtension('filecoder',
+		license='GPL v3',
+		packages=['flud', 
+			'flud.protocol', 
+			'flud.bin', 
+			'flud.test'],
+		package_dir={'flud': 'flud', 
+			'flud.protocol': 'flud/protocol',
+			'flud.bin': 'flud/bin',
+			'flud.test': 'flud/test'},
+		package_data={'flud': ['images/*.png']},
+		scripts = ['flud/bin/fludnode', 'flud/bin/fludscheduler', 
+			'flud/bin/fludclient'],
+		ext_modules=[AutoToolsExtension('filecoder',
 			pre_configure = [('flud/coding', './bootstrap')],
 			run_configure = ['flud/coding'],
 			run_make = ['flud/coding/ldpc', 'flud/coding'],

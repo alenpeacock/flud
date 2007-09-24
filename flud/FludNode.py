@@ -142,35 +142,3 @@ class FludNode(object):
 		deferred.addCallback(refresh)
 		deferred.addErrback(badGW)
 
-
-"""
-Starts up a Flud Node
-"""
-if __name__ == '__main__':
-	from twisted.python import failure
-	#import gc
-	#gc.set_debug(gc.DEBUG_LEAK)
-	#gc.enable()
-
-	if len(sys.argv) == 2:
-		# usage was: FludNode.py <listenport>
-		node = FludNode(eval(sys.argv[1]))
-	elif len(sys.argv) == 4:
-		# usage was: FludNode.py <gatewayhost> <gatewayport> <listenport>
-		node = FludNode(eval(sys.argv[3]))
-	else:
-		# usage was: FludNode.py [<gatewayhost> <gatewayport>]
-		node = FludNode()
-
-	if len(sys.argv) >= 3:
-		# usage was: FludNode.py <gatewayhost> <gatewayport> [listenport]
-		node.connectViaGateway(getCanonicalIP(sys.argv[1]), int(sys.argv[2]))
-
-	else:
-		print "flud node listening on port %d" % node.config.port
-
-	node.start()
-
-	#node.run()
-	#node.join()
-

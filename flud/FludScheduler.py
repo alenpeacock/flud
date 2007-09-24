@@ -191,22 +191,3 @@ class FludScheduler:
 		d.addBoth(self.updateMasterMetadata)
 		d.addBoth(self.restartCheckTimer)
 
-def main():
-	config = FludConfig()
-	config.load(doLogging=False)
-
-	factory = LocalClientFactory(config)
-	
-	if len(sys.argv) == 2:
-		config.clientport = int(sys.argv[1])
-	print "connecting to localhost:%d" % config.clientport
-	reactor.connectTCP('localhost', config.clientport, factory)
-
-	scheduler = FludScheduler(config, factory)
-
-	reactor.callLater(1, scheduler.run)
-
-	reactor.run()
-
-if __name__ == '__main__':
-	main()

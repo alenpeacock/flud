@@ -1,0 +1,33 @@
+#!/usr/bin/python
+
+"""
+FludClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed under
+the terms of the GNU General Public License (the GPL), version 2.
+
+FludClient provides a GUI Client for interacting with FludNode.
+"""
+
+from twisted.internet import wxreactor
+wxreactor.install()
+
+import wx
+import wx.lib.mixins.listctrl as listmix
+import wx.lib.editor.editor
+
+from flud.FludConfig import FludConfig
+from flud.FludClient import FludFrame
+
+if __name__ == '__main__':
+	app = wx.PySimpleApp()
+	
+	conf = FludConfig()
+	conf.load(doLogging=False)
+
+	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
+			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
+			config=conf)
+
+	from twisted.internet import reactor
+	reactor.registerWxApp(app)
+	reactor.run()
+

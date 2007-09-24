@@ -7,8 +7,8 @@ the terms of the GNU General Public License (the GPL), version 2.
 FludClient provides a GUI Client for interacting with FludNode.
 """
 
-from twisted.internet import wxreactor
-wxreactor.install()
+#from twisted.internet import wxreactor
+#wxreactor.install()
 
 import sys, os, string, time, glob
 import wx
@@ -20,6 +20,8 @@ from flud.FludConfig import FludConfig
 from flud.CheckboxState import CheckboxState
 
 FLUSHCHECKTIME = 5*60  # s to wait to flush fludfile.conf
+
+imgdir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'images')
 
 mimeMgr = wx.MimeTypesManager()
 
@@ -70,12 +72,18 @@ def makeCheckboxBitmaps(basebitmap, checkboxes):
 
 def createDefaultImageList():
 	def getDefaultCheckboxes():
-		ucbm = wx.BitmapFromImage(wx.Image("checkbox-unchecked1.png"))
-		cbm = wx.BitmapFromImage(wx.Image("checkbox-checked1.png"))
-		ccbm = wx.BitmapFromImage(wx.Image("checkbox-checkedpartial1.png"))
-		cpbm = wx.BitmapFromImage(wx.Image("checkbox-parentchecked1.png"))
-		ebm = wx.BitmapFromImage(wx.Image("checkbox-excluded1.png"))
-		ecbm = wx.BitmapFromImage(wx.Image("checkbox-excludedpartial1.png"))
+		ucbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-unchecked1.png")))
+		cbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-checked1.png")))
+		ccbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-checkedpartial1.png")))
+		cpbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-parentchecked1.png")))
+		ebm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-excluded1.png")))
+		ecbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-excludedpartial1.png")))
 		return (ucbm, cbm, ccbm, cpbm, ebm, ecbm)
 	checkboxes = getDefaultCheckboxes()
 		
@@ -989,9 +997,12 @@ class GroupSelectionCheckbox(wx.Panel):
 		wx.Panel.__init__(self, parent, id)
 		self.setGroupState = setGroupState
 
-		self.ubm = wx.BitmapFromImage(wx.Image("checkbox-unchecked1.png"))
-		self.cbm = wx.BitmapFromImage(wx.Image("checkbox-checked1.png"))
-		self.ebm = wx.BitmapFromImage(wx.Image("checkbox-excluded1.png"))
+		self.ubm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-unchecked1.png")))
+		self.cbm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-checked1.png")))
+		self.ebm = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"checkbox-excluded1.png")))
 		self.checkboxButton = wx.BitmapButton(self, -1, self.ubm, 
 				style=wx.NO_BORDER) 
 		self.Bind(wx.EVT_BUTTON, self.onCheckbox, self.checkboxButton)
@@ -1425,8 +1436,8 @@ class FludNotebook(wx.Notebook):
 		self.config = parent.config
 
 		self.factory = LocalClientFactory(self.config)
-		print "connecting to localhost:%d" % config.clientport
-		reactor.connectTCP('localhost', config.clientport, self.factory)
+		print "connecting to localhost:%d" % self.config.clientport
+		reactor.connectTCP('localhost', self.config.clientport, self.factory)
 
 		wx.Notebook.__init__(self, parent, id, pos, style=style)
 		self.filePanel = FilePanel(self, 
@@ -1475,8 +1486,8 @@ class FludLogoPanel(wx.Panel):
 		self.SetBackgroundColour(wx.BLACK)
 		self.SetForegroundColour(wx.WHITE)
 
-		logobmp = wx.BitmapFromImage(
-				wx.Image("flud-backup-logo-1-150-nodrop.png"))
+		logobmp = wx.BitmapFromImage(wx.Image(os.path.join(imgdir,
+			"flud-backup-logo-1-150-nodrop.png")))
 		pad = 0
 		self.logowidth = logobmp.GetWidth()
 		self.logoheight = logobmp.GetHeight()
@@ -1574,17 +1585,17 @@ class FludFrame(wx.Frame):
 			self.logoPanel.SetMessage("")
 		
 
-if __name__ == '__main__':
-	app = wx.PySimpleApp()
-	
-	config = FludConfig()
-	config.load(doLogging=False)
-
-	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
-			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
-			config=config)
-
-	from twisted.internet import reactor
-	reactor.registerWxApp(app)
-	reactor.run()
+#if __name__ == '__main__':
+#	app = wx.PySimpleApp()
+#	
+#	config = FludConfig()
+#	config.load(doLogging=False)
+#
+#	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
+#			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
+#			config=config)
+#
+#	from twisted.internet import reactor
+#	reactor.registerWxApp(app)
+#	reactor.run()
 

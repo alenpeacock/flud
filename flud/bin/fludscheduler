@@ -1,0 +1,28 @@
+#!/usr/bin/python
+
+import sys
+from twisted.internet import reactor
+
+from flud.FludConfig import FludConfig
+from flud.protocol.LocalClient import LocalClientFactory
+from flud.FludScheduler import FludScheduler
+
+def main():
+	config = FludConfig()
+	config.load(doLogging=False)
+
+	factory = LocalClientFactory(config)
+	
+	if len(sys.argv) == 2:
+		config.clientport = int(sys.argv[1])
+	print "connecting to localhost:%d" % config.clientport
+	reactor.connectTCP('localhost', config.clientport, factory)
+
+	scheduler = FludScheduler(config, factory)
+
+	reactor.callLater(1, scheduler.run)
+
+	reactor.run()
+
+if __name__ == '__main__':
+	main()

@@ -2,7 +2,7 @@
 
 """
 FludLocalClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed
-under the terms of the GNU General Public License (the GPL), version 2.
+under the terms of the GNU General Public License (the GPL), version 3.
 
 FludLocalClient provides a command-line client for interacting with FludNode.
 """

@@ -2,7 +2,7 @@
 
 """
 FludNode.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
-terms of the GNU General Public License (the GPL).
+terms of the GNU General Public License (the GPL), verison 3.
 
 FludNode is the process that runs to talk with other nodes in the flud backup network.
 """

@@ -2,7 +2,7 @@ import base64
 
 """
 fencode.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
-terms of the GNU General Public License (the GPL), version 2.
+terms of the GNU General Public License (the GPL), version 3.
 
 Provides efficient urlsafe base64 encoding of python types (int, long, string, None, dict, tuple, list) -- in the same vein as BitTorrent's bencode or MNet's mencode.
 """

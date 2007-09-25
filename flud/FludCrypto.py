@@ -1,6 +1,6 @@
 """
 FludCrypto.py (c) 2003-2006 Alen Peacock.  This program is distributed under
-the terms of the GNU General Public License (the GPL), version 2.
+the terms of the GNU General Public License (the GPL), version 3.
 
 Provides FludRSA (an enhanced RSA.RSAobj), as well as convenience functions
 for creating hashes, finding hash collisions, etc.

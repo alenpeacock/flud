@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
-metadataViewer.py (c) 2003-2006 Alen Peacock.  This program is distributed
-under the terms of the GNU General Public License (the GPL).
+flud-metadataViewer (c) 2003-2006 Alen Peacock.  This program is distributed
+under the terms of the GNU General Public License (the GPL), version 3.
 
 utility for viewing metadata.
 """

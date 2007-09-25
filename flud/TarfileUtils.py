@@ -6,7 +6,7 @@ from flud.fencode import fencode
 
 """
 TarfileUtils.py (c) 2003-2006 Alen Peacock.  This program is distributed under
-the terms of the GNU General Public License (the GPL), version 2.
+the terms of the GNU General Public License (the GPL), version 3.
 
 Provides additional tarfile functionality (deletion of a member from a
 tarball, and concatenation of tarballs).

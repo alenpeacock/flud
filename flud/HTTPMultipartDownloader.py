@@ -6,7 +6,8 @@ from twisted.python import failure
 
 """
 HTTPMultipartDownloader.py (c) 2003-2006 Alen Peacock.  This program is
-distributed under the terms of the GNU General Public License (the GPL).
+distributed under the terms of the GNU General Public License (the GPL),
+version 3.
 
 HTTPMultipartDownloader will download mulitple files from a multipart/related.
 Note that it does this by using the Content-ID and Content-Length headers in

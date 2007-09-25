@@ -1,5 +1,13 @@
 #!/usr/bin/python
 
+"""
+FludScheduler.py (c) 2003-2006 Alen Peacock.  This program is distributed under
+the terms of the GNU General Public License (the GPL), verison 3.
+
+FludScheduler is the process monitors files for changes, and then tells flud to
+back them up.
+"""
+
 import sys, os, time, stat
 from twisted.internet import reactor
 

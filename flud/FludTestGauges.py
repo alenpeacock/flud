@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
 FludTestGauges.py (c) 2003-2006 Alen Peacock.  This program is distributed
-under the terms of the GNU General Public License (the GPL).
+under the terms of the GNU General Public License (the GPL), version 3.
 
 Provides gauges for visualizing storage for multiple flud nodes running on 
 the same host.  This is really only useful for demos and testing.

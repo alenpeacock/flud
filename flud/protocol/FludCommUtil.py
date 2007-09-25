@@ -1,6 +1,6 @@
 """
 FludCommUtil.py (c) 2003-2006 Alen Peacock.  This program is distributed under
-the terms of the GNU General Public License (the GPL), version 2.
+the terms of the GNU General Public License (the GPL), version 3.
 
 Communications routines used by both client and server code.
 """

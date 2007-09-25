@@ -1,6 +1,12 @@
 from twisted.python import failure
 from twisted.internet import defer
 
+"""
+FludDefer.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
+terms of the GNU General Public License (the GPL), version 3.
+"""
+
+
 class ErrDeferredList(defer.DeferredList):
 	"""
 	ErrDeferredList acts just like DeferredList, except that if *any* of the

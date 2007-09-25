@@ -140,3 +140,7 @@ class FludNode(object):
 		deferred.addCallback(refresh)
 		deferred.addErrback(badGW)
 
+def getPath():
+	# this is a hack to be able to get the location of FludNode.tac
+	return os.path.dirname(os.path.abspath(__file__))
+

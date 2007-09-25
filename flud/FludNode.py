@@ -14,8 +14,6 @@ from flud.FludConfig import FludConfig
 from flud.protocol.FludServer import FludServer
 from flud.protocol.FludClient import FludClient
 from flud.protocol.FludCommUtil import getCanonicalIP
-import flud.FludPrimitiveCLI
-
 
 PINGTIME=60
 SYNCTIME=900

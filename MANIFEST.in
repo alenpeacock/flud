@@ -3,6 +3,8 @@ include MANIFEST.in
 include setup.py
 include setup.cfg
 include INSTALL
+include LICENSE
+include README
 
 recursive-include flud/coding *.c *.c++ *.cpp *.h 
 recursive-include flud/coding bootstrap

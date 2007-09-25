@@ -237,7 +237,7 @@ class FludTestGauges(wx.Frame):
 	def IdleHandler(self, event):
 		pass
 
-if __name__ == '__main__':
+def main():
 	if len(sys.argv) < 2:
 		print "usage: %s dircommon exts" % sys.argv[0]
 		print "  where exts will be appended to dircommon"
@@ -263,3 +263,6 @@ if __name__ == '__main__':
 	t = FludTestGauges(None, 'Flud Test Gauges', root, exts)
 	t.Show(1)
 	app.MainLoop()
+
+if __name__ == '__main__':
+	main()

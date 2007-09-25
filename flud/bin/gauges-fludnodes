@@ -1,0 +1,12 @@
+#!/usr/bin/python
+"""
+gauges-fludnodes (c) 2003-2006 Alen Peacock.  This program is distributed
+under the terms of the GNU General Public License (the GPL).
+
+Provides gauges for visualizing storage for multiple flud nodes running on 
+the same host.  This is really only useful for demos and testing.
+"""
+import flud.FludTestGauges 
+
+if __name__ == '__main__':
+	flud.FludTestGauges.main()

@@ -1,0 +1,13 @@
+#!/usr/bin/python
+
+"""
+fludlocalclient, (c) 2003-2006 Alen Peacock.  This program is distributed
+under the terms of the GNU General Public License (the GPL), version 3.
+
+FludLocalClient provides a command-line client for interacting with FludNode.
+"""
+
+import flud.FludLocalClient
+
+if __name__ == '__main__':
+	flud.FludLocalClient.main()

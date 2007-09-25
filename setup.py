@@ -23,9 +23,6 @@ class AutoToolsExtension(Extension):
 				libraries=libraries, library_dirs=library_dirs,
 				language=language)
 
-#images = [os.path.join('flud','images',f) for f in os.listdir('flud/images')
-#		if f.endswith('.png')]
-
 setup(name="flud",
 		version="0.0.2", 
 		description="flud decentralized backup", 

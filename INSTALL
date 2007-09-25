@@ -11,10 +11,12 @@ gnu automake, autoconf, gcc, etc.
 Installation:
 =============
 
-In its current form, flud is meant to run inside its own directory; you may
-unpack the distribution wherever you see fit.  There is no install script.
+flud can be installed via setuptools ('python setup.py install') or via rpm or
+debian packages (recommended).
 
-Before invoking a flud node, you must, however, install the ldpc wrappers
-needed for erasure coding.  Instructions on doing so are located within the
-coding/ directory contained within this distribution.
-
+If pre-built packages are not available for your platform, source RPMs
+(.rpm.src) are available for building them.  RPMs can also be generated via
+'python setup.py bdist_rpm'.  Debian/Ubuntu packages are currently created with
+the 'alien' tool.  (Users of platforms other than those for which packages are
+available are encouraged to submit built rpm/deb/other packages, which will be
+welcomely included for others to use, with credit going to the packager.)

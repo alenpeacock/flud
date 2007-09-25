@@ -1,32 +1,70 @@
-flud backup, svn snapshot 
+flud backup 
 ==========================================
 
-This is an svn snapshot of flud backup.  The software is very much a
+flud backup is experimental software.  This release *is not* meant for use as a
+reliable backup mechanism.  It is, however, fully capable of performing backup
+and restore of data, especially among networks of trusted nodes, or performing
+experiments and measurements on flud backup networks contained wholly on a
+single computer (emulated flud networks).  The software is very much a
 work in progress, and major components of the architecture are not complete.
-But there should be enough here to run some interesting experiments.
+
+The next releases of flud backup will contain functional trust and fairness
+mechanisms that will allow, for the first time, the instantiation of the public
+flud network.  Until then, this release serves as a preview and experimentation
+platform.
+
 
 Installation
 ============
 
-Before starting a flud node, you will need to build and install the ldpc libs
-and python wrappers contained in the flud/coding directory of this
-distribution.  Follow the directions in the flud/coding/README to perform this
-rite.
+See the file INSTALL for guidance on installing flud backup.
+
 
 Running
 =======
 
-To start up a flud node, enter the flud/ directory and do:
-$ python FludNode.py <bootstraphost> <bootstrapport>
+To start up a flud node, do:
+$ fludnode <bootstraphost> <bootstrapport>
 
 (if this is the first node in the flud network, you can omit the
 bootstraphost/port.  When the public flud network becomes more generally
 available, an alternate mechanism will be used to automatically find and use
 it)
 
-See http://www.flud.org/wiki/index.php/Testing_Utilities for instructions on
-running some of the test suites, as well as utilities to automatically spawn
-many instances of FludNode in your own private flud network.
+To start the flud scheduler, do:
+$ fludscheduler
+
+To start the flud client (graphical interface), do:
+$ fludclient
+
+To start a command-line flud client, do:
+$ fludlocalclient
+
+All of the above commands will honor the FLUDHOME environment variable, for
+alternate locations of the ~/.flud directory.
+
+
+Experimenting
+=============
+
+To start an emulated flud network of N nodes, do:
+$ start-fludnodes N
+
+To view storage consumed by flud nodes in an emulated flud networ, do:
+$ gauges-fludnodes N
+
+(note that you can stop and start nodes interactively with the gauges panel)
+
+To stop the emulated flud network of N nodes, do:
+$ stop-fludnodes N
+
+To clean out data from all emulated flud nodes, do:
+$ clean-fludnodes
+
+See http://www.flud.org/wiki/Testing_Utilities for instructions on running some
+of the test suites, as well as more examples of how to run and test emulated
+flud networks.
+
 
 Feedback
 ========

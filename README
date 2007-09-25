@@ -61,9 +61,11 @@ $ stop-fludnodes N
 To clean out data from all emulated flud nodes, do:
 $ clean-fludnodes
 
+See http://www.flud.org/wiki/Emulated_flud_Networks for instructions and
+examples of how to run and test emulated flud networks.
+
 See http://www.flud.org/wiki/Testing_Utilities for instructions on running some
-of the test suites, as well as more examples of how to run and test emulated
-flud networks.
+of the test suites.
 
 
 Feedback

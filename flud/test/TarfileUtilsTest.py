@@ -1,9 +1,11 @@
 #!/usr/bin/python
 
+import tarfile, tempfile, random, os, sys
 import gzip
 from Crypto.Hash import SHA256
-import tarfile, tempfile, random, os
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
+	os.path.abspath(__file__)))))
 from flud.fencode import fencode
 import flud.TarfileUtils as TarfileUtils
 
@@ -131,6 +133,8 @@ def main():
 	tballname = gzipTarball(tballname)
 	assert(TarfileUtils.verifyHashes(tballname, contents[2:4]), ".meta")
 	os.remove(tballname)
+
+	print "all tests passed"
 
 if __name__ == "__main__":
 	main()

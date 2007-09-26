@@ -8,7 +8,7 @@ manages configuration file for flud backup.
 import os, sys, socket, re, logging
 import ConfigParser
 
-import flud.FludCrypto as FludCrypt
+import flud.FludCrypto as FludCrypto
 from flud.FludCrypto import FludRSA
 from flud.FludkRouting import kRouting
 from flud.fencode import fencode, fdecode

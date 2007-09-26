@@ -5,8 +5,8 @@
 # We need the GNU make tool, on some systems it is called
 # gmake, on others make is an alias to gmake. Choose one...
 #
-#MAKE = make
-MAKE = gmake
+MAKE = make
+#MAKE = gmake
 
 
 # A phony target is one that is not really the name of a file.

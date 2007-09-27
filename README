@@ -50,8 +50,8 @@ Experimenting
 To start an emulated flud network of N nodes, do:
 $ start-fludnodes N
 
-To view storage consumed by flud nodes in an emulated flud networ, do:
-$ gauges-fludnodes N
+To view storage consumed by flud nodes in an emulated flud network, do:
+$ gauges-fludnodes ~/.flud 1-n
 
 (note that you can stop and start nodes interactively with the gauges panel)
 

@@ -15,6 +15,7 @@ from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.FludFileCoder import Coder, Decoder
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
+from flud.zfec import filefec
 
 logger = logging.getLogger('flud.fileops')
 
@@ -24,7 +25,7 @@ code_m = 20
 code_l = 5
 # temp filenaming defaults
 appendEncrypt = ".crypt"
-appendNodeMeta = ".nmeta"
+appendFsMeta = ".nmeta"
 dirReplace = "-"
 
 # XXX: could remove trailing '=' from all stored sha256s (dht keys, storage
@@ -160,18 +161,25 @@ class StoreFile:
 		self.eNodeFileMetadata = ""
 		for i in range(0, len(sbody), 128):
 			self.eNodeFileMetadata += self.Ku.encrypt(sbody[i:i+128])[0]
-		self.nodeFileMetadata = {'eeK' : fencode(self.eeK[0]), 
-				'meta' : fencode(self.eNodeFileMetadata)}
+		fsMetadata = fencode({'eeK' : fencode(self.eeK[0]), 
+				'meta' : fencode(self.eNodeFileMetadata)})
 		# XXX: "/" is OS specific
-		self.flatname = self.filename.replace("/", dirReplace)
-		self.mfilename = os.path.join(self.metadir,self.flatname+appendNodeMeta)
-		f = open(self.mfilename, "w")
-		f.write(fencode(self.nodeFileMetadata))
-		f.close();
+		# XXX: flattening the name is not enough, need to generate a nonce for
+		# its name (flattening can run into >255 char limit)
+		#self.flatname = self.filename.replace("/", dirReplace)
+		#self.mfilename = os.path.join(self.metadir,self.flatname+appendFsMeta)
+		#f = open(self.mfilename, "w")
+		#f.write(fsMetadata)
+		#mfilesize = f.tell()
+		#f.close()
+		
 
 		# erasure code the metadata
-		c = Coder(code_n, code_m, code_l)
+		#c = Coder(code_n, code_m, code_l)
+
 		# XXX: bad blocking stuff, move into thread
+		self.flatname = fencode(generateRandom(16))
+		self.mfilename = os.path.join(self.metadir, self.flatname+appendFsMeta)
 		self.encodedir = os.path.join(self.parentcodedir, self.flatname)
 		try:
 			os.mkdir(self.encodedir)
@@ -180,8 +188,11 @@ class StoreFile:
 				"%s already requested" % self.filename))
 		# XXX: mfiles should be held in mem, as StringIOs (when coder supports
 		# this)
-		self.mfiles = c.codeData(self.mfilename,
-				os.path.join(self.encodedir, 'm'))
+		#self.mfiles = c.codeData(self.mfilename,
+		#		os.path.join(self.encodedir, 'm'))
+		self.mfiles = filefec.encode_to_files(StringIO(fsMetadata), 
+				len(fsMetadata), self.encodedir, self.mfilename, 
+				code_n, code_m+code_n)
 
 		# XXX: piggybacking doesn't work with new metadata scheme, must fix it
 		# to append metadata, or if already in progress, redo via verify ops
@@ -201,7 +212,7 @@ class StoreFile:
 
 		# 3: encrypt and encode the file locally.
 		self.efilename = os.path.join(self.metadir,self.flatname+appendEncrypt)
-		e = open(self.efilename, "w")
+		e = open(self.efilename, "w+")
 		fd = os.open(self.filename, os.O_RDONLY)
 		fstat = os.fstat(fd)
 		fsize = fstat[stat.ST_SIZE]
@@ -220,13 +231,17 @@ class StoreFile:
 			if buf == "":
 				break
 			e.write(self.eKey.encrypt(buf));
-		e.close()
+		#e.close()
+		elen = e.tell()
+		e.seek(0,0)
 		os.close(fd)
 
 		# erasure code the file
 		# XXX: bad blocking stuff, move into thread
-		self.sfiles = c.codeData(self.efilename, 
-				os.path.join(self.encodedir, 'c'))
+		#self.sfiles = c.codeData(self.efilename, 
+		#		os.path.join(self.encodedir, 'c'))
+		self.sfiles = filefec.encode_to_files(e, elen, self.encodedir, 'c',
+				code_n, code_m+code_n)
 		#logger.debug(self.ctx("coded to: %s" % str(self.sfiles)))
 		# take hashes and rename coded blocks
 		self.segHashesLocal = []
@@ -565,7 +580,7 @@ class StoreFile:
 		m.close()
 
 		# clean up fs metadata file
-		os.remove(self.mfilename)
+		#os.remove(self.mfilename)
 
 		#return fencode(self.sK)
 		(d, counter) = self.currentOps[self.eK]

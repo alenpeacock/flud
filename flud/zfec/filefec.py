@@ -274,10 +274,11 @@ def decode_from_files(outf, infiles, verbose=False):
             # Then this was a short read, so we've reached the end of the sharefiles.
             resultdata = dec.decode(chunks, shnums, padlen)
             outf.write(resultdata)
-            return # Done.
+            return True # Done.
     if verbose:
         print
         print "Done!"
+	return True
 
 def encode_file(inf, cb, k, m, chunksize=4096):
     """

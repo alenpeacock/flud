@@ -639,7 +639,9 @@ class RetrieveFile:
 		self.routing = self.config.routing.knownNodes()
 		self.metadir = self.config.metadir
 		self.parentcodedir = self.config.clientdir
-		self.numDecoded = 0
+		self.numBlocksRetrieved = 0
+		self.blocks = {}
+		self.fsmetas = {}
 
 		self.deferred = self._retrieveFile()
 		
@@ -670,14 +672,9 @@ class RetrieveFile:
 			raise ValueError("unsupported coding scheme %d/%d" % (m/n))
 		logger.info(self.ctx("got metadata %s" % self.meta))
 		self.decoded = False
-		self.decoder = Decoder(os.path.join(self.parentcodedir,
-			fencode(self.sK))+".rec1", code_n, code_m, code_l)
-		self.mdecoder = Decoder(os.path.join(self.parentcodedir,
-			fencode(self.sK))+".m", code_n, code_m, code_l)
-		#return self._getSomeBlocks()
-		return self._getSomeBlocks(25) # XXX: magic 25. Should derive from k & m
+		return self._getSomeBlocks(code_n)
 
-	def _getSomeBlocks(self, reqs=40):  # XXX: magic 40. Should be k+m
+	def _getSomeBlocks(self, reqs=code_n):
 		tries = 0
 		if reqs > len(self.meta):
 			reqs = len(self.meta)
@@ -692,7 +689,7 @@ class RetrieveFile:
 				id = random.choice(id)
 				# XXX: for now, this just picks one of the alternatives at
 				#      random.  If the chosen one fails, should try each of the
-				#      others until it works
+				#      others until it works or exhausts the list
 			#logger.info(self.ctx("retrieving %s from %s" 
 			#		% (block, fencode(id))))
 			logger.info(self.ctx("retrieving %s from %s" % (block, id)))
@@ -729,10 +726,22 @@ class RetrieveFile:
 		nKu = FludRSA.importPublicKey(node[3])
 		if not self.decoded:
 			d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
-			d.addCallback(self._decodeBlock, block, self.mkey)
+			d.addCallback(self._retrievedBlock, block, self.mkey)
 			d.addErrback(self._retrieveBlockErr, 
 					"couldn't get block %s from %s" % (block, fencode(id)))
 			return d
+	
+	def _retrievedBlock(self, msg, block, mkey):
+		logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
+		blockname = [f for f in msg if f[-len(block):] == block][0]
+		expectedmeta = "%s.%s.meta" % (block, mkey)
+		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
+		if not metanames:
+			raise failure.DefaultException("expected metadata was missing")
+		self.blocks[block] = blockname
+		self.fsmetas[block] = metanames[0]
+		self.numBlocksRetrieved += 1
+		return True
 
 	def _retrieveBlockErr(self, failure, message):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
@@ -743,64 +752,85 @@ class RetrieveFile:
 	def _retrievedAll(self, success):
 		logger.info(self.ctx("tried retreiving %d blocks %s" 
 			% (len(success), success)))
-		if not self.decoded and len(self.meta) > 0:
-			tries = 5  # XXX: magic number. Should derive from k & m 
+		if self.numBlocksRetrieved >= code_n:
+			# XXX: need to make this try again with other blocks if decode
+			# fails
+			return self._decodeData()
+		elif len(self.meta) > 0:
+			tries = 3  # XXX: magic number. Should derive from k & m 
 			logger.info(self.ctx("requesting %d more blocks" % tries))
 			return self._getSomeBlocks(tries) 
-		if self.decoded:
-			logger.info(self.ctx("file successfully decoded"))
-			return self._decryptMeta() 
 		else:
-			logger.info(self.ctx("couldn't decode file after retreiving all %d"
-					" available blocks" %self.numDecoded))
+			logger.info(self.ctx("couldn't decode file after retreiving"
+					" all %d available blocks" % self.numBlocksRetrieved))
 			#return False
-			raise RuntimeError("couldn't decode file after retreiving all %d" 
-					" available blocks" %self.numDecoded)
+			raise RuntimeError("couldn't decode file after retreiving all"
+					" %d available blocks" % self.numBlocksRetrieved)
 
-	def decodeData(self, decoder, data):
-		return decoder.decodeData(data)
+	def _decodeData(self):
+		logger.debug(self.ctx("_decodeData"))
+		self.fname = os.path.join(self.parentcodedir,fencode(self.sK))+".rec1"
+		d = threads.deferToThread(self.decodeData, self.fname, 
+				self.blocks.values(), self.config.clientdir)
+		d.addCallback(self._decodeFsMetadata, self.blocks)
+		d.addErrback(self._decodeError)
+		return d
+
+	def _decodeFsMetadata(self, decoded, blockname):
+		logger.debug(self.ctx("_decodeFsMetadata"))
+		self.mfname = os.path.join(self.parentcodedir,fencode(self.sK))+".m"
+		d = threads.deferToThread(self.decodeData, self.mfname, 
+				self.fsmetas.values(), self.config.clientdir)
+		d.addCallback(self._decodeDone, decoded)
+		d.addErrback(self._decodeError)
+		return d
+
+	def decodeData(self, outfname, datafnames, datadir=None):
+		logger.info(self.ctx("decoding %s to %s" % (datafnames, outfname)))
+		outf = open(outfname, 'wb')
+		data = []
+		for fname in datafnames:
+			if datadir:
+				fname = os.path.join(datadir, fname)
+			data.append(open(fname, 'rb'))
+		result = filefec.decode_from_files(outf, data)
+		outf.close()
+		for f in data:
+			f.close()
+		if result: 
+			for fname in datafnames:
+				if datadir:
+					fname = os.path.join(datadir, fname)
+				os.remove(os.path.join(datadir, fname))
+		return result
 
 	def _decodeError(self, err):
 		logger.warn(self.ctx("could not decode: %s", err))
 		return err
 
-	def _decodeBlock(self, msg, block, mkey):
-		logger.debug(self.ctx("decode block=%s, msg=%s" % (block, msg)))
-		self.numDecoded += 1
-		blockname = [f for f in msg if f[-len(block):] == block][0]
-		expectedmeta = "%s.%s.meta" % (block, mkey)
-		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
-		if not metanames:
-			raise failure.DefaultException("expected metadata was missing")
-		d = threads.deferToThread(self.decodeData, self.mdecoder, metanames[0])
-		d.addCallback(self._metadataDecoded, blockname)
-		d.addErrback(self._decodeError)
-		return d
-
-	def _metadataDecoded(self, metadecoded, blockname):
-		d = threads.deferToThread(self.decodeData, self.decoder, blockname)
-		d.addCallback(self._dataDecoded, metadecoded)
-		d.addErrback(self._decodeError)
-		return d
-
-	def _dataDecoded(self, decoded, metadecoded):
+	def _decodeDone(self, decoded, metadecoded):
 		if not self.decoded and decoded and metadecoded:
-			self.decoded = True
 			logger.info(self.ctx("successfully decoded (retrieved %d blocks --"
-					" all but %d blocks tried)" % (self.numDecoded, 
+					" all but %d blocks tried)" % (self.numBlocksRetrieved, 
 						len(self.meta))))
+			return self._decryptMeta() 
 		else:
 			logger.info(self.ctx("decoded=%s, mdecoded=%s" % (decoded, 
 				metadecoded)))
+			raise RuntimeError("decode error after retreiving "
+					" %d blocks: decoded=%s, mdecoded=%" 
+					% (self.numBlocksRetrieved, decoded, metadecoded))
 
 	def _decryptMeta(self):
 		# XXX: decrypt the metadatafile with Kr to get all the nmeta stuff (eeK
 		# etc.)
-		mfile = open(os.path.join(self.parentcodedir, fencode(self.sK)+".m"))
+		#mfile = open(os.path.join(self.parentcodedir, fencode(self.sK)+".m"))
+		mfile = open(self.mfname, 'r')
 		meta = mfile.read()
 		mfile.close()
-		logger.info(self.ctx("meta is %s" % meta))
+		logger.info(self.ctx("meta is %s" % str(meta)))
 		self.nmeta = fdecode(meta)
+		os.remove(self.mfname)
 		return self._decryptFile()
 	
 	def _decryptFile(self):
@@ -903,6 +933,7 @@ class RetrieveFile:
 		os.chown(fmeta['path'], fmeta['uid'], fmeta['gid'])
 		os.utime(fmeta['path'], (fmeta['atim'], fmeta['mtim']))
 		os.chmod(fmeta['path'], fmeta['mode'])
+		logger.info(self.ctx("successfully restored file metadata"))
 		return tuple(result)
 
 	def _retrieveFileErr(self, failure, message, raiseException=True):

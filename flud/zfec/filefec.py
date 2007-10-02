@@ -209,13 +209,11 @@ def encode_to_files(inf, fsize, dirname, prefix, k, m, suffix=".fec", overwrite=
             if verbose:
                 print "Cleaning up: trying to remove %r..." % (fn,)
             fileutil.remove_if_possible(fn)
-        #return 1
-        return None
+        return 1
     if verbose:
         print 
         print "Done!"
-    #return 0
-    return fns
+    return 0
 
 # Note: if you really prefer base-2 and you change this code, then please
 # denote 2^20 as "MiB" instead of "MB" in order to avoid ambiguity.
@@ -274,11 +272,10 @@ def decode_from_files(outf, infiles, verbose=False):
             # Then this was a short read, so we've reached the end of the sharefiles.
             resultdata = dec.decode(chunks, shnums, padlen)
             outf.write(resultdata)
-            return True # Done.
+            return # Done.
     if verbose:
         print
         print "Done!"
-	return True
 
 def encode_file(inf, cb, k, m, chunksize=4096):
     """

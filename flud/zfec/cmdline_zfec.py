@@ -49,11 +49,9 @@ def main():
         print "Invalid parameters, requiredshares is required to be < totalshares\nPlease see the accompanying documentation."
         sys.exit(1)
 
-	print "waddup?"
     args.inputfile.seek(0, 2)
     fsize = args.inputfile.tell()
     args.inputfile.seek(0, 0)
-    print args.output_dir
     return filefec.encode_to_files(args.inputfile, fsize, args.output_dir, args.prefix, args.requiredshares, args.totalshares, args.suffix, args.force, args.verbose)
 
 # zfec -- fast forward error correction library with Python interface

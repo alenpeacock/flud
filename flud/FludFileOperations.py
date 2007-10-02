@@ -14,7 +14,7 @@ from Crypto.Cipher import AES
 from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
-from flud.zfec import filefec
+from flud.zfec import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
 
@@ -176,7 +176,7 @@ class StoreFile:
 				"%s already requested" % self.filename))
 		# XXX: mfiles should be held in mem, as StringIOs (when coder supports
 		# this)
-		self.mfiles = filefec.encode_to_files(StringIO(fsMetadata), 
+		self.mfiles = fludfilefec.encode_to_files(StringIO(fsMetadata), 
 				len(fsMetadata), self.encodedir, self.mfilename, 
 				code_n, code_m+code_n)
 
@@ -224,7 +224,7 @@ class StoreFile:
 
 		# erasure code the file
 		# XXX: bad blocking stuff, move into thread
-		self.sfiles = filefec.encode_to_files(e, elen, self.encodedir, 'c',
+		self.sfiles = fludfilefec.encode_to_files(e, elen, self.encodedir, 'c',
 				code_n, code_m+code_n)
 		#logger.debug(self.ctx("coded to: %s" % str(self.sfiles)))
 		# take hashes and rename coded blocks
@@ -777,7 +777,7 @@ class RetrieveFile:
 			if datadir:
 				fname = os.path.join(datadir, fname)
 			data.append(open(fname, 'rb'))
-		result = filefec.decode_from_files(outf, data)
+		result = fludfilefec.decode_from_files(outf, data)
 		outf.close()
 		for f in data:
 			f.close()

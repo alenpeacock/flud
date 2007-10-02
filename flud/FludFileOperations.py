@@ -12,7 +12,6 @@ from twisted.internet import defer, threads
 from Crypto.Cipher import AES
 
 from flud.FludCrypto import FludRSA, hashstring, hashfile
-from flud.FludFileCoder import Coder, Decoder
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.zfec import filefec
@@ -163,19 +162,8 @@ class StoreFile:
 			self.eNodeFileMetadata += self.Ku.encrypt(sbody[i:i+128])[0]
 		fsMetadata = fencode({'eeK' : fencode(self.eeK[0]), 
 				'meta' : fencode(self.eNodeFileMetadata)})
-		# XXX: "/" is OS specific
-		# XXX: flattening the name is not enough, need to generate a nonce for
-		# its name (flattening can run into >255 char limit)
-		#self.flatname = self.filename.replace("/", dirReplace)
-		#self.mfilename = os.path.join(self.metadir,self.flatname+appendFsMeta)
-		#f = open(self.mfilename, "w")
-		#f.write(fsMetadata)
-		#mfilesize = f.tell()
-		#f.close()
-		
 
 		# erasure code the metadata
-		#c = Coder(code_n, code_m, code_l)
 
 		# XXX: bad blocking stuff, move into thread
 		self.flatname = fencode(generateRandom(16))
@@ -188,8 +176,6 @@ class StoreFile:
 				"%s already requested" % self.filename))
 		# XXX: mfiles should be held in mem, as StringIOs (when coder supports
 		# this)
-		#self.mfiles = c.codeData(self.mfilename,
-		#		os.path.join(self.encodedir, 'm'))
 		self.mfiles = filefec.encode_to_files(StringIO(fsMetadata), 
 				len(fsMetadata), self.encodedir, self.mfilename, 
 				code_n, code_m+code_n)
@@ -238,8 +224,6 @@ class StoreFile:
 
 		# erasure code the file
 		# XXX: bad blocking stuff, move into thread
-		#self.sfiles = c.codeData(self.efilename, 
-		#		os.path.join(self.encodedir, 'c'))
 		self.sfiles = filefec.encode_to_files(e, elen, self.encodedir, 'c',
 				code_n, code_m+code_n)
 		#logger.debug(self.ctx("coded to: %s" % str(self.sfiles)))

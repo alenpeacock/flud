@@ -19,8 +19,9 @@ from flud.zfec import fludfilefec
 logger = logging.getLogger('flud.fileops')
 
 # erasure coding constants
-code_n = 20
-code_m = 20
+code_k = 20             # data blocks
+code_n = 20             # parity blocks
+code_m = code_k+code_n  # total blocks
 code_l = 5
 # temp filenaming defaults
 appendEncrypt = ".crypt"
@@ -178,7 +179,7 @@ class StoreFile:
 		# this)
 		self.mfiles = fludfilefec.encode_to_files(StringIO(fsMetadata), 
 				len(fsMetadata), self.encodedir, self.mfilename, 
-				code_n, code_m+code_n)
+				code_k, code_m)
 
 		# XXX: piggybacking doesn't work with new metadata scheme, must fix it
 		# to append metadata, or if already in progress, redo via verify ops
@@ -225,7 +226,7 @@ class StoreFile:
 		# erasure code the file
 		# XXX: bad blocking stuff, move into thread
 		self.sfiles = fludfilefec.encode_to_files(e, elen, self.encodedir, 'c',
-				code_n, code_m+code_n)
+				code_k, code_m)
 		#logger.debug(self.ctx("coded to: %s" % str(self.sfiles)))
 		# take hashes and rename coded blocks
 		self.segHashesLocal = []
@@ -279,7 +280,7 @@ class StoreFile:
 	def _storeBlocksSKIP(self, storedMetadata):
 		# for testing -- skip stores so we can get to storeMeta
 		dlist = []
-		self.blockMetadata = {'m': 20, 'n': 20}
+		self.blockMetadata = {'k': code_k, 'n': code_n}
 		for i in range(len(self.segHashesLocal)):
 			hash = self.segHashesLocal[i]
 			sfile = self.sfiles[i]
@@ -294,7 +295,7 @@ class StoreFile:
 	# 5a -- store all blocks
 	def _storeBlocks(self, storedMetadata):
 		dlist = []
-		self.blockMetadata = {'m': 20, 'n': 20}
+		self.blockMetadata = {'k': code_k, 'n': code_n}
 		for i in range(len(self.segHashesLocal)):
 			hash = self.segHashesLocal[i]
 			sfile = self.sfiles[i]
@@ -368,8 +369,8 @@ class StoreFile:
 		logger.debug(self.ctx('# remote block names: %d', len(storedFiles)))
 		logger.debug(self.ctx('# local blocks: %d', len(fileNames)))
 		result = True
+		k = storedFiles.pop('k')
 		n = storedFiles.pop('n')
-		m = storedFiles.pop('m')
 		for (i, f) in storedFiles:
 			fname = os.path.join(self.encodedir,fencode(f))
 			if not fname in fileNames:
@@ -385,8 +386,8 @@ class StoreFile:
 				logger.debug(self.ctx("storedBlock = %s", fencode(i)))
 			for i in fileNames:
 				logger.debug(self.ctx("localBlock  = %s", os.path.basename(i)))
+		storedFiles['k'] = k
 		storedFiles['n'] = n
-		storedFiles['m'] = m
 		return result
 
 	def _piggybackStoreMetadata(self, piggybackMeta):
@@ -394,11 +395,11 @@ class StoreFile:
 		logger.debug(self.ctx("got piggyBackMeta data"))
 		meta = piggybackMeta[1]
 		sortedKeys = {}
+		k = meta['k']
 		n = meta['n']
-		m = meta['m']
-		for i in [x for x in meta if x != 'm' and x != 'n']:
+		for i in [x for x in meta if x != 'k' and x != 'n']:
 			sortedKeys[i[0]] = i
-		for i in xrange(n+m):
+		for i in xrange(k+n):
 			self.sfiles.append(fencode(sortedKeys[i][1]))
 		return self._verifyAndStoreBlocks(meta, True)
 
@@ -649,16 +650,16 @@ class RetrieveFile:
 		# metadata list.  If not, we should move those blocks elsewhere.
 		if self.meta == None:
 			raise LookupError("couldn't recover metadata for %s" % self.sK)
+		k = self.meta.pop('k')
 		n = self.meta.pop('n')
-		m = self.meta.pop('m')
-		if n != code_n or m != code_m:
+		if k != code_k or n != code_n:
 			# XXX: 
-			raise ValueError("unsupported coding scheme %d/%d" % (m/n))
+			raise ValueError("unsupported coding scheme %d/%d" % (k, n))
 		logger.info(self.ctx("got metadata %s" % self.meta))
 		self.decoded = False
-		return self._getSomeBlocks(code_n)
+		return self._getSomeBlocks(code_k)
 
-	def _getSomeBlocks(self, reqs=code_n):
+	def _getSomeBlocks(self, reqs=code_k):
 		tries = 0
 		if reqs > len(self.meta):
 			reqs = len(self.meta)
@@ -736,7 +737,7 @@ class RetrieveFile:
 	def _retrievedAll(self, success):
 		logger.info(self.ctx("tried retreiving %d blocks %s" 
 			% (len(success), success)))
-		if self.numBlocksRetrieved >= code_n:
+		if self.numBlocksRetrieved >= code_k:
 			# XXX: need to make this try again with other blocks if decode
 			# fails
 			return self._decodeData()

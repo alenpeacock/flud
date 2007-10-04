@@ -208,21 +208,22 @@ class kSTORE(ROOT):
 			# metadata 
 			blocks = 0
 			try:
+				k = blockdata.pop('k')
 				n = blockdata.pop('n')
-				m = blockdata.pop('m')
-				if n != 20 or m != 20:
+				if k != 20 or n != 20:
+					# XXX: magic numbers '20'
 					# XXX: to support other than 20/20, need to constrain an
 					# upper bound and store multiple records with different m/n
 					# under the same key 
 					return False
-				t = n+m
+				m = k+n
 			except:
 				return False
-			if not isinstance(n, int) or not isinstance(m, int):
+			if not isinstance(k, int) or not isinstance(k, int):
 				return False
 
 			for (i, b) in blockdata:
-				if i > t:
+				if i > m:
 					return False
 				if not validValue(b):
 					#print "%s is invalid key" %i
@@ -240,10 +241,10 @@ class kSTORE(ROOT):
 					#print "%s is invalid nodeID" % location
 					return False
 				blocks += 1
-			if blocks != t:
+			if blocks != m:
 				return False   # not the right number of blocks
+			blockdata['k'] = k
 			blockdata['n'] = n
-			blockdata['m'] = m
 			return True
 
 		def validMasterCAS(key, data, nodeID):

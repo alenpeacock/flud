@@ -6,7 +6,6 @@ python >= 2.3
 twisted >= 1.3
 pycrypto >= 2.0 
 wxPython >= 2.6.1
-gnu automake, autoconf, gcc, etc.
 
 Installation:
 =============
@@ -16,7 +15,8 @@ debian packages (recommended).
 
 If pre-built packages are not available for your platform, source RPMs
 (.rpm.src) are available for building them.  RPMs can also be generated via
-'python setup.py bdist_rpm'.  Debian/Ubuntu packages are currently created with
-the 'alien' tool.  (Users of platforms other than those for which packages are
-available are encouraged to submit built rpm/deb/other packages, which will be
-welcomely included for others to use, with credit going to the packager.)
+'python setup.py bdist_rpm'.  Debian/Ubuntu packages are created by running 
+'dpkg-buildpackage -rfakeroot' while in the top directory.  (Users of platforms
+other than those for which packages are available are encouraged to submit
+built rpm/deb/other packages, which will be made available for others to use,
+with credit going to the packager.)

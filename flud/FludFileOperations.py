@@ -22,11 +22,10 @@ logger = logging.getLogger('flud.fileops')
 code_k = 20             # data blocks
 code_n = 20             # parity blocks
 code_m = code_k+code_n  # total blocks
-code_l = 5
+
 # temp filenaming defaults
 appendEncrypt = ".crypt"
 appendFsMeta = ".nmeta"
-dirReplace = "-"
 
 # XXX: could remove trailing '=' from all stored sha256s (dht keys, storage
 #      keys, etc) and add them back implicitly

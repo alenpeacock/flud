@@ -626,6 +626,7 @@ class RetrieveFile:
 		self.numBlocksRetrieved = 0
 		self.blocks = {}
 		self.fsmetas = {}
+		self.badnodes = []
 
 		self.deferred = self._retrieveFile()
 		
@@ -680,8 +681,9 @@ class RetrieveFile:
 			# look up nodes by id, then do a retrieve.
 			deferred = self.node.client.kFindNode(id) 
 			deferred.addCallback(self._retrieveBlock, block, id)
-			deferred.addErrback(self._retrieveBlockErr, 
-					"couldn't get block %s from node %s" % (block, fencode(id)))
+			deferred.addErrback(self._findNodeErr, 
+					"couldn't find node %s for block %s" % (fencode(id), block),
+					id)
 			dlist.append(deferred)
 			self.meta.pop(c)
 			tries = tries + 1
@@ -690,6 +692,10 @@ class RetrieveFile:
 		dl = defer.DeferredList(dlist)
 		dl.addCallback(self._retrievedAll)
 		return dl
+
+	def _findNodeErr(self, failure, msg, id):
+		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+		self.badnodes.append(id)
 
 	def _retrieveBlock(self, kdata, block, id):
 		#print type(kdata)
@@ -712,7 +718,8 @@ class RetrieveFile:
 			d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
 			d.addCallback(self._retrievedBlock, block, self.mkey)
 			d.addErrback(self._retrieveBlockErr, 
-					"couldn't get block %s from %s" % (block, fencode(id)))
+					"couldn't get block %s from %s" % (block, fencode(id)),
+					host, port, id)
 			return d
 	
 	def _retrievedBlock(self, msg, block, mkey):
@@ -727,11 +734,11 @@ class RetrieveFile:
 		self.numBlocksRetrieved += 1
 		return True
 
-	def _retrieveBlockErr(self, failure, message):
+	def _retrieveBlockErr(self, failure, message, host, port, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+		self.badnodes.append(id)
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.
-		#return failure
 
 	def _retrievedAll(self, success):
 		logger.info(self.ctx("tried retreiving %d blocks %s" 
@@ -899,7 +906,7 @@ class RetrieveFile:
 			for i in paths:
 				if not os.path.exists(i) and i != fmeta['path']:
 					os.mkdir(i) # best effort dir creation, even if missing
-					              # directory metadata
+					            # directory metadata
 					# XXX: should be using an accessor method on config for
 					# master
 					if i in self.config.master:

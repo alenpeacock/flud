@@ -1,4 +1,4 @@
-import easyfec, zfec
+import easyfec, _fec as zfec
 from util import fileutil
 from util.mathutil import log_ceil
 

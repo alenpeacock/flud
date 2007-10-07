@@ -15,7 +15,7 @@ except ImportError:
     pass
 
 from _fec import Encoder, Decoder, Error
-import filefec, cmdline_zfec, cmdline_zunfec
+import filefec
 
 # zfec -- fast forward error correction library with Python interface
 # 

@@ -1,7 +1,7 @@
 # zfec -- a fast C implementation of Reed-Solomon erasure coding with
 # command-line, C, and Python interfaces
 
-import zfec
+import _fec as zfec
 
 # div_ceil() was copied from the pyutil library.
 def div_ceil(n, d):

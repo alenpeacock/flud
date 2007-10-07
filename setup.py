@@ -9,7 +9,7 @@ setup(name="flud",
 		author_email="apeacock@flud.org",
 		url='http://flud.org',
 		copyright='(c)2004-2007 Alen Peacock',
-		license='GPL v3',
+		license='GPLv3',
 		packages=['flud', 
 			'flud.protocol', 
 			'flud.bin', 
@@ -34,11 +34,9 @@ setup(name="flud",
 			'flud/bin/stop-fludnodes', 
 			'flud/bin/gauges-fludnodes',
 			'flud/bin/clean-fludnodes'],
-		ext_modules=[Extension('_fec', 
+		ext_modules=[Extension('flud.zfec._fec', 
 			['flud/zfec/fec.c', 'flud/zfec/_fecmodule.c',], 
 			extra_link_args=[], 
 			extra_compile_args=['-std=c99'], 
 			undef_macros=[])]
 )
-
-

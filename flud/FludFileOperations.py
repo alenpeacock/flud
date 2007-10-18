@@ -638,6 +638,11 @@ class RetrieveFile:
 		d.addErrback(self._retrieveFileErr, "file retrieve failed")
 		return d
 
+	def _retrieveFileErr(self, failure, message, raiseException=True):
+		logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+		if raiseException:
+			return failure
+
 	def _retrieveFileBlocks(self, meta):
 		# 2: Retrieve entries for sK, decoding until efile can be regenerated
 		if meta == None:
@@ -926,11 +931,6 @@ class RetrieveFile:
 		os.chmod(fmeta['path'], fmeta['mode'])
 		logger.info(self.ctx("successfully restored file metadata"))
 		return tuple(result)
-
-	def _retrieveFileErr(self, failure, message, raiseException=True):
-		logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		if raiseException:
-			return failure
 
 class RetrieveFilename:
 	"""

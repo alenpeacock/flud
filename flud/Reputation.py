@@ -1,7 +1,9 @@
 
+# XXX: this class goes away
+
 class Reputation:
 	"""
-	This is the Reputation class.  Each node maintains a list of reputation
+	Each node maintains a list of reputation
 	objects corresponding to reputations of other nodes.  Reputations may be
 	self-generated (in which case the originator is this node itself), or may 
 	be relayed (in which case some other node is the originator).  

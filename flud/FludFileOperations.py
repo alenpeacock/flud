@@ -635,10 +635,10 @@ class RetrieveFile:
 		logger.debug(self.ctx("querying DHT for %s", self.sK))
 		d = self.node.client.kFindValue(self.sK)
 		d.addCallback(self._retrieveFileBlocks)
-		d.addErrback(self._retrieveFileErr, "file retrieve failed")
+		d.addErrback(self._findFileErr, "file retrieve failed")
 		return d
 
-	def _retrieveFileErr(self, failure, message, raiseException=True):
+	def _findFileErr(self, failure, message, raiseException=True):
 		logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
 		if raiseException:
 			return failure

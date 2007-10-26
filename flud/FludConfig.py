@@ -23,6 +23,8 @@ logger = logging.getLogger('flud')
 
 CLIENTPORTOFFSET = 500
 
+NODE_INITIAL_SCORE = 1
+
 class FludDebugLogFilter(logging.Filter):
 	"""
 	Keeps all logging levels defined by loggers, but ups level to DEBUG for
@@ -234,7 +236,18 @@ class FludConfig:
 				self.routing.replacementCache.insertNode(
 						(host, int(port), long(nodeID, 16),
 							Ku.exportPublicKey()['n']))
-			# XXX: should also create a corresponding reputation
+			self.reputations[long(nodeID,16)] = NODE_INITIAL_SCORE
+			# XXX: no management of reputations size: need to manage as a cache
+	
+	def modifyReputation(self, nodeID, delta):
+		if isinstance(nodeID, str):
+			nodeID = long(nodeID,16)
+		if not self.reputations.has_key(nodeID):
+			self.reputations[nodeID] = NODE_INITIAL_SCORE
+			# XXX: no management of reputations size: need to manage as a cache
+		self.reputations[nodeID] += delta
+		logger.debug("reputation for %d now %d", nodeID, 
+				self.reputations[nodeID])
 
 	def getLoggingConf(self):
 		"""

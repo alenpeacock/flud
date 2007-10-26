@@ -626,7 +626,6 @@ class RetrieveFile:
 		self.numBlocksRetrieved = 0
 		self.blocks = {}
 		self.fsmetas = {}
-		self.badnodes = []
 
 		self.deferred = self._retrieveFile()
 		
@@ -700,7 +699,7 @@ class RetrieveFile:
 
 	def _findNodeErr(self, failure, msg, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.badnodes.append(id)
+		self.config.modifyReputation(id, -1)
 
 	def _retrieveBlock(self, kdata, block, id):
 		#print type(kdata)
@@ -741,7 +740,7 @@ class RetrieveFile:
 
 	def _retrieveBlockErr(self, failure, message, host, port, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.badnodes.append(id)
+		self.config.modifyReputation(id, -1)
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.
 

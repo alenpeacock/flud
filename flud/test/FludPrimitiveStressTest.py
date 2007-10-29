@@ -89,7 +89,7 @@ def testVERIFY(res, nKu, host, port, num=CONCURRENT):
 		os.lseek(fd, offset, 0)
 		data = os.read(fd, length)
 		os.close(fd)
-		hashes.append(FludCrypto.hashstring(data))
+		hashes.append(flud.FludCrypto.hashstring(data))
 		filekey = os.path.basename(files[i])
 		deferred = node.client.sendVerify(filekey, offset, length, host, 
 				port, nKu)
@@ -200,7 +200,7 @@ def createFakeData(dir="/tmp", num=CONCURRENT):
 	files = []
 	for i in range(num):
 		randdata = randsrc.read(256)
-		filekey = fencode(int(FludCrypto.hashstring(randdata), 16))
+		filekey = fencode(int(flud.FludCrypto.hashstring(randdata), 16))
 		filename = dir+'/'+filekey
 		f = open(filename, 'wb')
 		f.write(randdata)

@@ -355,6 +355,8 @@ class StoreFile:
 
 	def _fileStored(self, result, i, blockhash, location):
 		logger.debug(self.ctx("_filestored %s", fencode(blockhash)))
+		self.config.modifyReputation(id, 
+				self.config.trustdeltas['PUT_SUCCEED_REWARD'])
 		self.blockMetadata[(i, blockhash)] = location
 		return fencode(blockhash)
 
@@ -699,7 +701,8 @@ class RetrieveFile:
 
 	def _findNodeErr(self, failure, msg, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.config.modifyReputation(id, -1)
+		self.config.modifyReputation(id, 
+				self.config.trustdeltas['FNDN_FAIL_PENALTY'])
 
 	def _retrieveBlock(self, kdata, block, id):
 		#print type(kdata)
@@ -728,6 +731,8 @@ class RetrieveFile:
 	
 	def _retrievedBlock(self, msg, block, mkey):
 		logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
+		self.config.modifyReputation(id, 
+				self.config.trustdeltas['GET_SUCCEED_REWARD'])
 		blockname = [f for f in msg if f[-len(block):] == block][0]
 		expectedmeta = "%s.%s.meta" % (block, mkey)
 		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
@@ -740,7 +745,8 @@ class RetrieveFile:
 
 	def _retrieveBlockErr(self, failure, message, host, port, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.config.modifyReputation(id, -1)
+		self.config.modifyReputation(id, 
+				self.config.trustdeltas['GET_FAIL_PENALTY'])
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.
 

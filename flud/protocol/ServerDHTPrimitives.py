@@ -210,6 +210,8 @@ class kSTORE(ROOT):
 			try:
 				k = blockdata.pop('k')
 				n = blockdata.pop('n')
+				if not isinstance(k, int) or not isinstance(n, int):
+					return False
 				if k != 20 or n != 20:
 					# XXX: magic numbers '20'
 					# XXX: to support other than 20/20, need to constrain an
@@ -218,8 +220,6 @@ class kSTORE(ROOT):
 					return False
 				m = k+n
 			except:
-				return False
-			if not isinstance(k, int) or not isinstance(k, int):
 				return False
 
 			for (i, b) in blockdata:

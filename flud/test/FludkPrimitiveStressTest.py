@@ -226,7 +226,7 @@ Main currently invokes test code
 if __name__ == '__main__':
 	localhost = socket.getfqdn()
 	if len(sys.argv) == 1:
-		print "Warning: testing against self my result in timeout failures"
+		print "Warning: testing against self may result in timeout failures"
 		runTests(localhost) # test by talking to self
 	elif len(sys.argv) == 2:
 		runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]

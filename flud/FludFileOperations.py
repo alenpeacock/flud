@@ -327,14 +327,15 @@ class StoreFile:
 				port, nKu) 
 		deferred.addCallback(self._fileStored, i, hash, location)
 		deferred.addErrback(self._retryStoreBlock, i, hash, location, 
-				sfile, mfile, "%s (%s:%d)" % (fencode(nID), host, port), retry)
+				sfile, mfile, nID, host, port, retry)
 		return deferred
 
 	def _retryStoreBlock(self, error, i, hash, location, sfile, mfile, 
-			badtarget, retry=None): 
+			nID, host, port, retry=None): 
 		retry = retry - 1
 		if retry > 0:
-			logger.warn(self.ctx("STORE to %s failed, trying again", badtarget))
+			logger.warn(self.ctx("STORE to %s (%s:%d) failed, trying again", 
+				nID, host, port))
 			d = self._storeBlock(i, hash, sfile, mfile, retry)
 			d.addCallback(self._fileStored, i, hash, location)
 			# This will fail the entire operation.  This is correct
@@ -343,19 +344,22 @@ class StoreFile:
 			# op again.  If this proves to be a problem, up the default retry
 			# value in _storeBlock().
 			d.addErrback(self._storeFileErr, "couldn't store block %s" 
-					% fencode(hash))
+					% fencode(hash), lambda: self.config.modifyReputation(nID,
+						self.config.trustdeltas['PUT_FAIL_PENALTY']))
 			return d
 		else:
-			logger.warn(self.ctx("STORE to %s failed, giving up", badtarget))
+			logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up", 
+				nID, host, port))
 			d = defer.Deferred()
 			d.addErrback(self._storeFileErr, "couldn't store block %s"
-					% fencode(hash))
+					% fencode(hash), lambda: self.config.modifyReputation(nID,
+						self.config.trustdeltas['PUT_FAIL_PENALTY']))
 			d.errback()
 			return d
 
 	def _fileStored(self, result, i, blockhash, location):
 		logger.debug(self.ctx("_filestored %s", fencode(blockhash)))
-		self.config.modifyReputation(id, 
+		self.config.modifyReputation(location, 
 				self.config.trustdeltas['PUT_SUCCEED_REWARD'])
 		self.blockMetadata[(i, blockhash)] = location
 		return fencode(blockhash)
@@ -415,21 +419,22 @@ class StoreFile:
 			f.close()
 			seg = os.path.basename(sfile)
 			segl = fdecode(seg)
-			nid = self.blockMetadata[(i, segl)]
-			if isinstance(nid, list):
+			nID = self.blockMetadata[(i, segl)]
+			if isinstance(nID, list):
 				logger.info(self.ctx(
 					"multiple location choices, choosing one randomly."))
-				nid = random.choice(nid)
+				nID = random.choice(nID)
 				# XXX: for now, this just picks one of the alternatives at
 				#      random.  If the chosen one fails, should try each of the
 				#      others until it works
-			logger.info(self.ctx("looking up %s...", ('%x' % nid)[:8]))
-			deferred = self.node.client.kFindNode(nid)
+			logger.info(self.ctx("looking up %s...", ('%x' % nID)[:8]))
+			deferred = self.node.client.kFindNode(nID)
 			deferred.addCallback(self._verifyBlock, i, sfile, mfile, 
-					seg, segl, nid, noopVerify)
+					seg, segl, nID, noopVerify)
 			deferred.addErrback(self._storeFileErr, 
-					"couldn't find node %s... for VERIFY" % ('%x' % nid)[:8], 
-					False)
+					"couldn't find node %s... for VERIFY" % ('%x' % nID)[:8],
+					self.config.modifyReputation(nID, 
+						self.config.trustdeltas['VRFY_FAIL_PENALTY']))
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
 		#dl.addCallback(self._storeMetadata)
@@ -438,7 +443,7 @@ class StoreFile:
 		return dl
 
 	# 5c -- verify all blocks, store any that fail verify.
-	def _verifyBlock(self, kdata, i, sfile, mfile, seg, segl, nid, noopVerify):
+	def _verifyBlock(self, kdata, i, sfile, mfile, seg, segl, nID, noopVerify):
 		# XXX: looks like we occasionally get in here on timed out connections.
 		#      Should go to _storeFileErr instead, eh?
 		if isinstance(kdata, str):
@@ -447,7 +452,7 @@ class StoreFile:
 		#	#logger.debug(self.ctx("type kdata: %s" % type(kdata)))
 		#	#logger.debug(self.ctx("kdata=%s" % kdata))
 		#	#logger.debug(self.ctx("len(kdata['k'])=%d" % len(kdata['k'])))
-		#	raise ValueError("couldn't find node %s" % ('%x' % nid))
+		#	raise ValueError("couldn't find node %s" % ('%x' % nID))
 		#	#raise ValueError("this shouldn't really be a ValueError..."
 		#	#		" should be a GotMoreKnodesThanIBargainedForError"
 		#	#		" (possibly caused when kFindNode fails (timeout) and"
@@ -457,9 +462,9 @@ class StoreFile:
 		host = node[0]
 		port = node[1]
 		id = node[2]
-		if id != nid:
-			logger.debug(self.ctx("couldn't find node %s", ('%x' %nid)))
-			raise ValueError("couldn't find node %s" % ('%x' % nid))
+		if id != nID:
+			logger.debug(self.ctx("couldn't find node %s", ('%x' % nID)))
+			raise ValueError("couldn't find node %s" % ('%x' % nID))
 		nKu = FludRSA.importPublicKey(node[3])
 
 		logger.info(self.ctx("verifying %s on %s:%d", seg, host, port))
@@ -485,7 +490,7 @@ class StoreFile:
 					host, port, nKu, (self.mkey, mfile)) 
 		deferred.addCallback(self._checkVerify, nKu, host, port, i, segl, 
 				sfile, mfile, verhash)
-		deferred.addErrback(self._checkVerifyErr, i, segl, sfile, mfile,
+		deferred.addErrback(self._checkVerifyErr, nID, i, segl, sfile, mfile,
 				verhash)
 		return deferred
 
@@ -501,7 +506,9 @@ class StoreFile:
 			#		% (hash, long(result,16))))
 			return fencode(seg)
 
-	def _checkVerifyErr(self, failure, i, seg, sfile, mfile, hash):
+	def _checkVerifyErr(self, failure, nID, i, seg, sfile, mfile, hash):
+		self.config.modifyReputations(nID, 
+				self.config.trustdeltas['VRFY_FAIL_PENALTY'])
 		logger.debug(self.ctx("Couldn't VERIFY: %s", failure.getErrorMessage()))
 		logger.info(self.ctx("Couldn't VERIFY %s, performing STORE", 
 			fencode(seg)))
@@ -580,7 +587,10 @@ class StoreFile:
 			self.currentOps[self.eK] = (d, counter)
 		return (key, meta)
 		
-	def _storeFileErr(self, failure, message, raiseException=True):
+	def _storeFileErr(self, failure, message, raiseException=True, 
+			functor=None):
+		if functor:
+			functor()
 		(d, counter) = self.currentOps[self.eK]
 		counter = counter - 1
 		if counter == 0:
@@ -723,15 +733,15 @@ class RetrieveFile:
 		nKu = FludRSA.importPublicKey(node[3])
 		if not self.decoded:
 			d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
-			d.addCallback(self._retrievedBlock, block, self.mkey)
-			d.addErrback(self._retrieveBlockErr, 
+			d.addCallback(self._retrievedBlock, id, block, self.mkey)
+			d.addErrback(self._retrieveBlockErr, id,
 					"couldn't get block %s from %s" % (block, fencode(id)),
 					host, port, id)
 			return d
 	
-	def _retrievedBlock(self, msg, block, mkey):
+	def _retrievedBlock(self, msg, nID, block, mkey):
 		logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
-		self.config.modifyReputation(id, 
+		self.config.modifyReputation(nID, 
 				self.config.trustdeltas['GET_SUCCEED_REWARD'])
 		blockname = [f for f in msg if f[-len(block):] == block][0]
 		expectedmeta = "%s.%s.meta" % (block, mkey)
@@ -743,9 +753,9 @@ class RetrieveFile:
 		self.numBlocksRetrieved += 1
 		return True
 
-	def _retrieveBlockErr(self, failure, message, host, port, id):
+	def _retrieveBlockErr(self, failure, nID, message, host, port, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.config.modifyReputation(id, 
+		self.config.modifyReputation(nID, 
 				self.config.trustdeltas['GET_FAIL_PENALTY'])
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.

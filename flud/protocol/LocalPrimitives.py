@@ -234,9 +234,16 @@ class LocalProtocol(basic.LineReceiver):
 		elif command == "DIAG":
 			if data == "NODE":
 				logger.debug("DIAG NODE")
-				self.transport.write("DIAG:NODE%s\r\n" % 
-						fencode(
-							self.factory.config.routing.knownExternalNodes()))
+				nodetups = self.factory.config.routing.knownExternalNodes()
+				nodes = []
+				for n in nodetups:
+					node = list(n)
+					if self.factory.config.reputations.has_key(n[2]):
+						node.append(self.factory.config.reputations[n[2]])
+					else:
+						node.append(0)
+					nodes.append(tuple(node))
+				self.transport.write("DIAG:NODE%s\r\n" % fencode(nodes))
 			elif data == "BKTS":
 				logger.debug("DIAG BKTS")
 				bucks = eval("%s" % self.factory.config.routing.kBuckets)

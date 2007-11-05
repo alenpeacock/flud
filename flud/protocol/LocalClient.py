@@ -78,10 +78,11 @@ class LocalClient(LineReceiver):
 				data = fdecode(data)
 				result = ""
 				for i in data:
+					score = i[4]
 					petID = "%064x" % i[2]
 					netID = "%s:%d" % (i[0], i[1])
-					petID = petID[:(75-len(netID))]+"..."
-					result += "%s %s\n" % (netID, petID)
+					petID = petID[:(70-len(netID))]+"..."
+					result += "%d %s %s\n" % (score, netID, petID)
 				result += "%d known nodes\n" % len(data)
 				d = self.factory.pending['NODE'].pop('')
 				d.callback(result)

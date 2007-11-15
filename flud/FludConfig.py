@@ -149,7 +149,7 @@ class FludConfig:
 		configuration file
 		"""
 
-		self.logfile, self.loglevel = self.getLoggingConf()
+		self.logfile, self.loglevel = self._getLoggingConf()
 		if doLogging:
 			if os.path.isfile(self.logfile):
 				os.remove(self.logfile)
@@ -170,7 +170,7 @@ class FludConfig:
 				# invoke filter.setWildcards()
 
 		self.Kr, self.Ku, self.nodeID, self.groupIDr, self.groupIDu \
-				= self.getID()
+				= self._getID()
 		logger.debug('Kr = %s' % self.Kr.exportPrivateKey())
 		logger.debug('Ku = %s' % self.Ku.exportPublicKey())
 		logger.debug('nodeID = %s' % self.nodeID)
@@ -178,7 +178,7 @@ class FludConfig:
 		logger.debug('groupIDu = %s' % self.groupIDu)
 		
 		self.port, self.clientport, self.commandmap, self.trustdeltas \
-				= self.getServerConf()
+				= self._getServerConf()
 		if serverport != None:
 			self.port = serverport
 			self.clientport = serverport + CLIENTPORTOFFSET
@@ -191,34 +191,34 @@ class FludConfig:
 		self.routing = kRouting((socket.getfqdn(), self.port,
 				long(self.nodeID, 16), self.Ku.exportPublicKey()['n']))
 
-		self.storedir, self.generosity, self.minoffer = self.getStoreConf()
+		self.storedir, self.generosity, self.minoffer = self._getStoreConf()
 		if os.path.isdir(self.storedir) == False:
 			os.mkdir(self.storedir)
 			os.chmod(self.storedir, 0700)
 		logger.debug('storedir = %s' % self.storedir)
 
-		self.kstoredir = self.getkStoreConf()
+		self.kstoredir = self._getkStoreConf()
 		if os.path.isdir(self.kstoredir) == False:
 			os.mkdir(self.kstoredir)
 			os.chmod(self.kstoredir, 0700)
 		logger.debug('kstoredir = %s' % self.kstoredir)
 
-		self.clientdir = self.getClientConf()
+		self.clientdir = self._getClientConf()
 		if os.path.isdir(self.clientdir) == False:
 			os.mkdir(self.clientdir)
 			os.chmod(self.clientdir, 0700)
 		logger.debug('clientdir = %s' % self.clientdir)
 
-		self.metadir, self.metamaster = self.getMetaConf()
+		self.metadir, self.metamaster = self._getMetaConf()
 		if os.path.isdir(self.metadir) == False:
 			os.mkdir(self.metadir)
 			os.chmod(self.metadir, 0700)
 		logger.debug('metadir = %s' % self.metadir)
 
-		self.reputations = self.getReputations()
+		self.reputations = self._getReputations()
 		logger.debug("reputations = %s" % str(self.reputations))
 		
-		self.nodes = self.getKnownNodes()
+		self.nodes = self._getKnownNodes()
 		logger.debug("known nodes = %s" % str(self.nodes))
 
 		self.save()
@@ -231,49 +231,7 @@ class FludConfig:
 		self.configParser.write(conffile) 
 		conffile.close()
 
-	def addNode(self, nodeID, host, port, Ku, mygroup=None):
-		"""
-		Convenience method for adding a node to the known.
-		If a node with nodeID already exists, nothing changes.
-		This method /does not/ save the new configuration to file,
-		"""
-		if mygroup == None:
-			mygroup = self.groupIDu
-		if self.nodes.has_key(nodeID) == False:
-			self.nodes[nodeID] = {'host': host, 'port': port, 
-					'Ku': Ku.exportPublicKey(), 'mygroup': mygroup}
-			#logger.log(logging.DEBUG, "nodes: " % str(self.nodes))
-			# XXX: disabled nodes saving
-			#for k in self.nodes:
-			#	self.configParser.set('nodes', k, self.nodes[k])
-			n = self.routing.insertNode((host, int(port), long(nodeID, 16), 
-				Ku.exportPublicKey()['n']))
-			if n != None:
-				logger.warn("need to ping %s for LRU in routing table!" 
-						% str(n))
-				# XXX: instead of pinging, put it in a replacement cache table
-				#      and when one of the nodes needs replaced (future query)
-				#      replace it with one of these. Sec 4.1
-				self.routing.replacementCache.insertNode(
-						(host, int(port), long(nodeID, 16),
-							Ku.exportPublicKey()['n']))
-			self.reputations[long(nodeID,16)] \
-					= self.trustdeltas['NODE_INITIAL_SCORE']
-			# XXX: no management of reputations size: need to manage as a cache
-	
-	def modifyReputation(self, nodeID, delta):
-		logger.info("modify %s %s" % (nodeID, delta))
-		if isinstance(nodeID, str):
-			nodeID = long(nodeID,16)
-		if not self.reputations.has_key(nodeID):
-			self.reputations[nodeID] \
-					= self.trustdeltas['NODE_INITIAL_SCORE']
-			# XXX: no management of reputations size: need to manage as a cache
-		self.reputations[nodeID] += delta
-		logger.debug("reputation for %d now %d", nodeID, 
-				self.reputations[nodeID])
-
-	def getLoggingConf(self):
+	def _getLoggingConf(self):
 		"""
 		Returns logging configuration: logfile and loglevel 
 		"""
@@ -298,7 +256,7 @@ class FludConfig:
 		return logfile, loglevel 
 
 		
-	def getID(self):
+	def _getID(self):
 		"""
 		Returns a tuple: private key, public key, nodeID, private group ID, and
 		public group ID from config.  If these values don't exist in conf file,
@@ -350,7 +308,7 @@ class FludConfig:
 		# return the values
 		return privkey, pubkey, nodeID, privgroupID, pubgroupID
 
-	def getServerConf(self):
+	def _getServerConf(self):
 		"""
 		Returns server configuration: port number
 		"""
@@ -410,13 +368,13 @@ class FludConfig:
 
 		return dir 
 
-	def getClientConf(self):
+	def _getClientConf(self):
 		"""
 		Returns client configuration: download directory 
 		"""
 		return self._getDirConf(self.configParser, "client", "dl") 
 
-	def getStoreConf(self):
+	def _getStoreConf(self):
 		"""
 		Returns data store configuration
 		"""
@@ -433,13 +391,13 @@ class FludConfig:
 			minoffer = 1024
 		return storedir, generosity, minoffer
 
-	def getkStoreConf(self):
+	def _getkStoreConf(self):
 		"""
 		Returns dht data store configuration
 		"""
 		return self._getDirConf(self.configParser, "kstore", "dht")
 
-	def getMetaConf(self):
+	def _getMetaConf(self):
 		"""
 		Returns metadata configuration: metadata directory 
 		"""
@@ -457,14 +415,14 @@ class FludConfig:
 		
 		return (metadir, master)
 
-	def getReputations(self):
+	def _getReputations(self):
 		"""
 		Returns dict of reputations known to this node
 		"""
 		# XXX: should probably just throw these in with 'nodes' (for efficiency)
 		return self._getDict(self.configParser, "reputations")
 
-	def getKnownNodes(self):
+	def _getKnownNodes(self):
 		"""
 		Returns dict of nodes known to this node
 		"""
@@ -504,6 +462,48 @@ class FludConfig:
 			logger.warn("Couldn't read %s from config file:" % section)
 
 		return result
+
+	def addNode(self, nodeID, host, port, Ku, mygroup=None):
+		"""
+		Convenience method for adding a node to the known.
+		If a node with nodeID already exists, nothing changes.
+		This method /does not/ save the new configuration to file,
+		"""
+		if mygroup == None:
+			mygroup = self.groupIDu
+		if self.nodes.has_key(nodeID) == False:
+			self.nodes[nodeID] = {'host': host, 'port': port, 
+					'Ku': Ku.exportPublicKey(), 'mygroup': mygroup}
+			#logger.log(logging.DEBUG, "nodes: " % str(self.nodes))
+			# XXX: disabled nodes saving
+			#for k in self.nodes:
+			#	self.configParser.set('nodes', k, self.nodes[k])
+			n = self.routing.insertNode((host, int(port), long(nodeID, 16), 
+				Ku.exportPublicKey()['n']))
+			if n != None:
+				logger.warn("need to ping %s for LRU in routing table!" 
+						% str(n))
+				# XXX: instead of pinging, put it in a replacement cache table
+				#      and when one of the nodes needs replaced (future query)
+				#      replace it with one of these. Sec 4.1
+				self.routing.replacementCache.insertNode(
+						(host, int(port), long(nodeID, 16),
+							Ku.exportPublicKey()['n']))
+			self.reputations[long(nodeID,16)] \
+					= self.trustdeltas['NODE_INITIAL_SCORE']
+			# XXX: no management of reputations size: need to manage as a cache
+	
+	def modifyReputation(self, nodeID, delta):
+		logger.info("modify %s %s" % (nodeID, delta))
+		if isinstance(nodeID, str):
+			nodeID = long(nodeID,16)
+		if not self.reputations.has_key(nodeID):
+			self.reputations[nodeID] \
+					= self.trustdeltas['NODE_INITIAL_SCORE']
+			# XXX: no management of reputations size: need to manage as a cache
+		self.reputations[nodeID] += delta
+		logger.debug("reputation for %d now %d", nodeID, 
+				self.reputations[nodeID])
 
 	# XXX: note that this master metadata all-in-mem scheme doesn't really work
 	# long term; these methods should eventually go to a local db or db-like

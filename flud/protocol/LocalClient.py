@@ -223,6 +223,8 @@ class LocalClientFactory(ClientFactory):
 			self._sendMessage("PUTF?"+fname)
 			#reactor.callLater(opTimeout, self.expire, self.pendingPUTF, fname)
 			return d
+		else:
+			return self.pending['PUTF'][fname]
 	
 	def sendCRED(self, passphrase, email):
 		logger.debug("sendCRED")

@@ -43,8 +43,19 @@ class NodeCache:
 				popped = self.cacheOrder.pop(0)
 				self.cache.pop(popped)
 				return popped
+
+	def getNode(self, nodeID):
+		"""
+		returns a node from the cache, or None
+		"""
+		if nodeID in self.cache:
+			return self.cache[node]
+		return None
 	
 	def removeNode(self, node):
+		"""
+		removes a node from the cache
+		"""
 		if node[2] in self.cache:
 			self.cache.pop(node[2])
 			self.cacheOrder.pop(node[2])
@@ -203,35 +214,20 @@ class kRouting:
 		nodes.sort(lambda a, b, n=nodeID: cmp(n ^ a[2], n ^ b[2]))
 		return nodes[:self.k]
 
-	def findNodeOld(self, nodeID):
+	def getNode(self, nodeID):
 		"""
-		Attempts to find the given node, returning a <ip, port, id> triple.  
-		If the node is not found locally, returns k closest node triples with
-		which the caller may make additional queries.
+		Attempts to get the given node, returning a <ip, port, id> triple.  
+		If the node is not found locally, returns None 
 		@param nodeID an int
 		"""
 		bucket = self._findBucket(nodeID)
 		n = bucket.findNode(nodeID)
+		if not n:
+			n = self.replacementCache.getNode(nodeID)
 		if n != None: 
-			return (n,)
+			return n
+		return None
 
-		# nodeID isn't in our routing table, so return the k closest matches
-		nodes = []
-		nodes += bucket.contents
-		if len(nodes) < self.k:
-			nextbucket = self._nextbucket(bucket)
-			prevbucket = self._prevbucket(bucket)
-			while len(nodes) < self.k \
-					and (nextbucket != None or prevbucket != None):
-				if nextbucket != None:
-					nodes += nextbucket.contents
-				if prevbucket != None: 
-					nodes += prevbucket.contents
-				nextbucket = self._nextbucket(nextbucket)
-				prevbucket = self._prevbucket(prevbucket)
-			
-		nodes.sort(lambda a, b, n=nodeID: cmp(n ^ a[2], n ^ b[2]))
-		return nodes[:self.k]
 
 	def updateNode(self, node):
 		"""

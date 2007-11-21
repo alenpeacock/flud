@@ -136,7 +136,11 @@ class StoreFile:
 		self.routing = self.config.routing
 		self.metadir = self.config.metadir
 		self.parentcodedir = self.config.clientdir # XXX: clientdir?
-		self.nodeChoices = self.routing.knownExternalNodes()
+		#self.nodeChoices = self.routing.knownExternalNodes()
+		# ask for code_m + X nodes (we prefer a pool slightly larger than
+		# code_m).  XXX: 20 is magic
+		self.nodeChoices = self.config.getOrderedNodes(code_m+20)
+		self.usedNodes = {}
 
 		self.deferred = self._storeFile()
 
@@ -307,8 +311,11 @@ class StoreFile:
 
 	def _storeBlock(self, i, hash, sfile, mfile, retry=2):
 		if not self.nodeChoices:
-			self.nodeChoices = self.routing.knownExternalNodes()
-			logger.warn(self.ctx("had to reuse nodes!, %d nodes found", 
+			#self.nodeChoices = self.routing.knownExternalNodes()
+			# XXX: instead of asking for code_k, ask for code_k - still needed
+			self.nodeChoices = self.config.getOrderedNodes(code_k, 
+					self.usedNodes.keys())
+			logger.warn(self.ctx("asked for more nodes, %d nodes found", 
 				len(self.nodeChoices)))
 		if not self.nodeChoices:
 			return defer.fail(failure.DefaultException(
@@ -325,7 +332,7 @@ class StoreFile:
 		logger.debug(self.ctx("mfile is %s", mfile))
 		deferred = self.node.client.sendStore(sfile, (self.mkey, mfile), host, 
 				port, nKu) 
-		deferred.addCallback(self._fileStored, i, hash, location)
+		deferred.addCallback(self._blockStored, nID, i, hash, location)
 		deferred.addErrback(self._retryStoreBlock, i, hash, location, 
 				sfile, mfile, nID, host, port, retry)
 		return deferred
@@ -337,7 +344,7 @@ class StoreFile:
 			logger.warn(self.ctx("STORE to %s (%s:%d) failed, trying again", 
 				nID, host, port))
 			d = self._storeBlock(i, hash, sfile, mfile, retry)
-			d.addCallback(self._fileStored, i, hash, location)
+			d.addCallback(self._blockStored, nID, i, hash, location)
 			# This will fail the entire operation.  This is correct
 			# behavior because we've tried on at least N nodes and couldn't
 			# get the block to store -- the caller will have to try the entire
@@ -348,6 +355,7 @@ class StoreFile:
 						self.config.trustdeltas['PUT_FAIL_PENALTY']))
 			return d
 		else:
+			self.usedNodes[nID] = True
 			logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up", 
 				nID, host, port))
 			d = defer.Deferred()
@@ -357,8 +365,9 @@ class StoreFile:
 			d.errback()
 			return d
 
-	def _fileStored(self, result, i, blockhash, location):
-		logger.debug(self.ctx("_filestored %s", fencode(blockhash)))
+	def _blockStored(self, result, nID, i, blockhash, location):
+		self.usedNodes[nID] = True
+		logger.debug(self.ctx("_blcokStored %s", fencode(blockhash)))
 		self.config.modifyReputation(location, 
 				self.config.trustdeltas['PUT_SUCCEED_REWARD'])
 		self.blockMetadata[(i, blockhash)] = location

@@ -227,6 +227,9 @@ class FludConfig:
 		self.loadMasterMeta()
 
 	def save(self):
+		"""
+		saves configuration
+		"""
 		conffile = file(self.fludconfig, "w")
 		self.configParser.write(conffile) 
 		conffile.close()
@@ -352,6 +355,9 @@ class FludConfig:
 		return port, clientport, commandmap, trustdeltas
 
 	def _getDirConf(self, configParser, section, default):
+		"""
+		Returns directory configuration
+		"""
 		if (configParser.has_section(section) == False):
 			configParser.add_section(section)
 		
@@ -494,6 +500,9 @@ class FludConfig:
 			# XXX: no management of reputations size: need to manage as a cache
 	
 	def modifyReputation(self, nodeID, delta):
+		"""
+		change reputation of nodeID by delta
+		"""
 		logger.info("modify %s %s" % (nodeID, delta))
 		if isinstance(nodeID, str):
 			nodeID = long(nodeID,16)
@@ -504,26 +513,70 @@ class FludConfig:
 		self.reputations[nodeID] += delta
 		logger.debug("reputation for %d now %d", nodeID, 
 				self.reputations[nodeID])
+	
+	def getOrderedNodes(self, num=None, exclude=None):
+		"""
+		Get nodes ordered by reputation.  If num is passed in, return the first
+		'num' nodes, otherwise all.  If exclude list is passed in, try to
+		return nodes not on this list (but do return some excluded if nodes are
+		exhausted, i.e., there aren't num nodes available).
+		"""
+		# XXX: O(n) each time this is called.  Better performance if we
+		# maintain sorted list when modified (modifyReputation, addNode), at a
+		# bit higher mem expense.
+		items = self.reputations.items()
+		numitems = len(items)
+		logger.debug("%d items in reps" % numitems)
+		if exclude:
+			items = [(v,k) for (k,v) in items if k not in exclude]
+			if num and len(items) < num and numitems >= num:
+				exitems = [(v,k) for (k,v) in items if k in exclude]
+				items += exitems[num-len(item):]
+			logger.debug("%d items now in reps" % len(items))
+		else:
+			items = [(v,k) for (k,v) in items]
+		items.sort()
+		items.reverse()
+		items = [(k,v) for (v,k) in items]
+		# need to call routing.getNode() to get node triple and return those
+		if num:
+			logger.debug("returning %d of the %d items" % (num, len(items)))
+			return [self.routing.getNode(f) for (f,v) in items[:num]]
+		else:
+			logger.debug("returning all %d of the items" % len(items))
+			return [self.routing.getNode(f) for (f,v) in items]
 
 	# XXX: note that this master metadata all-in-mem scheme doesn't really work
 	# long term; these methods should eventually go to a local db or db-like
 	# something
 	def updateMasterMeta(self, fname, val): 
+		"""
+		update fname with val (sK)
+		"""
 		self.master[fname] = val
 
 	def getFromMasterMeta(self, fname):
+		"""
+		get val (sK) for fname
+		"""
 		try:
 			return self.master[fname]
 		except:
 			return None
 
 	def deleteFromMasterMeta(self, fname):
+		"""
+		remove fname
+		"""
 		try: 
 			self.master.pop(fname)
 		except:
 			pass
 
 	def loadMasterMeta(self):
+		"""
+		loads fname->sK mappings from file
+		"""
 		fmaster = open(os.path.join(self.metadir, self.metamaster), 'r')
 		master = fmaster.read()
 		fmaster.close()
@@ -534,6 +587,9 @@ class FludConfig:
 		self.master = master
 
 	def syncMasterMeta(self):
+		"""
+		sync in-mem fname->sK mappings to disk
+		"""
 		master = fencode(self.master)
 		fmaster = open(os.path.join(self.metadir, self.metamaster), 'w')
 		fmaster.write(master)

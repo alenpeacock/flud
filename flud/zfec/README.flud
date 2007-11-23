@@ -1,8 +1,0 @@
-This contains the zfec/zfec/zfec directory from the zfec project, available at
-http://allmydata.org/source/zfec/, as well as documentation from zfec/zfec
-(COPYING, README.txt, TODO)
-
-Also contains fludfilefec.py, which is filefec.encode_to_files() and
-filefec.decode_from_files() with slightly modified API (encode returns a list
-of filenames that it produced on success or None on failure, decode returns
-True on success)

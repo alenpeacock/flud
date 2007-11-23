@@ -2,11 +2,11 @@ Source: flud
 Section: python
 Priority: optional
 Maintainer: Alen Peacock <apeacock@flud.org>
-Build-Depends: debhelper (>= 4.0.0), python-dev, devscripts, autoconf, automake
+Build-Depends: debhelper (>= 4.0.0), python-dev, devscript
 Standards-Version: 3.6.1
 
 Package: flud
 Architecture: i386
 Description: flud decentralized backup
-Depends: python, python-wxgtk2.6, python-wxtools, python-twisted, python-twisted-core, python-twisted-web, python-twisted-bin, python-twisted-mail, python-twisted-names, python-wxversion, python-crypto
+Depends: python, python-wxgtk2.6, python-wxtools, python-twisted, python-twisted-core, python-twisted-web, python-twisted-bin, python-twisted-mail, python-twisted-names, python-wxversion, python-crypto, zfec
 

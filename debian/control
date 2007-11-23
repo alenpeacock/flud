@@ -2,7 +2,7 @@ Source: flud
 Section: python
 Priority: optional
 Maintainer: Alen Peacock <apeacock@flud.org>
-Build-Depends: debhelper (>= 4.0.0), python-dev, devscript
+Build-Depends: debhelper (>= 4.0.0)
 Standards-Version: 3.6.1
 
 Package: flud

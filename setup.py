@@ -2,7 +2,7 @@ from distutils.core import setup, Extension
 import os, sys
 
 setup(name="flud",
-		version="0.0.2", 
+		version="0.1.0", 
 		description="flud decentralized backup", 
 		long_description='a 100% decentralized backup system',
 		author="Alen Peacock",

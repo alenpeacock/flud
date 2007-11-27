@@ -20,7 +20,7 @@ def encode_to_files(inf, fsize, dirname, prefix, k, m, suffix=".fec", overwrite=
 	mlen = len(str(m))
 	format = FORMAT_FORMAT % (mlen, mlen,)
 
-	padbytes = zfec.util.mathutil.pad_size(fsize, k)
+	padbytes = pad_size(fsize, k)
 
 	fns = []
 	fs = []

@@ -1,8 +1,8 @@
 import zfec
 import zfec.easyfec as easyfec
 import zfec.filefec as filefec
-from util import fileutil
-from util.mathutil import log_ceil
+from pyutil import fileutil
+from pyutil.mathutil import pad_size, log_ceil
 
 import array, os, re, struct, traceback
 

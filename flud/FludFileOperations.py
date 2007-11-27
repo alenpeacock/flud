@@ -14,7 +14,7 @@ from Crypto.Cipher import AES
 from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
-from flud.zfec import fludfilefec
+import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
 

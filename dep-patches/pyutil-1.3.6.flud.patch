@@ -1,0 +1,106 @@
+diff -ruN unpatched/pyutil-1.3.6/debian/changelog tmpdir/pyutil-1.3.6/debian/changelog
+--- unpatched/pyutil-1.3.6/debian/changelog	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/pyutil-1.3.6/debian/changelog	2007-11-27 09:39:31.000000000 -0700
+@@ -0,0 +1,5 @@
++pyutil (1.3.6) unstable; urgency=low
++
++  * debs
++
++ -- alen <alen@ubuntu-box>  Thur, 22 Nov 2007 20:12:47 -0600
+diff -ruN unpatched/pyutil-1.3.6/debian/compat tmpdir/pyutil-1.3.6/debian/compat
+--- unpatched/pyutil-1.3.6/debian/compat	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/pyutil-1.3.6/debian/compat	2007-11-27 09:39:31.000000000 -0700
+@@ -0,0 +1 @@
++4
+diff -ruN unpatched/pyutil-1.3.6/debian/control tmpdir/pyutil-1.3.6/debian/control
+--- unpatched/pyutil-1.3.6/debian/control	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/pyutil-1.3.6/debian/control	2007-11-27 09:39:31.000000000 -0700
+@@ -0,0 +1,12 @@
++Source: pyutil
++Section: python
++Priority: optional
++Maintainer: Alen Peacock <apeacock@flud.org>
++Build-Depends: debhelper (>= 4.0.0), devscripts
++Standards-Version: 3.6.1
++
++Package: pyutil
++Architecture: i386
++Description: pyutil 
++Depends: python
++
+diff -ruN unpatched/pyutil-1.3.6/debian/rules tmpdir/pyutil-1.3.6/debian/rules
+--- unpatched/pyutil-1.3.6/debian/rules	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/pyutil-1.3.6/debian/rules	2007-11-27 09:39:31.000000000 -0700
+@@ -0,0 +1,60 @@
++#!/usr/bin/make -f
++
++#export DH_VERBOSE=1
++#export DH_OPTIONS=-v
++
++configure: configure-stamp
++configure-stamp:
++	dh_testdir
++	touch configure-stamp
++
++build: build-stamp
++build-stamp: configure-stamp
++	dh_testdir
++	touch build-stamp
++
++clean:
++	dh_testdir
++	dh_testroot
++	rm -f build-stamp configure-stamp
++
++	-python setup.py clean --all
++
++	dh_clean
++
++install: build
++	dh_testdir
++	dh_testroot
++	dh_clean -k
++	dh_installdirs
++	dh_install
++
++	python setup.py install --root=$(CURDIR)/debian/pyutil
++	#python setup.py clean --all
++
++binary-indep: build install
++
++binary-arch: build install
++	dh_testdir
++	dh_testroot
++	dh_installchangelogs
++	dh_installdocs
++	dh_installexamples
++	dh_installlogrotate
++	#dh_installinit -ppyutil --name pyutil -r --no-start -- defaults 90
++	#dh_installcron
++	#dh_installman
++	dh_link
++	dh_strip
++	dh_compress
++	dh_fixperms
++	#dh_pysupport
++	dh_installdeb
++	dh_shlibdeps
++	dh_gencontrol
++	dh_md5sums
++	dh_builddeb
++
++binary: binary-indep binary-arch
++.PHONY: build clean binary-indep binary-arch binary install configure
++
+diff -ruN unpatched/pyutil-1.3.6/setup.py tmpdir/pyutil-1.3.6/setup.py
+--- unpatched/pyutil-1.3.6/setup.py	2007-11-08 16:44:31.000000000 -0700
++++ tmpdir/pyutil-1.3.6/setup.py	2007-11-27 09:39:31.000000000 -0700
+@@ -78,7 +78,7 @@
+       license='GNU LGPL',
+       packages=find_packages(),
+       classifiers=trove_classifiers,
+-      entry_points = { 'console_scripts': [ 'darcsver = scripts.darcsver:main', 'sha1sum = scripts.sha1sum:main', 'randcookie = scripts.randcookie:main', 'adler32sum = scripts.adler32sum:main', 'sha256sum = scripts.sha256sum:main', 'tailx = scripts.tailx:main', 'lines = scripts.lines:main', 'randfile = scripts.randfile:main' ] },
++      #entry_points = { 'console_scripts': [ 'darcsver = scripts.darcsver:main', 'sha1sum = scripts.sha1sum:main', 'randcookie = scripts.randcookie:main', 'adler32sum = scripts.adler32sum:main', 'sha256sum = scripts.sha256sum:main', 'tailx = scripts.tailx:main', 'lines = scripts.lines:main', 'randfile = scripts.randfile:main' ] },
+       ext_modules=[Extension('pyutil.xor.c_xor', ['pyutil/xor/xormodule.c',]),],
+       test_suite="pyutil.test",
+       install_requires=["argparse >= 0.8",],

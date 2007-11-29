@@ -1,0 +1,94 @@
+diff -ruN unpatched/argparse-0.8.0/debian/changelog tmpdir/argparse-0.8.0/debian/changelog
+--- unpatched/argparse-0.8.0/debian/changelog	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/argparse-0.8.0/debian/changelog	2007-11-27 09:39:01.000000000 -0700
+@@ -0,0 +1,5 @@
++argparse (0.8.0) unstable; urgency=low
++
++  * debs
++
++ -- alen <alen@ubuntu-box>  Thur, 22 Nov 2007 20:12:47 -0600
+diff -ruN unpatched/argparse-0.8.0/debian/compat tmpdir/argparse-0.8.0/debian/compat
+--- unpatched/argparse-0.8.0/debian/compat	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/argparse-0.8.0/debian/compat	2007-11-27 09:39:01.000000000 -0700
+@@ -0,0 +1 @@
++4
+diff -ruN unpatched/argparse-0.8.0/debian/control tmpdir/argparse-0.8.0/debian/control
+--- unpatched/argparse-0.8.0/debian/control	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/argparse-0.8.0/debian/control	2007-11-27 09:39:01.000000000 -0700
+@@ -0,0 +1,12 @@
++Source: argparse
++Section: python
++Priority: optional
++Maintainer: Alen Peacock <apeacock@flud.org>
++Build-Depends: debhelper (>= 5.0.0), devscripts
++Standards-Version: 3.6.1
++
++Package: argparse
++Architecture: i386
++Description: argparse 
++Depends: python
++
+diff -ruN unpatched/argparse-0.8.0/debian/rules tmpdir/argparse-0.8.0/debian/rules
+--- unpatched/argparse-0.8.0/debian/rules	1969-12-31 17:00:00.000000000 -0700
++++ tmpdir/argparse-0.8.0/debian/rules	2007-11-27 09:39:01.000000000 -0700
+@@ -0,0 +1,60 @@
++#!/usr/bin/make -f
++
++#export DH_VERBOSE=1
++#export DH_OPTIONS=-v
++
++configure: configure-stamp
++configure-stamp:
++	dh_testdir
++	touch configure-stamp
++
++build: build-stamp
++build-stamp: configure-stamp
++	dh_testdir
++	touch build-stamp
++
++clean:
++	dh_testdir
++	dh_testroot
++	rm -f build-stamp configure-stamp
++
++	-python setup.py clean --all
++
++	dh_clean
++
++install: build
++	dh_testdir
++	dh_testroot
++	dh_clean -k
++	dh_installdirs
++	dh_install
++
++	python setup.py install --root=$(CURDIR)/debian/argparse
++	#python setup.py clean --all
++
++binary-indep: build install
++
++binary-arch: build install
++	dh_testdir
++	dh_testroot
++	dh_installchangelogs
++	dh_installdocs
++	dh_installexamples
++	dh_installlogrotate
++	#dh_installinit -pargparse --name argparse -r --no-start -- defaults 90
++	#dh_installcron
++	#dh_installman
++	dh_link
++	dh_strip
++	dh_compress
++	dh_fixperms
++	#dh_pysupport
++	dh_installdeb
++	dh_shlibdeps
++	dh_gencontrol
++	dh_md5sums
++	dh_builddeb
++
++binary: binary-indep binary-arch
++.PHONY: build clean binary-indep binary-arch binary install configure
++

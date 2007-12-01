@@ -4,7 +4,8 @@
 # dependencies are expected to be in directories relative to this script, given
 # by the args below. 
 
-# arch and release
+# dist, arch and release
+dist=fedora
 arch=i386
 release=8
 
@@ -12,25 +13,30 @@ release=8
 argparse=argparse-0.8.0
 pyutil=pyutil-1.3.6
 zfec=zfec-1.2.0-3
-flud=flud
+flud=../../flud
 
 function dopackage {
-	pname=$1
-	pushd $pname
+	curdir=`pwd`
+	dname=$1
+	pname=`basename $dname`
+	echo "entering $dname"
+	pushd $dname
 	python setup.py bdist
 	python setup.py bdist_rpm
+	echo "signing rpms..."
 	rpm --resign dist/*.rpm
 	rpm -K dist*.rpm
-	cp dist/*.$arch.rpm ~/repoflud/yum/fedora/$release/$arch/
-	cp dist/*.noarch.rpm ~/repoflud/yum/fedora/$release/$arch/
-	cp dist/*.src.rpm ~/repoflud/yum/
-	cp dist/*.tar.gz ~/repoflud/
+	cp dist/*.$arch.rpm $curdir/yum/$dist/$release/$arch/
+	cp dist/*.noarch.rpm $curdir/yum/$dist/$release/$arch/
+	cp dist/*.src.rpm $curdir/yum/$dist/
+	cp dist/*.tar.gz $curdir/yum/
+	echo "installing rpms..."
 	if [ -e dist/$pname*.$arch.rpm ]; then
 		sudo rpm -Uvh --replacepkgs dist/$pname*.$arch.rpm
 	elif [ -e dist/$pname*.noarch.rpm ]; then
 		sudo rpm -Uvh --replacepkgs dist/$pname*.noarch.rpm
 	else
-		# goofy workaround for zfec's conversion of verstring - to _
+		# goofy workaround for zfec's conversion of verstring '-' to '_'
 		# this just cuts off the last 4 chars of the pname
 		sudo rpm -Uvh --replacepkgs dist/${pname:0:${#pname}-4}*.$arch.rpm
 	fi
@@ -39,13 +45,14 @@ function dopackage {
 	popd
 }
 
+mkdir -p yum/$dist/$release/$arch/
+
 dopackage $argparse
 dopackage $pyutil
 dopackage $zfec
 dopackage $flud
 
-cd ~/repoflud
-createrepo yum/fedora/$release/$arch
-tar czf yum.$release.$arch.tar yum/
+createrepo yum/$dist/$release/$arch
+tar cvf yum.$release.$arch.tar yum/
 tar rvf yum.$release.$arch.tar *.tar.gz
 gzip yum.$release.$arch.tar

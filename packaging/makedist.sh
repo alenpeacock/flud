@@ -46,7 +46,6 @@ dopackage $flud
 
 cd ~/repoflud
 createrepo yum/fedora/$release/$arch
-tar cvf yum.tar yum/
-tar rvf yum.tar *.tar.gz
-gzip yum.tar
-scp yum.tar.gz apeacock@flud.org:
+tar czf yum.$release.$arch.tar yum/
+tar rvf yum.$release.$arch.tar *.tar.gz
+gzip yum.$release.$arch.tar

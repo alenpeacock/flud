@@ -1188,7 +1188,7 @@ class FilePanel(wx.SplitterWindow):
 				" files for backup.  You can make changes by"
 				" selecting/deselecting files and directories. When you are"
 				" done, simply close this window.")
-			src = open(os.join(datadir,'fludrules.init'), 'r')
+			src = open(os.path.join(datadir,'fludrules.init'), 'r')
 			dst = open(self.fludrules, 'w')
 			filerules = src.read()
 			dst.write(filerules)

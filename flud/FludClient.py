@@ -21,7 +21,8 @@ from flud.CheckboxState import CheckboxState
 
 FLUSHCHECKTIME = 5*60  # s to wait to flush fludfile.conf
 
-imgdir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'images')
+datadir = os.path.dirname(os.path.abspath(__file__))
+imgdir = os.path.join(datadir,'images')
 
 mimeMgr = wx.MimeTypesManager()
 
@@ -1187,7 +1188,7 @@ class FilePanel(wx.SplitterWindow):
 				" files for backup.  You can make changes by"
 				" selecting/deselecting files and directories. When you are"
 				" done, simply close this window.")
-			src = open('fludrules.init', 'r')
+			src = open(os.join(datadir,'fludrules.init'), 'r')
 			dst = open(self.fludrules, 'w')
 			filerules = src.read()
 			dst.write(filerules)

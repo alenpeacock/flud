@@ -144,7 +144,7 @@ def createDefaultImageList():
 class DirCheckboxCtrl(wx.TreeCtrl):
 	
 	def __init__(self, parent, id=-1, dir=None, pos=wx.DefaultPosition, 
-			size=wx.DefaultSize, 
+			size=wx.Size(300,300), #wx.DefaultSize, 
 			style=(wx.TR_MULTIPLE 
 				| wx.TR_HAS_BUTTONS 
 				| wx.TR_TWIST_BUTTONS 
@@ -1176,6 +1176,7 @@ class FilePanel(wx.SplitterWindow):
 		self.Bind(wx.EVT_SIZE, self.OnSize)
 		self.SetNeedUpdating(True)
 
+		print self.GetSize()
 		self.tree = DirCheckboxCtrl(self, -1, dir="/") 
 		
 		# XXX: fludrules.init path should be in config
@@ -1215,8 +1216,9 @@ class FilePanel(wx.SplitterWindow):
 		self.searchPanel = SearchPanel(self, dircheckbox=self.tree, 
 				searchButtonAction=searchButtonAction)
 
-		self.SetMinimumPaneSize(20)
+		self.SetMinimumPaneSize(50)
 		self.SplitVertically(self.tree, self.searchPanel) #, 300)
+		print self.GetSize()
 
 	def getFludHome(self):
 		if os.environ.has_key('FLUDHOME'):
@@ -1461,8 +1463,8 @@ class FludNotebook(wx.Notebook):
 		if page == 0:
 			self.SetMessage("Select files and directories for backup"
 					" with the filesystem view on the left, or set up criteria"
-					" for finding files for backup directly with simple"
-					" searches, below right.")
+					" for finding files for backup with simple searches,"
+					" below right.")
 		elif page == 1:
 			self.SetMessage("Select files/directories to be restored to"
 					" your computer, then click on 'restore!'  Files will turn"
@@ -1554,7 +1556,7 @@ class FludFrame(wx.Frame):
 		self.SetMessage('Welcome.')
 
 		self.config = config
-		self.notebook = FludNotebook(self)
+		self.notebook = FludNotebook(self, size=wx.Size(200,200))
 
 		self.operationStatus = wx.StatusBar(name='operationStatus', 
 				parent=self, style=0)

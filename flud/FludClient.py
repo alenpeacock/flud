@@ -27,6 +27,7 @@ imgdir = os.path.join(datadir,'images')
 mimeMgr = wx.MimeTypesManager()
 
 def getFileIcon(file, il, checkboxes, icondict):
+	print "getting icon for file of type %s" % file[file.rfind('.')+1:]
 	ft = mimeMgr.GetFileTypeFromExtension(file[file.rfind('.')+1:])
 	# XXX: what about from mimetype or magic?
 	if ft == None:
@@ -1543,6 +1544,8 @@ class FludFrame(wx.Frame):
 			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
 			config=None):
 		wx.Frame.__init__(self, parent, id, label, size=size, style=style)
+
+		self.lognull = wx.LogNull()
 
 		wx.ToolTip.SetDelay(2000)
 

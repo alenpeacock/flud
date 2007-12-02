@@ -27,7 +27,6 @@ imgdir = os.path.join(datadir,'images')
 mimeMgr = wx.MimeTypesManager()
 
 def getFileIcon(file, il, checkboxes, icondict):
-	print "getting icon for file of type %s" % file[file.rfind('.')+1:]
 	ft = mimeMgr.GetFileTypeFromExtension(file[file.rfind('.')+1:])
 	# XXX: what about from mimetype or magic?
 	if ft == None:

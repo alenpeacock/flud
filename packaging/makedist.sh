@@ -21,6 +21,7 @@ function dopackage {
 	pname=`basename $dname`
 	echo "entering $dname"
 	pushd $dname
+	python setup.py clean
 	python setup.py bdist
 	python setup.py bdist_rpm
 	echo "signing rpms..."

@@ -55,5 +55,5 @@ dopackage $flud
 
 createrepo yum/$dist/$release/$arch
 tar cvf yum.$release.$arch.tar yum/
-tar rvf yum.$release.$arch.tar *.tar.gz
+#tar rvf yum.$release.$arch.tar *.tar.gz
 gzip yum.$release.$arch.tar

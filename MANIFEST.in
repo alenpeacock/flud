@@ -7,5 +7,6 @@ include LICENSE
 include README
 
 include flud/FludNode.tac
+include flud/fludrules.init
 
 recursive-include flud/images *.png

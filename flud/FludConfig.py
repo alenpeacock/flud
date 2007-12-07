@@ -31,18 +31,18 @@ logger = logging.getLogger('flud')
 
 CLIENTPORTOFFSET = 500
 
-def_trustdeltas = {
-		'NODE_INITIAL_SCORE': 1,
-		'NODE_POSITIVE_CAP': 100,
-		'NODE_NEGATIVE_CAP': -100,
-		'PUT_SUCCEED_REWARD': 2,
-		'GET_SUCCEED_REWARD': 4,
-		'VRFY_SUCCEED_REWARD': 4,
-		'FNDN_FAIL_PENALTY': -1,
-		'PUT_FAIL_PENALTY': -2,
-		'GET_FAIL_PENALTY': -10,
-		'VRFY_FAIL_PENALTY': -10
-}
+""" default mapping of trust deltas """
+class TrustDeltas:
+	NODE_INITIAL_SCORE = 1
+	NODE_POSITIVE_CAP = 100
+	NODE_NEGATIVE_CAP = -100
+	PUT_SUCCEED_REWARD = 2
+	GET_SUCCEED_REWARD = 4
+	VRFY_SUCCEED_REWARD = 4
+	FNDN_FAIL_PENALTY = -1
+	PUT_FAIL_PENALTY = -2
+	GET_FAIL_PENALTY = -10
+	VRFY_FAIL_PENALTY = -10
 
 class FludDebugLogFilter(logging.Filter):
 	"""
@@ -114,7 +114,6 @@ class FludConfig:
 		self.groupIDu = 0
 		self.port = -1
 		self.commandmap = {}
-		self.trustdeltas = {}
 		self.reputations = {}
 		self.nodes = {}
 
@@ -177,8 +176,7 @@ class FludConfig:
 		logger.debug('groupIDr = %s' % self.groupIDr)
 		logger.debug('groupIDu = %s' % self.groupIDu)
 		
-		self.port, self.clientport, self.commandmap, self.trustdeltas \
-				= self._getServerConf()
+		self.port, self.clientport, self.commandmap = self._getServerConf()
 		if serverport != None:
 			self.port = serverport
 			self.clientport = serverport + CLIENTPORTOFFSET
@@ -337,14 +335,14 @@ class FludConfig:
 			logger.debug("no commandmap specified, using default")
 			commandmap = def_commandmap
 		for i in def_commandmap: # ensure that commandmap covers all keys
+			# should make this work like TrustDeltas below
 			if not commandmap.has_key(i):
 				commandmap[i] = def_commandmap[i]
 
-		trustdeltas = {}
-		for i in def_trustdeltas:
-			if not trustdeltas.has_key(i):
-				trustdeltas[i] = def_trustdeltas[i]
-
+		for i in [valattr for valattr in dir(TrustDeltas) if valattr[0] != '_']:
+			# here's where we would setattr(TrustDeltas, i, newval) if we saved
+			# these in the config file
+			pass
 
 		# XXX: could also do a 'parammap'
 
@@ -352,7 +350,7 @@ class FludConfig:
 		self.configParser.set("server","clientport",clientport)
 		self.configParser.set("server","commandmap",commandmap)
 
-		return port, clientport, commandmap, trustdeltas
+		return port, clientport, commandmap
 
 	def _getDirConf(self, configParser, section, default):
 		"""
@@ -495,8 +493,7 @@ class FludConfig:
 				self.routing.replacementCache.insertNode(
 						(host, int(port), long(nodeID, 16),
 							Ku.exportPublicKey()['n']))
-			self.reputations[long(nodeID,16)] \
-					= self.trustdeltas['NODE_INITIAL_SCORE']
+			self.reputations[long(nodeID,16)] = TrustDeltas.NODE_INITIAL_SCORE
 			# XXX: no management of reputations size: need to manage as a cache
 	
 	def modifyReputation(self, nodeID, delta):
@@ -507,8 +504,7 @@ class FludConfig:
 		if isinstance(nodeID, str):
 			nodeID = long(nodeID,16)
 		if not self.reputations.has_key(nodeID):
-			self.reputations[nodeID] \
-					= self.trustdeltas['NODE_INITIAL_SCORE']
+			self.reputations[nodeID] = TrustDeltas.NODE_INITIAL_SCORE
 			# XXX: no management of reputations size: need to manage as a cache
 		self.reputations[nodeID] += delta
 		logger.debug("reputation for %d now %d", nodeID, 

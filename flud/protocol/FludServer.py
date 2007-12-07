@@ -19,6 +19,7 @@ from ServerPrimitives import *
 from ServerDHTPrimitives import *
 from LocalPrimitives import *
 from FludCommUtil import *
+from flud.FludConfig import CommandMap as CommandMap
 
 threadable.init()
 
@@ -33,16 +34,15 @@ class FludServer(threading.Thread):
 		self.clientport = node.config.clientport
 		self.logger = node.logger
 		self.root = ROOT(self)
-		commandmap = node.config.commandmap
-		self.root.putChild(commandmap['ID'], ID(self))
-		self.root.putChild(commandmap['STORE'], STORE(self))
-		self.root.putChild(commandmap['RETRIEVE'], RETRIEVE(self))
-		self.root.putChild(commandmap['VERIFY'], VERIFY(self))
-		self.root.putChild(commandmap['PROXY'], PROXY(self))
-		self.root.putChild(commandmap['DELETE'], DELETE(self))
-		self.root.putChild(commandmap['kFINDNODE'], kFINDNODE(self))
-		self.root.putChild(commandmap['kFINDVAL'], kFINDVAL(self))
-		self.root.putChild(commandmap['kSTORE'], kSTORE(self))
+		self.root.putChild(CommandMap.ID, ID(self))
+		self.root.putChild(CommandMap.STORE, STORE(self))
+		self.root.putChild(CommandMap.RETRIEVE, RETRIEVE(self))
+		self.root.putChild(CommandMap.VERIFY, VERIFY(self))
+		self.root.putChild(CommandMap.PROXY, PROXY(self))
+		self.root.putChild(CommandMap.DELETE, DELETE(self))
+		self.root.putChild(CommandMap.kFINDNODE, kFINDNODE(self))
+		self.root.putChild(CommandMap.kFINDVAL, kFINDVAL(self))
+		self.root.putChild(CommandMap.kSTORE, kSTORE(self))
 		self.site = server.Site(self.root)
 		reactor.listenTCP(self.port, self.site)
 		reactor.listenTCP(self.clientport, LocalFactory(node), 

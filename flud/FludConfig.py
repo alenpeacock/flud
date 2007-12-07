@@ -14,18 +14,17 @@ from flud.FludkRouting import kRouting
 from flud.fencode import fencode, fdecode
 
 """ default mapping of relative URLs """
-def_commandmap = {
-		'ID': 'ID', 
-		'GROUPID': 'GROUPID',
-		'STORE': 'STORE', 
-		'RETRIEVE': 'RETRIEVE',
-		'VERIFY': 'VERIFY',
-		'PROXY': 'PROXY', 
-		'DELETE': 'DELETE', 
-		'kFINDNODE': 'kFINDNODE',
-		'kFINDVAL': 'kFINDVAL',
-		'kSTORE': 'kSTORE'
-}
+class CommandMap:
+	ID = 'ID' 
+	GROUPID = 'GROUPID'
+	STORE = 'STORE' 
+	RETRIEVE = 'RETRIEVE'
+	VERIFY = 'VERIFY'
+	PROXY = 'PROXY' 
+	DELETE = 'DELETE' 
+	kFINDNODE = 'kFINDNODE'
+	kFINDVAL = 'kFINDVAL'
+	kSTORE = 'kSTORE'
 
 logger = logging.getLogger('flud')
 
@@ -113,7 +112,6 @@ class FludConfig:
 		self.groupIDr = 0
 		self.groupIDu = 0
 		self.port = -1
-		self.commandmap = {}
 		self.reputations = {}
 		self.nodes = {}
 
@@ -176,7 +174,7 @@ class FludConfig:
 		logger.debug('groupIDr = %s' % self.groupIDr)
 		logger.debug('groupIDu = %s' % self.groupIDu)
 		
-		self.port, self.clientport, self.commandmap = self._getServerConf()
+		self.port, self.clientport = self._getServerConf()
 		if serverport != None:
 			self.port = serverport
 			self.clientport = serverport + CLIENTPORTOFFSET
@@ -184,7 +182,10 @@ class FludConfig:
 			self.configParser.set("server","clientport",self.clientport)
 		logger.debug('port = %s' % self.port)
 		logger.debug('clientport = %s' % self.clientport)
-		logger.debug('commandmap = %s' % self.commandmap)
+		logger.debug('commandmap = %s' 
+				% [v for v in dir(CommandMap) if v[0] != '_'])
+		logger.debug('trustdeltas = %s' 
+				% [v for v in dir(TrustDeltas) if v[0] != '_'])
 
 		self.routing = kRouting((socket.getfqdn(), self.port,
 				long(self.nodeID, 16), self.Ku.exportPublicKey()['n']))
@@ -331,13 +332,10 @@ class FludConfig:
 		
 		try:
 			commandmap = eval(self.configParser.get("server","commandmap"))
+			for i in commandmap:
+				setattr(CommandMap, i, commandmap[i])
 		except:
 			logger.debug("no commandmap specified, using default")
-			commandmap = def_commandmap
-		for i in def_commandmap: # ensure that commandmap covers all keys
-			# should make this work like TrustDeltas below
-			if not commandmap.has_key(i):
-				commandmap[i] = def_commandmap[i]
 
 		for i in [valattr for valattr in dir(TrustDeltas) if valattr[0] != '_']:
 			# here's where we would setattr(TrustDeltas, i, newval) if we saved
@@ -350,7 +348,7 @@ class FludConfig:
 		self.configParser.set("server","clientport",clientport)
 		self.configParser.set("server","commandmap",commandmap)
 
-		return port, clientport, commandmap
+		return port, clientport
 
 	def _getDirConf(self, configParser, section, default):
 		"""

@@ -333,20 +333,19 @@ class FludConfig:
 		try:
 			commandmap = eval(self.configParser.get("server","commandmap"))
 			for i in commandmap:
+				if not hasattr(CommandMap, i):
+					logger.error("setting non-useful CommandMap field %s", i)
 				setattr(CommandMap, i, commandmap[i])
 		except:
 			logger.debug("no commandmap specified, using default")
-
-		for i in [valattr for valattr in dir(TrustDeltas) if valattr[0] != '_']:
-			# here's where we would setattr(TrustDeltas, i, newval) if we saved
-			# these in the config file
-			pass
 
 		# XXX: could also do a 'parammap'
 
 		self.configParser.set("server","port",port)
 		self.configParser.set("server","clientport",clientport)
-		self.configParser.set("server","commandmap",commandmap)
+		self.configParser.set("server","commandmap",
+				dict((v, eval("CommandMap.%s" % v)) for v in dir(CommandMap)
+					if v[0] != '_'))
 
 		return port, clientport
 
@@ -374,6 +373,19 @@ class FludConfig:
 		"""
 		Returns client configuration: download directory 
 		"""
+		try:
+			trustdeltas = eval(self.configParser.get("client","trustdeltas"))
+			for i in trustdeltas:
+				if not hasattr(TrustDeltas, i):
+					logger.error("setting non-useful TrustDelta field %s", i)
+				setattr(TrustDeltas, i, trustdeltas[i])
+		except:
+			logger.debug("no trustdeltas specified, using default")
+
+		self.configParser.set("client", "trustdeltas",
+				dict((v, eval("TrustDeltas.%s" % v)) for v in dir(TrustDeltas)
+					if v[0] != '_'))
+
 		return self._getDirConf(self.configParser, "client", "dl") 
 
 	def _getStoreConf(self):

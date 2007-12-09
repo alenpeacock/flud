@@ -5,7 +5,7 @@ the terms of the GNU General Public License (the GPL), version 3.
 manages configuration file for flud backup.
 """
 
-import os, sys, socket, re, logging
+import os, sys, socket, re, logging, time
 import ConfigParser
 
 import flud.FludCrypto as FludCrypto
@@ -42,6 +42,13 @@ class TrustDeltas:
 	PUT_FAIL_PENALTY = -2
 	GET_FAIL_PENALTY = -10
 	VRFY_FAIL_PENALTY = -10
+
+""" failure codes for bad node tracking """
+class PeerFailures:
+	PUT = 1
+	GET = 2
+	VRFY = 3
+	FNDN = 4
 
 class FludDebugLogFilter(logging.Filter):
 	"""
@@ -114,6 +121,7 @@ class FludConfig:
 		self.port = -1
 		self.reputations = {}
 		self.nodes = {}
+		self.badnodes = {}
 
 		try:
 			self.fludhome = os.environ['FLUDHOME']
@@ -506,7 +514,7 @@ class FludConfig:
 			self.reputations[long(nodeID,16)] = TrustDeltas.NODE_INITIAL_SCORE
 			# XXX: no management of reputations size: need to manage as a cache
 	
-	def modifyReputation(self, nodeID, delta):
+	def modifyReputation(self, nodeID, delta, markbadreason=None):
 		"""
 		change reputation of nodeID by delta
 		"""
@@ -519,6 +527,18 @@ class FludConfig:
 		self.reputations[nodeID] += delta
 		logger.debug("reputation for %d now %d", nodeID, 
 				self.reputations[nodeID])
+		if markbadreason:
+			self.updateBadNodes(nodeID, markbadreason)
+
+	def updateBadNodes(self, nodeID, reason):
+		if self.badnodes.has_key(nodeID):
+			if self.badnodes[nodeID].has_key(reason):
+				pass # let it age
+			else:
+				self.badnodes[nodeID][reason] = time.time()
+		else:
+			self.badnodes[nodeID] = {}
+			self.badnodes[nodeID][reason] = time.time()
 	
 	def getOrderedNodes(self, num=None, exclude=None):
 		"""

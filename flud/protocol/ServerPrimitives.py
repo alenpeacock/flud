@@ -199,13 +199,28 @@ class FILE(ROOT):
 		record age (which also allows a purge strategy).  Files are
 		reference-listed (reference count with owners) by the BlockFile object.
 		"""
-		# XXX: get filekey from request.prepath
 		if len(request.prepath) != 2:
 			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
 			return "expected file/[filekey], got %s" % request.prepath.join('/')
 		filekey = request.prepath[1]
 		self.setHeaders(request)
 		return STORE(self.node, self.config, request, filekey).deferred
+
+	def render_GET(self, request):
+		"""
+		A request to retrieve data.  The file to retrieve is indicated by the
+		URL path, e.g. http://server:port/RETRIEVE/a35cd1339766ef209657a7b
+		Response codes: 200- OK (default)
+						400- Bad Request (missing params) 
+						401- Unauthorized (ID hash, CHALLENGE, or 
+							 GROUPCHALLENGE failed) 
+		"""
+		if len(request.prepath) != 2:
+			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
+			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
+		filekey = request.prepath[1]
+		self.setHeaders(request)
+		return RETRIEVE(self.node, self.config, request, filekey).deferred
 
 
 class STORE(object):
@@ -428,18 +443,13 @@ class STORE(object):
 		return "STORE request must be sent using POST"
 
 
-class RETRIEVE(ROOT):
-	"""
-	A request to retrieve data.  The file to retrieve is indicated by the URL
-	path, e.g. http://server:port/RETRIEVE/a35cd1339766ef209657a7b
-	Response codes: 200- OK (default)
-	                400- Bad Request (missing params) 
-	                401- Unauthorized (ID hash, CHALLENGE, or 
-					     GROUPCHALLENGE failed) 
-	"""
-	isLeaf = True
-	def render_GET(self, request):
-		self.setHeaders(request)
+class RETRIEVE(object):
+	def __init__(self, node, config, request, filekey):
+		self.node = node
+		self.config = config
+		self.deferred = self.render_GET(request, filekey)
+
+	def render_GET(self, request, filekey):
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
@@ -453,7 +463,6 @@ class RETRIEVE(ROOT):
 					% (request.path, params['nodeID'][:10]))
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
-			filekey = re.sub('/RETRIEVE', '', str(request.path))
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
 			if len(paths) > 1:
 				msg = "filekey contains illegal path seperator tokens."
@@ -478,10 +487,9 @@ class RETRIEVE(ROOT):
 			
 
 	def _sendFile(self, request, filekey, reqKu, returnMeta):
-		fname = self.config.storedir + filekey
+		fname = os.path.join(self.config.storedir,filekey)
 		loggerretr.debug("reading file data from %s" % fname)
 		# XXX: make sure requestor owns the file? 
-		tfilekey = filekey[1:]
 		if returnMeta:
 			loggerretr.debug("returnMeta = %s" % returnMeta)
 			request.setHeader('Content-type', 'Multipart/Related')
@@ -501,13 +509,13 @@ class RETRIEVE(ROOT):
 			for tarball, openmode in tarballs:
 				tar = tarfile.open(tarball, openmode)
 				try:
-					tinfo = tar.getmember(tfilekey)
+					tinfo = tar.getmember(filekey)
 					returnedMeta = False
 					if returnMeta:
-						loggerretr.debug("tar returnMeta %s" % tfilekey)
+						loggerretr.debug("tar returnMeta %s" % filekey)
 						try:
 							metas = [f for f in tar.getnames()
-										if f[:len(tfilekey)] == tfilekey 
+										if f[:len(filekey)] == filekey 
 										and f[-4:] == 'meta']
 							loggerretr.debug("tar returnMetas=%s" % metas)
 							for m in metas:
@@ -537,7 +545,7 @@ class RETRIEVE(ROOT):
 							H = []
 							H.append("--%s" % rand_bound)
 							H.append("Content-Type: Application/octet-stream")
-							H.append("Content-ID: %s" % tfilekey)
+							H.append("Content-ID: %s" % filekey)
 							H.append("Content-Length: %d" % tinfo.size)
 							H.append("")
 							H = '\r\n'.join(H)
@@ -585,7 +593,7 @@ class RETRIEVE(ROOT):
 					H = []
 					H.append("--%s" % rand_bound)
 					H.append("Content-Type: Application/octet-stream")
-					H.append("Content-ID: %s.%s.meta" % (tfilekey, m))
+					H.append("Content-ID: %s.%s.meta" % (filekey, m))
 					H.append("Content-Length: %d" % len(meta[m]))
 					H.append("")
 					H.append(meta[m])
@@ -596,7 +604,7 @@ class RETRIEVE(ROOT):
 				H = []
 				H.append("--%s" % rand_bound)
 				H.append("Content-Type: Application/octet-stream")
-				H.append("Content-ID: %s" % tfilekey)
+				H.append("Content-ID: %s" % filekey)
 				H.append("Content-Length: %d" % f.size())
 				H.append("")
 				H = '\r\n'.join(H)

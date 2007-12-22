@@ -429,7 +429,7 @@ class SENDRETRIEVE(REQUEST):
 
 		loggerrtrv.info("sending RETRIEVE request to %s:%s" % (host, str(port)))
 		Ku = self.node.config.Ku.exportPublicKey()
-		url = 'http://'+host+':'+str(port)+'/RETRIEVE/'+filekey+'?'
+		url = 'http://'+host+':'+str(port)+'/file/'+filekey+'?'
 		url += 'nodeID='+str(self.node.config.nodeID)
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])

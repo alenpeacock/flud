@@ -187,7 +187,9 @@ class FILE(ROOT):
 
 	def render_POST(self, request):
 		"""
-		A request to store data via http upload.
+		A request to store data via http upload.  The file to delete is
+		indicated by the URL path, e.g. 
+		POST http://server:port/a35cd1339766ef209657a7b
 		Response codes: 200- OK (default)
 						400- Bad Request (missing params) 
 						401- Unauthorized (ID hash, CHALLENGE, or 
@@ -205,12 +207,12 @@ class FILE(ROOT):
 			return "expected file/[filekey], got %s" % request.prepath.join('/')
 		filekey = request.prepath[1]
 		self.setHeaders(request)
-		return STORE(self.node, self.config, request, filekey).deferred
+		return StoreFile(self.node, self.config, request, filekey).deferred
 
 	def render_GET(self, request):
 		"""
 		A request to retrieve data.  The file to retrieve is indicated by the
-		URL path, e.g. http://server:port/RETRIEVE/a35cd1339766ef209657a7b
+		URL path, e.g. GET http://server:port/a35cd1339766ef209657a7b
 		Response codes: 200- OK (default)
 						400- Bad Request (missing params) 
 						401- Unauthorized (ID hash, CHALLENGE, or 
@@ -222,12 +224,12 @@ class FILE(ROOT):
 			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
 		filekey = request.prepath[1]
 		self.setHeaders(request)
-		return RETRIEVE(self.node, self.config, request, filekey).deferred
+		return RetrieveFile(self.node, self.config, request, filekey).deferred
 
 	def render_DELETE(self, request):
 		"""
 		A request to delete data.  The file to delete is indicated by the URL
-		path, e.g. http://server:port/DELETE/a35cd1339766ef209657a7b
+		path, e.g. DELETE http://server:port/a35cd1339766ef209657a7b
 		Response codes: 200- OK (default)
 						400- Bad Request (missing params) 
 						401- Unauthorized (ID hash, CHALLENGE, or 
@@ -240,16 +242,16 @@ class FILE(ROOT):
 			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
 		filekey = request.prepath[1]
 		self.setHeaders(request)
-		return DELETE(self.node, self.config, request, filekey).deferred
+		return DeleteFile(self.node, self.config, request, filekey).deferred
 
 
-class STORE(object):
+class StoreFile(object):
 	def __init__(self, node, config, request, filekey):
 		self.node = node
 		self.config = config
-		self.deferred = self.render_POST(request, filekey)
+		self.deferred = self.storeFile(request, filekey)
 
-	def render_POST(self, request, filekey):
+	def storeFile(self, request, filekey):
 		try:
 			required = ('size', 'nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
@@ -463,13 +465,13 @@ class STORE(object):
 		return "STORE request must be sent using POST"
 
 
-class RETRIEVE(object):
+class RetrieveFile(object):
 	def __init__(self, node, config, request, filekey):
 		self.node = node
 		self.config = config
-		self.deferred = self.render_GET(request, filekey)
+		self.deferred = self.retrieveFile(request, filekey)
 
-	def render_GET(self, request, filekey):
+	def retrieveFile(self, request, filekey):
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
@@ -887,13 +889,13 @@ class VERIFY(ROOT):
 		request.finish()
 
 
-class DELETE(object):
+class DeleteFile(object):
 	def __init__(self, node, config, request, filekey):
 		self.node = node
 		self.config = config
-		self.deferred = self.render_DELETE(request, filekey)
+		self.deferred = self.deleteFile(request, filekey)
 
-	def render_DELETE(self, request, filekey):
+	def deleteFile(self, request, filekey):
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'metakey')
 			params = requireParams(request, required)

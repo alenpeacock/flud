@@ -152,30 +152,30 @@ class SENDSTORE(REQUEST):
 		if not fsize:
 			fsize = os.stat(datafile)[stat.ST_SIZE]
 		Ku = self.node.config.Ku.exportPublicKey()
+		filekey = os.path.basename(datafile) # check this before sending
 		params = [('nodeID', self.node.config.nodeID),
 				('Ku_e', str(Ku['e'])),
 				('Ku_n', str(Ku['n'])),
 				('port', str(self.node.config.port)),
-				('filekey', os.path.basename(datafile)),
 				('size', str(fsize))]
 		self.timeoutcount = 0
 
 		self.deferred = defer.Deferred()
 		ConnectionQueue.enqueue((self, self.headers, nKu, host, port, 
-				datafile, metadata, params, True))
+				filekey, datafile, metadata, params, True))
 		#self.deferred = self._sendRequest(self.headers, nKu, host, port,
 		#		datafile, params, True)
 
-	def startRequest(self, headers, nKu, host, port, datafile, metadata,
-			params, skipFile):
-		d = self._sendRequest(headers, nKu, host, port, datafile, metadata, 
-				params, skipFile)
+	def startRequest(self, headers, nKu, host, port, filekey, 
+			datafile, metadata, params, skipFile):
+		d = self._sendRequest(headers, nKu, host, port, filekey,
+				datafile, metadata, params, skipFile)
 		d.addBoth(ConnectionQueue.checkWaiting)
 		d.addCallback(self.deferred.callback)
 		d.addErrback(self.deferred.errback)
 
-	def _sendRequest(self, headers, nKu, host, port, datafile, metadata,
-			params, skipfile=False):
+	def _sendRequest(self, headers, nKu, host, port, filekey, 
+			datafile, metadata, params, skipfile=False):
 		"""
 		skipfile - set to True if you want to send everything but file data
 		(used to send the unauthorized request before responding to challenge)
@@ -190,39 +190,40 @@ class SENDSTORE(REQUEST):
 		else:
 			files = [(datafile, 'filename')]
 		deferred = threads.deferToThread(fileUpload, host, port, 
-				'/STORE', files, params, headers=self.headers)
-		deferred.addCallback(self._getSendStore, nKu, host, port, datafile,
-				metadata, params, self.headers)
+				'/file/%s' % filekey, files, params, headers=self.headers)
+		deferred.addCallback(self._getSendStore, nKu, host, port, filekey,
+				datafile, metadata, params, self.headers)
 		deferred.addErrback(self._errSendStore, 
 				"Couldn't upload file %s to %s:%d" % (datafile, host, port),
 				self.headers, nKu, host, port, datafile, metadata, params)
 		return deferred
 
-	def _getSendStore(self, httpconn, nKu, host, port, datafile, metadata,
-			params, headers):
+	def _getSendStore(self, httpconn, nKu, host, port, filekey,
+			datafile, metadata, params, headers):
 		"""
 		Check the response for status. 
 		"""
 		deferred2 = threads.deferToThread(httpconn.getresponse)
 		deferred2.addCallback(self._getSendStore2, httpconn, nKu, host, port, 
-				datafile, metadata, params, headers)
+				filekey, datafile, metadata, params, headers)
 		deferred2.addErrback(self._errSendStore, "Couldn't get response", 
-				headers, nKu, host, port, datafile, metadata, params, httpconn)
+				headers, nKu, host, port, filekey, datafile, metadata,
+				params, httpconn)
 		return deferred2
 
-	def _getSendStore2(self, response, httpconn, nKu, host, port, datafile,
-			metadata, params, headers):
+	def _getSendStore2(self, response, httpconn, nKu, host, port,
+			filekey, datafile, metadata, params, headers):
 		httpconn.close()
 		if response.status == http.UNAUTHORIZED:
 			loggerstor.info("SENDSTORE unauthorized, sending credentials")
 			challenge = response.reason
 			d = answerChallengeDeferred(challenge, self.node.config.Kr,
 					self.node.config.groupIDu, nKu.id(), headers)
-			d.addCallback(self._sendRequest, nKu, host, port, datafile, 
-					metadata, params)
+			d.addCallback(self._sendRequest, nKu, host, port, filekey,
+					datafile, metadata, params)
 			d.addErrback(self._errSendStore, "Couldn't answerChallenge", 
-					headers, nKu, host, port, datafile, metadata, params, 
-					httpconn)
+					headers, nKu, host, port, filekey, datafile, metadata,
+					params, httpconn)
 			return d
 		elif response.status == http.CONFLICT:
 			result = response.read()
@@ -242,14 +243,14 @@ class SENDSTORE(REQUEST):
 			return result
 
 	def _errSendStore(self, err, msg, headers, nKu, host, port,
-			datafile, metadata, params, httpconn=None):
+			filekey, datafile, metadata, params, httpconn=None):
 		if err.check('socket.error'):
 			#print "SENDSTORE request error: %s" % err.__class__.__name__
 			self.timeoutcount += 1
 			if self.timeoutcount < MAXTIMEOUTS:
 				print "trying again [#%d]...." % self.timeoutcount
-				return self._sendRequest(headers, nKu, host, port, datafile, 
-						metadata, params)
+				return self._sendRequest(headers, nKu, host, port, filekey,
+						datafile, metadata, params)
 			else:
 				print "Maxtimeouts exceeded: %d" % self.timeoutcount
 		elif err.check(BadCASKeyException):

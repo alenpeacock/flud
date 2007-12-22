@@ -140,14 +140,18 @@ class ROOT(Resource):
 
 
 class ID(ROOT):
-	"""
-	Just received a request to expose my identity.  Send public key (from which
-	requestor can determine nodeID).
-	Response codes: 200- OK (default)
-	                204- No Content (returned in case of error or not wanting
-					     to divulge ID)
-	"""
+	""" self identification / kad ping """
+	def getChild(self, name, request):
+		return self
+
 	def render_GET(self, request):
+		"""
+		Just received a request to expose my identity.  Send public key (from
+		which requestor can determine nodeID).
+		Response codes: 200- OK (default)
+						204- No Content (returned in case of error or not
+							 wanting to divulge ID)
+		"""
 		self.setHeaders(request)
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
@@ -176,49 +180,43 @@ class ID(ROOT):
 			#	request.setResponseCode(http.NO_CONTENT, msg)
 			#	return msg
 
+class FILE(ROOT):
+	""" data storage file operations: POST, GET, DELETE """
+	def getChild(self, name, request):
+		return self
 
-
-class STORE(ROOT):
-	"""
-	A request to store data via http upload.
-	Response codes: 200- OK (default)
-	                400- Bad Request (missing params) 
-	                401- Unauthorized (ID hash, CHALLENGE, or 
-					     GROUPCHALLENGE failed) 
-
-	Each file fragment is stored with its storage key as the file name.  The
-	file fragment can be 'touched' (or use last access time if supported) each
-	time it is verified or read, so that we have a way to record age (which
-	also allows a purge strategy).  Files are reference-listed (reference count
-	with owners) by the BlockFile object.
-
-	A preliminary file structure:
-	.flud/
-		store/
-			fragmenthash1
-			fragmenthash2
-			...
-		dht/
-			metadatahash1
-			metadatahash2
-			...
-		meta/
-			master
-			metadatahash1
-			metadatahash2
-			...
-		dl/
-		flud.conf
-		fludfile.conf
-		fludrules.init
-		flud.log
-
-	"""
-	isLeaf = True
 	def render_POST(self, request):
+		"""
+		A request to store data via http upload.
+		Response codes: 200- OK (default)
+						400- Bad Request (missing params) 
+						401- Unauthorized (ID hash, CHALLENGE, or 
+							 GROUPCHALLENGE failed) 
+
+		Each file fragment is stored with its storage key as the file name.
+		The file fragment can be 'touched' (or use last access time if
+		supported) each time it is verified or read, so that we have a way to
+		record age (which also allows a purge strategy).  Files are
+		reference-listed (reference count with owners) by the BlockFile object.
+		"""
+		# XXX: get filekey from request.prepath
+		if len(request.prepath) != 2:
+			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
+			return "expected file/[filekey], got %s" % request.prepath.join('/')
+		filekey = request.prepath[1]
 		self.setHeaders(request)
+		return STORE(self.node, self.config, request, filekey).deferred
+
+
+class STORE(object):
+	def __init__(self, node, config, request, filekey):
+		self.node = node
+		self.config = config
+		self.deferred = self.render_POST(request, filekey)
+
+	def render_POST(self, request, filekey):
 		try:
-			required = ('filekey', 'size', 'nodeID', 'Ku_e', 'Ku_n', 'port')
+			required = ('size', 'nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by STORE" 
@@ -244,7 +242,7 @@ class STORE(ROOT):
 
 			return authenticate(request, reqKu, params['nodeID'], 
 					host, int(params['port']), self.node.client, self.config,
-					self._storeFile, request, params['filekey'], reqKu, 
+					self._storeFile, request, filekey, reqKu, 
 					params['nodeID'])
 
 	def _storeFile(self, request, filekey, reqKu, nodeID):

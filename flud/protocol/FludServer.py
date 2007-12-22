@@ -34,8 +34,9 @@ class FludServer(threading.Thread):
 		self.clientport = node.config.clientport
 		self.logger = node.logger
 		self.root = ROOT(self)
-		self.root.putChild(CommandMap.ID, ID(self))
-		self.root.putChild(CommandMap.STORE, STORE(self))
+		self.root.putChild('ID', ID(self))
+		#self.root.putChild(CommandMap.STORE, STORE(self))
+		self.root.putChild('file', FILE(self))
 		self.root.putChild(CommandMap.RETRIEVE, RETRIEVE(self))
 		self.root.putChild(CommandMap.VERIFY, VERIFY(self))
 		self.root.putChild(CommandMap.PROXY, PROXY(self))

@@ -34,14 +34,10 @@ class FludServer(threading.Thread):
 		self.clientport = node.config.clientport
 		self.logger = node.logger
 		self.root = ROOT(self)
-		self.root.putChild('ID', ID(self))
-		#self.root.putChild(CommandMap.STORE, STORE(self))
-		#self.root.putChild(CommandMap.RETRIEVE, RETRIEVE(self))
-		self.root.putChild('file', FILE(self))
-		#self.root.putChild(CommandMap.VERIFY, VERIFY(self))
-		self.root.putChild('hash', HASH(self))
-		self.root.putChild(CommandMap.PROXY, PROXY(self))
-		#self.root.putChild(CommandMap.DELETE, DELETE(self))
+		self.root.putChild('ID', ID(self))     # GET (node identity)
+		self.root.putChild('file', FILE(self)) # POST, GET, and DELETE (files)
+		self.root.putChild('hash', HASH(self)) # GET (verify op)
+		self.root.putChild(CommandMap.PROXY, PROXY(self)) # currently noop
 		self.root.putChild(CommandMap.kFINDNODE, kFINDNODE(self))
 		self.root.putChild(CommandMap.kFINDVAL, kFINDVAL(self))
 		self.root.putChild(CommandMap.kSTORE, kSTORE(self))

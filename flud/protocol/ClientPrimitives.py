@@ -195,7 +195,8 @@ class SENDSTORE(REQUEST):
 				datafile, metadata, params, self.headers)
 		deferred.addErrback(self._errSendStore, 
 				"Couldn't upload file %s to %s:%d" % (datafile, host, port),
-				self.headers, nKu, host, port, datafile, metadata, params)
+				self.headers, nKu, host, port, filekey, datafile, metadata,
+				params)
 		return deferred
 
 	def _getSendStore(self, httpconn, nKu, host, port, filekey,

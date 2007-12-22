@@ -40,7 +40,7 @@ class FludServer(threading.Thread):
 		self.root.putChild('file', FILE(self))
 		self.root.putChild(CommandMap.VERIFY, VERIFY(self))
 		self.root.putChild(CommandMap.PROXY, PROXY(self))
-		self.root.putChild(CommandMap.DELETE, DELETE(self))
+		#self.root.putChild(CommandMap.DELETE, DELETE(self))
 		self.root.putChild(CommandMap.kFINDNODE, kFINDNODE(self))
 		self.root.putChild(CommandMap.kFINDVAL, kFINDVAL(self))
 		self.root.putChild(CommandMap.kSTORE, kSTORE(self))

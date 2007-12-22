@@ -521,7 +521,7 @@ class SENDDELETE(REQUEST):
 
 		loggerdele.info("sending DELETE request to %s:%s" % (host, str(port)))
 		Ku = self.node.config.Ku.exportPublicKey()
-		url = 'http://'+host+':'+str(port)+'/DELETE/'+filekey+'?'
+		url = 'http://'+host+':'+str(port)+'/file/'+filekey+'?'
 		url += 'nodeID='+str(self.node.config.nodeID)
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])
@@ -540,7 +540,8 @@ class SENDDELETE(REQUEST):
 		d.addErrback(self.deferred.errback)
 
 	def _sendRequest(self, headers, nKu, host, port, url):
-		factory = getPageFactory(url, headers=headers, timeout=primitive_to)
+		factory = getPageFactory(url, method="DELETE", headers=headers,
+				timeout=primitive_to)
 		deferred = factory.deferred
 		deferred.addCallback(self._getSendDelete, nKu, host, port, factory)
 		deferred.addErrback(self._errSendDelete, nKu, host, port, factory, url,

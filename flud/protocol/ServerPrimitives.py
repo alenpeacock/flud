@@ -199,6 +199,7 @@ class FILE(ROOT):
 		record age (which also allows a purge strategy).  Files are
 		reference-listed (reference count with owners) by the BlockFile object.
 		"""
+		loggerstor.debug("file POST, %s", request.prepath)
 		if len(request.prepath) != 2:
 			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
 			return "expected file/[filekey], got %s" % request.prepath.join('/')
@@ -215,12 +216,31 @@ class FILE(ROOT):
 						401- Unauthorized (ID hash, CHALLENGE, or 
 							 GROUPCHALLENGE failed) 
 		"""
+		loggerstor.debug("file GET, %s", request.prepath)
 		if len(request.prepath) != 2:
 			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
 			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
 		filekey = request.prepath[1]
 		self.setHeaders(request)
 		return RETRIEVE(self.node, self.config, request, filekey).deferred
+
+	def render_DELETE(self, request):
+		"""
+		A request to delete data.  The file to delete is indicated by the URL
+		path, e.g. http://server:port/DELETE/a35cd1339766ef209657a7b
+		Response codes: 200- OK (default)
+						400- Bad Request (missing params) 
+						401- Unauthorized (ID hash, CHALLENGE, or 
+							GROUPCHALLENGE failed, or nodeID doesn't own this
+							block) 
+		"""
+		loggerstor.debug("file DELETE, %s", request.prepath)
+		if len(request.prepath) != 2:
+			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
+			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
+		filekey = request.prepath[1]
+		self.setHeaders(request)
+		return DELETE(self.node, self.config, request, filekey).deferred
 
 
 class STORE(object):
@@ -867,18 +887,13 @@ class VERIFY(ROOT):
 		request.finish()
 
 
-class DELETE(ROOT):
-	"""
-	A request to delete data.  The file to delete is indicated by the URL
-	path, e.g. http://server:port/DELETE/a35cd1339766ef209657a7b
-	Response codes: 200- OK (default)
-	                400- Bad Request (missing params) 
-	                401- Unauthorized (ID hash, CHALLENGE, or GROUPCHALLENGE 
-						failed, or nodeID doesn't own this block) 
-	"""
-	isLeaf = True
-	def render_GET(self, request):
-		self.setHeaders(request)
+class DELETE(object):
+	def __init__(self, node, config, request, filekey):
+		self.node = node
+		self.config = config
+		self.deferred = self.render_DELETE(request, filekey)
+
+	def render_DELETE(self, request, filekey):
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'metakey')
 			params = requireParams(request, required)
@@ -893,7 +908,6 @@ class DELETE(ROOT):
 
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
-			filekey = re.sub('/DELETE', '', str(request.path))
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
 			if len(paths) > 1:
 				msg = "filekey contains illegal path seperator tokens."
@@ -913,7 +927,7 @@ class DELETE(ROOT):
 					params['nodeID'])
 
 	def _deleteFile(self, request, filekey, metakey, reqKu, reqID):
-		fname = self.config.storedir + filekey
+		fname = os.path.join(self.config.storedir, filekey)
 		loggerdele.debug("reading file data from %s" % fname)
 		if not os.path.exists(fname):
 			# check for tarball for originator
@@ -924,8 +938,7 @@ class DELETE(ROOT):
 			if os.path.exists(tarballbase):
 				tarballs.append((tarballbase, 'r'))
 			for tarball, openmode in tarballs:
-				tfilekey = filekey[1:]
-				mfilekey = "%s.%s.meta" % (tfilekey, metakey)
+				mfilekey = "%s.%s.meta" % (filekey, metakey)
 				loggerdele.debug("opening %s, %s for delete..." 
 						% (tarball, openmode))
 				ftype = os.popen('file %s' % tarball)
@@ -933,12 +946,12 @@ class DELETE(ROOT):
 				ftype.close()
 				tar = tarfile.open(tarball, openmode)
 				mnames = [n for n in tar.getnames() 
-						if n[:len(tfilekey)] == tfilekey]
+						if n[:len(filekey)] == filekey]
 				tar.close()
 				if len(mnames) > 2:
 					deleted = TarfileUtils.delete(tarball, mfilekey)
 				else:
-					deleted = TarfileUtils.delete(tarball, [tfilekey, mfilekey])
+					deleted = TarfileUtils.delete(tarball, [filekey, mfilekey])
 				if deleted:
 					loggerdele.info("DELETED %s (from %s)" % (deleted, tarball))
 				return ""

@@ -244,6 +244,57 @@ class FILE(ROOT):
 		self.setHeaders(request)
 		return DeleteFile(self.node, self.config, request, filekey).deferred
 
+class HASH(ROOT):
+	""" verification of data via challenge-response """
+	def getChild(self, name, request):
+		return self
+
+	def render_GET(self, request):
+		"""
+		Just received a storage VERIFY request.
+		Response codes: 200- OK (default)
+						400- Bad Request (missing params) 
+						401- Unauthorized (ID hash, CHALLENGE, or 
+							 GROUPCHALLENGE failed) 
+		
+		[VERIFY is the most important of the trust-building ops.  Issues:
+		  1) how often do we verify.
+			a) each file
+			  A) each block of each file
+		  2) proxying hurts trust (see PROXY below)
+		The answer to #1 is, ideally, we check every node who is storing for us
+		every quanta.  But doing the accounting for keeping track of who is
+		storing for us is heavy, so instead we just want to check all of our
+		files and hope that gives sufficient coverage, on average, of the nodes
+		we store to.  But we have to put some limits on this, and the limits
+		can't be imposed by the sender (since a greedy sender can just modify
+		this), so peer nodes have to do some throttling of these types of
+		requests.  But such throttling is tricky, as the requestor must
+		decrease trust when VERIFY ops fail.  Also, since we will just randomly
+		select from our files, such a throttling scheme will reduce our
+		accuracy as we store more and more data (we can only verify a smaller
+		percentage).  Peers could enforce limits as a ratio of total data
+		stored for a node, but then the peers could act maliciously by
+		artificially lowering this number.  In summary, if we don't enforce
+		limits, misbehaving nodes could flood VERIFY requests resulting in
+		effecitve DOS attack.  If we do enforce limits, we have to watch out
+		for trust wars where both nodes end up destroying all trust between
+		them.  Possible answer: set an agreed-upon threshold a priori.  This
+		could be a hardcoded limit, or (better) negotiated between node pairs.
+		If the requestor goes over this limit, he should understand that his
+		trust will be decreased by requestee.  If he doesn't understand this,
+		his trust *should* be decreased, and if he decreases his own trust in
+		us as well, we don't care -- he's misbehaving.]
+		"""
+		loggervrfy.debug("file VERIFY, %s", request.prepath)
+		if len(request.prepath) != 2:
+			# XXX: add support for sending multiple verify ops in a single
+			# request
+			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
+			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
+		filekey = request.prepath[1]
+		self.setHeaders(request)
+		return VerifyFile(self.node, self.config, request, filekey).deferred
 
 class StoreFile(object):
 	def __init__(self, node, config, request, filekey):
@@ -656,47 +707,14 @@ class RetrieveFile(object):
 		request.finish()
 
 
-class VERIFY(ROOT):
-	"""
-	Just received a storage VERIFY request.
-	Response codes: 200- OK (default)
-	                400- Bad Request (missing params) 
-	                401- Unauthorized (ID hash, CHALLENGE, or 
-					     GROUPCHALLENGE failed) 
-	
-	[VERIFY is the most important of the trust-building ops.  Issues:
-	  1) how often do we verify.
-	    a) each file
-		  A) each block of each file
-	  2) proxying hurts trust (see PROXY below)
-	The answer to #1 is, ideally, we check every node who is storing for us
-	every quanta.  But doing the accounting for keeping track of who is storing
-	for us is heavy, so instead we just want to check all of our files and hope
-	that gives sufficient coverage, on average, of the nodes we store to.  But
-	we have to put some limits on this, and the limits can't be imposed by the
-	sender (since a greedy sender can just modify this), so peer nodes have to
-	do some throttling of these types of requests.  But such throttling is
-	tricky, as the requestor must decrease trust when VERIFY ops fail.
-	Also, since we will just randomly select from our files, such a throttling
-	scheme will reduce our accuracy as we store more and more data (we can only
-	verify a smaller percentage).  Peers could enforce limits as a ratio of
-	total data stored for a node, but then the peers could act maliciously by
-	artificially lowering this number.
-	In summary, if we don't enforce limits, misbehaving nodes could flood 
-	VERIFY requests resulting in effecitve DOS attack.  If we do enforce
-	limits, we have to watch out for trust wars where both nodes end up
-	destroying all trust between them.
-	Possible answer: set an agreed-upon threshold a priori.  This could be
-	a hardcoded limit, or (better) negotiated between node pairs.  If the
-	requestor goes over this limit, he should understand that his trust will
-	be decreased by requestee.  If he doesn't understand this, his trust 
-	*should* be decreased, and if he decreases his own trust in us as well, we
-	don't care -- he's misbehaving.]
-	"""
-	# XXX: add support for sending multiple verify ops in a single request
+class VerifyFile(object):
+	def __init__(self, node, config, request, filekey):
+		self.node = node
+		self.config = config
+		self.deferred = self.verifyFile(request, filekey)
 
 	isLeaf = True
-	def render_GET(self, request):
+	def verifyFile(self, request, filekey):
 		"""
 		A VERIFY contains a file[fragment]id, an offset, and a length.  
 		When this message is received, the given file[fragment] should be
@@ -711,7 +729,6 @@ class VERIFY(ROOT):
 		[should also enforce some idea of reasonableness on length of bytes
 		to verify]
 		"""
-		self.setHeaders(request)
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'offset', 'length')
 			params = requireParams(request, required)
@@ -737,7 +754,6 @@ class VERIFY(ROOT):
 			port = int(params['port'])
 			offset = int(params['offset'])
 			length = int(params['length'])
-			filekey = re.sub('/VERIFY', '', str(request.path))
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
 			if len(paths) > 1:
 				msg = "Bad request:"\
@@ -758,7 +774,7 @@ class VERIFY(ROOT):
 						
 	def _sendVerify(self, request, filekey, offset, length, reqKu, nodeID, 
 			meta):
-		fname = self.config.storedir+filekey
+		fname = os.path.join(self.config.storedir,filekey)
 		loggervrfy.debug("request for %s" % fname)
 		if os.path.exists(fname):
 			loggervrfy.debug("looking in regular blockfile for %s" % fname)
@@ -780,9 +796,8 @@ class VERIFY(ROOT):
 				loggervrfy.debug("looking in tarball %s..." % tarball)
 				tar = tarfile.open(tarball, openmode)
 				try:
-					tfilekey = filekey[1:]
-					tarf = tar.extractfile(tfilekey)
-					tari = tar.getmember(tfilekey)
+					tarf = tar.extractfile(filekey)
+					tari = tar.getmember(filekey)
 					# XXX: update timestamp on tarf in tarball
 					fsize = tari.size
 					if offset > fsize or (offset+length) > fsize:
@@ -798,7 +813,7 @@ class VERIFY(ROOT):
 					data = tarf.read(length)
 					tarf.close()
 					if meta:
-						mfname = "%s.%s.meta" % (tfilekey, meta[0])
+						mfname = "%s.%s.meta" % (filekey, meta[0])
 						loggervrfy.debug("looking for %s" % mfname)
 						if mfname in tar.getnames():
 							# make sure that the data is the same, if not,
@@ -810,7 +825,7 @@ class VERIFY(ROOT):
 							if meta[1] != stored_meta:
 								loggervrfy.debug("updating tarball"
 										" metadata for %s.%s" 
-										% (tfilekey, meta[0]))
+										% (filekey, meta[0]))
 								tar.close()
 								TarfileUtils.delete(tarball, mfname)
 								if openmode == 'r:gz':
@@ -828,11 +843,11 @@ class VERIFY(ROOT):
 							else:
 								loggervrfy.debug("no need to update tarball"
 										" metadata for %s.%s" 
-										% (tfilekey, meta[0]))
+										% (filekey, meta[0]))
 						else:
 							# add it
 							loggervrfy.debug("adding tarball metadata"
-									" for %s.%s" % (tfilekey, meta[0]))
+									" for %s.%s" % (filekey, meta[0]))
 							tar.close()
 							if openmode == 'r:gz':
 								tarball = TarfileUtils.gunzipTarball(tarball)

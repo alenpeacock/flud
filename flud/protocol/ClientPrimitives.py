@@ -604,7 +604,7 @@ class SENDVERIFY(REQUEST):
 		filekey = os.path.basename(filename) # XXX: filekey should be hash
 		loggervrfy.info("sending VERIFY request to %s:%s" % (host, str(port)))
 		Ku = self.node.config.Ku.exportPublicKey()
-		url = 'http://'+host+':'+str(port)+'/VERIFY/'+filekey+'?'
+		url = 'http://'+host+':'+str(port)+'/hash/'+filekey+'?'
 		url += 'nodeID='+str(self.node.config.nodeID)
 		url += '&port='+str(self.node.config.port)
 		url += "&Ku_e="+str(Ku['e'])

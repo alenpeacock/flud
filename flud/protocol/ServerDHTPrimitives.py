@@ -44,17 +44,55 @@ The children of ROOT beginning with 'k' are kademlia protocol based.
 """
 # XXX: need to do all the challenge/response jazz in the k classes
 
-class kFINDNODE(ROOT):
-	
-	isLeaf = True
+class NODES(ROOT):
+	def getChild(self, name, request):
+		return self
+
 	def render_GET(self, request):
+		logger.debug("NODES get (findnode)")
+		if len(request.prepath) != 2:
+			request.setResponseCode(http.BAD_REQUEST, "expected nodeID-key")
+			return "expected nodeID-key, got %s" % '/'.join(request.prepath)
+		key = request.prepath[1]
+		self.setHeaders(request)
+		return kFindNode(self.node, self.config, request, key).deferred
+
+class META(ROOT):
+	def getChild(self, name, request):
+		return self
+
+	def render_PUT(self, request):
+		logger.debug("META put (storeval)")
+		if len(request.prepath) != 3:
+			request.setResponseCode(http.BAD_REQUEST, "expected key/val")
+			return "expected key/val, got %s" % '/'.join(request.prepath)
+		key = request.prepath[1]
+		val = request.prepath[2]
+		self.setHeaders(request)
+		return kStoreVal(self.node, self.config, request, key, val).deferred
+
+	def render_GET(self, request):
+		logger.debug("META get (findval)")
+		if len(request.prepath) != 2:
+			request.setResponseCode(http.BAD_REQUEST, "expected key")
+			return "expected key, got %s" % '/'.join(request.prepath)
+		key = request.prepath[1]
+		self.setHeaders(request)
+		return kFindVal(self.node, self.config, request, key).deferred
+
+class kFindNode(object):
+	def __init__(self, node, config, request, key):
+		self.node = node
+		self.config = config
+		self.deferred = self.kfindNode(request, key)
+	
+	def kfindNode(self, request, key):
 		"""
 		Return the k closest nodes to the target ID from local k-routing table
 		"""
-		self.setHeaders(request)
 		self.node.DHTtstamp = time.time()
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'key')
+			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by kFINDNODE" 
@@ -72,7 +110,7 @@ class kFINDNODE(ROOT):
 			#return "{'id': '%s', 'k': %s}"\
 			#		% (self.config.nodeID,\
 			#		self.config.routing.findNode(fdecode(params['key'])))
-			kclosest = self.config.routing.findNode(fdecode(params['key']))
+			kclosest = self.config.routing.findNode(fdecode(key))
 			notclose = list(set(self.config.routing.knownExternalNodes()) 
 					- set(kclosest))
 			if len(notclose) > 0 and len(kclosest) > 1:
@@ -90,7 +128,6 @@ class kSTORE_true(ROOT):
 	# generic stores).
 	isLeaf = True
 	def render_PUT(self, request):
-		self.setHeaders(request)
 		try:
 			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'key', 'val')
 			params = requireParams(request, required)
@@ -117,7 +154,7 @@ class kSTORE_true(ROOT):
 			return "" 
 
 
-class kSTORE(ROOT):
+class kStoreVal(ROOT):
 	# XXX: To prevent abuse of the DHT layer, we impose restrictions on its 
 	#      format.  But format alone is not sufficient -- a malicious client
 	#      could still format its data in a way that is allowed and gain
@@ -145,12 +182,15 @@ class kSTORE(ROOT):
 	#      the originator.  The random approach is nice because it is the same
 	#      mechanism used by the k nodes to occasionally verify that the DHT
 	#      data is valid and should not be purged.
-	isLeaf = True
-	def render_PUT(self, request):
-		self.setHeaders(request)
+	def __init__(self, node, config, request, key, val):
+		self.node = node
+		self.config = config
+		self.deferred = self.kstoreVal(request, key, val)
+	
+	def kstoreVal(self, request, key, val):
 		self.node.DHTtstamp = time.time()
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'key', 'val')
+			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by kSTORE" 
@@ -167,9 +207,9 @@ class kSTORE(ROOT):
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])
-			fname = self.config.kstoredir+'/'+params['key']
-			md = fdecode(params['val'])
-			if not self.dataAllowed(params['key'], md, params['nodeID']):
+			fname = os.path.join(self.config.kstoredir,key)
+			md = fdecode(val)
+			if not self.dataAllowed(key, md, params['nodeID']):
 				msg = "malformed store data"
 				logger.info("bad data was: %s" % md)
 				request.setResponseCode(http.BAD_REQUEST, msg)
@@ -317,17 +357,20 @@ class kSTORE(ROOT):
 		return m1
 
 
-class kFINDVAL(ROOT):
-	isLeaf = True
-	def render_GET(self, request):
+class kFindVal(object):
+	def __init__(self, node, config, request, key):
+		self.node = node
+		self.config = config
+		self.deferred = self.kfindVal(request, key)
+	
+	def kfindVal(self, request, key):
 		"""
 		Return the value, or if we don't have it, the k closest nodes to the
 		target ID
 		"""
-		self.setHeaders(request)
 		self.node.DHTtstamp = time.time()
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'key')
+			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by kFINDVALUE" 
@@ -344,7 +387,7 @@ class kFINDVAL(ROOT):
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])
-			fname = self.config.kstoredir+'/'+params['key']	
+			fname = os.path.join(self.config.kstoredir,key)
 			if os.path.isfile(fname):
 				f = open(fname, "rb")
 				logger.info("returning data from kFINDVAL") 
@@ -364,9 +407,9 @@ class kFINDVAL(ROOT):
 				return ""
 			else:
 				# return the following if it isn't there.
-				logger.info("returning nodes from kFINDVAL for %s" % params['key'])
+				logger.info("returning nodes from kFINDVAL for %s" % key)
 				request.setHeader('Content-Type','application/x-flud-nodes')
 				return "{'id': '%s', 'k': %s}"\
 						% (self.config.nodeID,\
-						self.config.routing.findNode(fdecode(params['key'])))
+						self.config.routing.findNode(fdecode(key)))
 		

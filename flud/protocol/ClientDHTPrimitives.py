@@ -394,7 +394,7 @@ class SENDkFINDNODE(REQUEST):
 	"""
 	Makes one request to a node for its k-closest nodes closest to key
 	"""
-	def __init__(self, node, host, port, key, commandName="kFINDNODE"):
+	def __init__(self, node, host, port, key, commandName="nodes"):
 		"""
 		"""
 		logger.info("sending %s (findnode) for %s... to %s:%d" 
@@ -403,12 +403,12 @@ class SENDkFINDNODE(REQUEST):
 		host = getCanonicalIP(host)
 		REQUEST.__init__(self, host, port, node)
 		Ku = self.node.config.Ku.exportPublicKey()
-		url = 'http://'+host+':'+str(port)+'/'+self.commandName+'?'
-		url += 'nodeID='+str(self.node.config.nodeID)
+		url = 'http://'+host+':'+str(port)+'/'+self.commandName+'/'
+		url += fencode(key)
+		url += '?nodeID='+str(self.node.config.nodeID)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
 		url += '&port='+str(self.node.config.port)
-		url += "&key="+str(fencode(key))
 		self.timeoutcount = 0
 		self.deferred = defer.Deferred()
 		ConnectionQueue.enqueue((self, node, host, port, key, url))
@@ -470,13 +470,12 @@ class SENDkSTORE(REQUEST):
 		logger.info("sending kSTORE to %s:%d" % (host, port))
 		REQUEST.__init__(self, host, port, node)
 		Ku = node.config.Ku.exportPublicKey()
-		url = 'http://'+host+':'+str(port)+'/kSTORE?'
-		url += 'nodeID='+str(node.config.nodeID)
+		url = 'http://'+host+':'+str(port)+'/meta/'
+		url += fencode(key)+"/"+fencode(val)
+		url += '?nodeID='+str(node.config.nodeID)
 		url += "&Ku_e="+str(Ku['e'])
 		url += "&Ku_n="+str(Ku['n'])
 		url += '&port='+str(node.config.port)
-		url += "&key="+str(fencode(key))
-		url += "&val="+str(fencode(val)) 
 		# XXX: instead of a single key/val, protocol will take a series of
 		# vals representing the blocks of the coded file and their
 		# locations (by nodeID).  The entire thing will be stored under
@@ -530,7 +529,7 @@ class SENDkFINDVALUE(SENDkFINDNODE):
 	"""
 
 	def __init__(self, node, host, port, key):
-		SENDkFINDNODE.__init__(self, node, host, port, key, "kFINDVAL")
+		SENDkFINDNODE.__init__(self, node, host, port, key, "meta")
 		
 	def _gotResponse(self, response, factory, node, host, port, key):
 		self._checkStatus(factory.status, response, host, port)

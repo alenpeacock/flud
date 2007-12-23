@@ -1018,6 +1018,7 @@ class PROXY(ROOT):
 	charge a fee on the priority, reducing it by a small amount as they
 	forward the request.]
 	"""
+	# XXX: needs to be RESTified when implemented
 
 	isLeaf = True
 	def render_GET(self, request):

@@ -13,19 +13,6 @@ from flud.FludCrypto import FludRSA
 from flud.FludkRouting import kRouting
 from flud.fencode import fencode, fdecode
 
-""" default mapping of relative URLs """
-class CommandMap:
-	ID = 'ID' 
-	GROUPID = 'GROUPID'
-	STORE = 'STORE' 
-	RETRIEVE = 'RETRIEVE'
-	VERIFY = 'VERIFY'
-	PROXY = 'PROXY' 
-	DELETE = 'DELETE' 
-	kFINDNODE = 'kFINDNODE'
-	kFINDVAL = 'kFINDVAL'
-	kSTORE = 'kSTORE'
-
 logger = logging.getLogger('flud')
 
 CLIENTPORTOFFSET = 500
@@ -190,8 +177,6 @@ class FludConfig:
 			self.configParser.set("server","clientport",self.clientport)
 		logger.debug('port = %s' % self.port)
 		logger.debug('clientport = %s' % self.clientport)
-		logger.debug('commandmap = %s' 
-				% [v for v in dir(CommandMap) if v[0] != '_'])
 		logger.debug('trustdeltas = %s' 
 				% [v for v in dir(TrustDeltas) if v[0] != '_'])
 
@@ -338,22 +323,8 @@ class FludConfig:
 			logger.debug("no clientport specified, using default")
 			clientport = port+CLIENTPORTOFFSET 
 		
-		try:
-			commandmap = eval(self.configParser.get("server","commandmap"))
-			for i in commandmap:
-				if not hasattr(CommandMap, i):
-					logger.error("setting non-useful CommandMap field %s", i)
-				setattr(CommandMap, i, commandmap[i])
-		except:
-			logger.debug("no commandmap specified, using default")
-
-		# XXX: could also do a 'parammap'
-
 		self.configParser.set("server","port",port)
 		self.configParser.set("server","clientport",clientport)
-		self.configParser.set("server","commandmap",
-				dict((v, eval("CommandMap.%s" % v)) for v in dir(CommandMap)
-					if v[0] != '_'))
 
 		return port, clientport
 

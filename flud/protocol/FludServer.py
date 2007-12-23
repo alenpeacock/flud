@@ -19,7 +19,6 @@ from ServerPrimitives import *
 from ServerDHTPrimitives import *
 from LocalPrimitives import *
 from FludCommUtil import *
-from flud.FludConfig import CommandMap as CommandMap
 
 threadable.init()
 
@@ -37,12 +36,9 @@ class FludServer(threading.Thread):
 		self.root.putChild('ID', ID(self))     # GET (node identity)
 		self.root.putChild('file', FILE(self)) # POST, GET, and DELETE (files)
 		self.root.putChild('hash', HASH(self)) # GET (verify op)
-		self.root.putChild(CommandMap.PROXY, PROXY(self)) # currently noop
+		self.root.putChild('proxy', PROXY(self)) # currently noop
 		self.root.putChild('nodes', NODES(self))
-		#self.root.putChild(CommandMap.kFINDNODE, kFINDNODE(self))
 		self.root.putChild('meta', META(self))
-		#self.root.putChild(CommandMap.kFINDVAL, kFINDVAL(self))
-		#self.root.putChild(CommandMap.kSTORE, kSTORE(self))
 		self.site = server.Site(self.root)
 		reactor.listenTCP(self.port, self.site)
 		reactor.listenTCP(self.clientport, LocalFactory(node), 

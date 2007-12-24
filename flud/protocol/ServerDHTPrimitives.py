@@ -105,6 +105,9 @@ class kFindNode(object):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if reqKu.id() != params['nodeID']:
+				request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
+				return "requesting node's ID and public key do not match"
 			host = getCanonicalIP(request.getClientIP())
 			#return "{'id': '%s', 'k': %s}"\
 			#		% (self.config.nodeID,\
@@ -142,6 +145,9 @@ class kSTORE_true(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if reqKu.id() != params['nodeID']:
+				request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
+				return "requesting node's ID and public key do not match"
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])
@@ -203,6 +209,9 @@ class kStoreVal(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if reqKu.id() != params['nodeID']:
+				request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
+				return "requesting node's ID and public key do not match"
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])
@@ -383,6 +392,9 @@ class kFindVal(object):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if reqKu.id() != params['nodeID']:
+				request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
+				return "requesting node's ID and public key do not match"
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])

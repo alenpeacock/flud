@@ -91,11 +91,8 @@ class ROOT(Resource):
 	nodeID - the nodeID of the requestor
 	port - the port that the reqestor runs their fludserver on.
 	
-	All REQs will contain a nodeID ('nodeID'), a public key ('Ku_e', 'Ku_n'),
-	and a requestID ('reqID').	
-
-	[XXX: must be more careful about all this code -- if wrong data is sent,
-	exceptions are raised.  Put try blocks around everything.]
+	All REQs will contain a public key ('Ku_e', 'Ku_n') from which nodeID can
+	be computed, and a requestID ('reqID').	
 
 	Client Authentication works as follows: Each client request is responded to
 	with a 401 response in the header, with a challenge in the header message
@@ -109,8 +106,14 @@ class ROOT(Resource):
 	challenge response, the server has to keep some state for each client.
 	This state expires after a short time, and implies that client must make
 	requests to individual servers serially.
+
+	A node's groupIDu is the same globally for each peer, so exposing it to one
+	adversarial node means exposing it to all.  At first glance, this seems
+	bad, but groupIDu is useless by itself -- in order to use it, a node must
+	also be able to answer challenges based on Kr.  In other words, the
+	security of groupIDu in this setting depends on Kr.
 	"""
-	# FUTURE: might want to switch to nevow's rend.Page as parent...
+	# XXX: web2 will let us do cool streaming things someday
 
 	def __init__(self, fludserver):
 		"""
@@ -183,6 +186,8 @@ class ID(ROOT):
 class FILE(ROOT):
 	""" data storage file operations: POST, GET, DELETE """
 	def getChild(self, name, request):
+		if len(request.prepath) != 2:
+			return Resource.getChild(self, name, request)
 		return self
 
 	def render_POST(self, request):
@@ -202,9 +207,6 @@ class FILE(ROOT):
 		reference-listed (reference count with owners) by the BlockFile object.
 		"""
 		loggerstor.debug("file POST, %s", request.prepath)
-		if len(request.prepath) != 2:
-			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
-			return "expected file/[filekey], got %s" % request.prepath.join('/')
 		filekey = request.prepath[1]
 		self.setHeaders(request)
 		return StoreFile(self.node, self.config, request, filekey).deferred
@@ -219,9 +221,6 @@ class FILE(ROOT):
 							 GROUPCHALLENGE failed) 
 		"""
 		loggerstor.debug("file GET, %s", request.prepath)
-		if len(request.prepath) != 2:
-			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
-			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
 		filekey = request.prepath[1]
 		self.setHeaders(request)
 		return RetrieveFile(self.node, self.config, request, filekey).deferred
@@ -237,9 +236,6 @@ class FILE(ROOT):
 							block) 
 		"""
 		loggerstor.debug("file DELETE, %s", request.prepath)
-		if len(request.prepath) != 2:
-			request.setResponseCode(http.BAD_REQUEST, "expected filekey")
-			return "expected file/[filekey], got %s" % '/'.join(request.prepath)
 		filekey = request.prepath[1]
 		self.setHeaders(request)
 		return DeleteFile(self.node, self.config, request, filekey).deferred

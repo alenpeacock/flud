@@ -46,13 +46,12 @@ The children of ROOT beginning with 'k' are kademlia protocol based.
 
 class NODES(ROOT):
 	def getChild(self, name, request):
+		if len(request.prepath) != 2:
+			return Resource.getChild(self, name, request)
 		return self
 
 	def render_GET(self, request):
 		logger.debug("NODES get (findnode)")
-		if len(request.prepath) != 2:
-			request.setResponseCode(http.BAD_REQUEST, "expected nodeID-key")
-			return "expected nodeID-key, got %s" % '/'.join(request.prepath)
 		key = request.prepath[1]
 		self.setHeaders(request)
 		return kFindNode(self.node, self.config, request, key).deferred

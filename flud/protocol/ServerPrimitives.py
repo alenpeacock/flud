@@ -88,12 +88,14 @@ class ROOT(Resource):
 	Notes on parameters common to most requests:
 	Ku_e - the public key RSA exponent (usually 65537L, but can be other values)
 	Ku_n - the public key RSA modulus.
-	nodeID - the nodeID of the requestor
 	port - the port that the reqestor runs their fludserver on.
 	
 	All REQs will contain a public key ('Ku_e', 'Ku_n') from which nodeID can
-	be computed, and a requestID ('reqID').	
-
+	be derived, and a requestID ('reqID').  For the ops that don't require
+	authentication (currently ID and dht ops), it may be convenient to also
+	require nodeID (in this case, it is a good idea to check nodeID against
+	Ku). 
+	
 	Client Authentication works as follows: Each client request is responded to
 	with a 401 response in the header, with a challenge in the header message
 	and repeated in the body.  The client reissues the response, filling the
@@ -154,6 +156,7 @@ class ID(ROOT):
 		Response codes: 200- OK (default)
 						204- No Content (returned in case of error or not
 							 wanting to divulge ID)
+						400- Bad Request (missing params or bad requesting ID)
 		"""
 		self.setHeaders(request)
 		try:
@@ -173,6 +176,9 @@ class ID(ROOT):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			if reqKu.id() != params['nodeID']:
+				request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
+				return "requesting node's ID and public key do not match"
 			host = getCanonicalIP(request.getClientIP())
 			updateNode(self.node.client, self.config, host,
 					int(params['port']), reqKu, params['nodeID'])
@@ -300,7 +306,7 @@ class StoreFile(object):
 
 	def storeFile(self, request, filekey):
 		try:
-			required = ('size', 'nodeID', 'Ku_e', 'Ku_n', 'port')
+			required = ('size', 'Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by STORE" 
@@ -308,26 +314,25 @@ class StoreFile(object):
 			request.setResponseCode(http.BAD_REQUEST, "Bad Request")
 			return msg 
 		else:
-			loggerstor.info("received STORE request from %s..." 
-					% params['nodeID'][:10])
-
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
+			loggerstor.info("received STORE request from %s:%s", host, port)
+
 			requestedSize = int(params['size'])
 			reqKu = {}
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			nodeID = reqKu.id()
 
 			#if requestedSize > 10:
 			#	msg = "unwilling to enter into storage relationship"
 			#	request.setResponseCode(http.PAYMENT_REQUIRED, msg) 
 			#	return msg
 
-			return authenticate(request, reqKu, params['nodeID'], 
-					host, int(params['port']), self.node.client, self.config,
-					self._storeFile, request, filekey, reqKu, 
-					params['nodeID'])
+			return authenticate(request, reqKu, host, port, 
+					self.node.client, self.config,
+					self._storeFile, request, filekey, reqKu, nodeID)
 
 	def _storeFile(self, request, filekey, reqKu, nodeID):
 		# [XXX: memory management is not happy here.  might want to look at
@@ -520,7 +525,7 @@ class RetrieveFile(object):
 
 	def retrieveFile(self, request, filekey):
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
+			required = ('Ku_e', 'Ku_n', 'port')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by RETRIEVE" 
@@ -528,10 +533,10 @@ class RetrieveFile(object):
 			request.setResponseCode(http.BAD_REQUEST, "Bad Request")
 			return msg 
 		else:
-			loggerretr.info("received RETRIEVE request for %s from %s..."
-					% (request.path, params['nodeID'][:10]))
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
+			loggerretr.info("received RETRIEVE request for %s from %s:%s...",
+					request.path, host, port)
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
 			if len(paths) > 1:
 				msg = "filekey contains illegal path seperator tokens."
@@ -550,8 +555,8 @@ class RetrieveFile(object):
 			else:
 				returnMeta = True
 
-			return authenticate(request, reqKu, params['nodeID'], 
-					host, int(params['port']), self.node.client, self.config,
+			return authenticate(request, reqKu, host, int(params['port']), 
+					self.node.client, self.config,
 					self._sendFile, request, filekey, reqKu, returnMeta)
 			
 
@@ -726,7 +731,7 @@ class VerifyFile(object):
 		to verify]
 		"""
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'offset', 'length')
+			required = ('Ku_e', 'Ku_n', 'port', 'offset', 'length')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by VERIFY" 
@@ -735,8 +740,10 @@ class VerifyFile(object):
 			loggervrfy.debug("BAD REQUEST")
 			return msg 
 		else:
-			loggervrfy.log(logging.INFO, "received VERIFY request from %s..."
-					% params['nodeID'])
+			host = getCanonicalIP(request.getClientIP())
+			port = int(params['port'])
+			loggervrfy.log(logging.INFO,
+					"received VERIFY request from %s:%s...", host, port)
 			if 'meta' in request.args:
 				params['metakey'] = request.args['metakey'][0]
 				params['meta'] = fdecode(request.args['meta'][0])
@@ -746,8 +753,6 @@ class VerifyFile(object):
 			else:
 				meta = None
 
-			host = getCanonicalIP(request.getClientIP())
-			port = int(params['port'])
 			offset = int(params['offset'])
 			length = int(params['length'])
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
@@ -761,11 +766,12 @@ class VerifyFile(object):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			nodeID = reqKu.id()
 
-			return authenticate(request, reqKu, params['nodeID'], 
-					host, int(params['port']), self.node.client, self.config,
+			return authenticate(request, reqKu, host, port, 
+					self.node.client, self.config,
 					self._sendVerify, request, filekey, offset, length, reqKu,
-					params['nodeID'], meta)
+					nodeID, meta)
 			
 						
 	def _sendVerify(self, request, filekey, offset, length, reqKu, nodeID, 
@@ -908,7 +914,7 @@ class DeleteFile(object):
 
 	def deleteFile(self, request, filekey):
 		try:
-			required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'metakey')
+			required = ('Ku_e', 'Ku_n', 'port', 'metakey')
 			params = requireParams(request, required)
 		except Exception, inst:
 			msg = inst.args[0] + " in request received by DELETE" 
@@ -916,11 +922,11 @@ class DeleteFile(object):
 			request.setResponseCode(http.BAD_REQUEST, "Bad Request")
 			return msg 
 		else:
-			loggerdele.debug("received DELETE request for %s from %s..."
-					% (request.path, params['nodeID'][:10]))
-
 			host = getCanonicalIP(request.getClientIP())
 			port = int(params['port'])
+			loggerdele.debug("received DELETE request for %s from %s:%s"
+					% (request.path, host, port))
+
 			paths = [p for p in filekey.split(os.path.sep) if p != '']
 			if len(paths) > 1:
 				msg = "filekey contains illegal path seperator tokens."
@@ -932,12 +938,12 @@ class DeleteFile(object):
 			reqKu['e'] = long(params['Ku_e'])
 			reqKu['n'] = long(params['Ku_n'])
 			reqKu = FludRSA.importPublicKey(reqKu)
+			nodeID = reqKu.id()
 			metakey = params['metakey']
 
-			return authenticate(request, reqKu, params['nodeID'], 
-					host, int(params['port']), self.node.client, self.config,
-					self._deleteFile, request, filekey, metakey, reqKu, 
-					params['nodeID'])
+			return authenticate(request, reqKu, host, port, 
+					self.node.client, self.config,
+					self._deleteFile, request, filekey, metakey, reqKu, nodeID)
 
 	def _deleteFile(self, request, filekey, metakey, reqKu, reqID):
 		fname = os.path.join(self.config.storedir, filekey)
@@ -1022,19 +1028,12 @@ class PROXY(ROOT):
 		result = "NOT YET IMPLEMENTED"
 		return result
 	
-def authenticate(request, reqKu, reqID, host, port, client, config, callable, 
+def authenticate(request, reqKu, host, port, client, config, callable, 
 		*callargs):
 	# 1- make sure that reqKu hashes to reqID
 	# 2- send a challenge/groupchallenge to reqID (encrypt with reqKu)
 	challengeResponse = request.getUser()
 	groupResponse = request.getPassword()
-	if reqKu.id() != reqID:
-		msg = "Ku %s does not hash to nodeID %s, failing request" \
-				% (reqKu.id(), reqID)
-		loggerauth.info(msg)
-		# XXX: update trust, routing
-		request.setResponseCode(http.UNAUTHORIZED, "Unauthorized: %s" % msg)
-		return msg
 
 	if not challengeResponse or not groupResponse:
 		loggerauth.info("returning challenge for request from %s:%d" \
@@ -1046,7 +1045,7 @@ def authenticate(request, reqKu, reqID, host, port, client, config, callable,
 			if groupResponse == hashstring(
 					str(reqKu.exportPublicKey())
 					+str(config.groupIDr)): 
-				updateNode(client, config, host, port, reqKu, reqID)
+				updateNode(client, config, host, port, reqKu, reqKu.id())
 				return callable(*callargs)
 			else:
 				err = "Group Challenge Failed"

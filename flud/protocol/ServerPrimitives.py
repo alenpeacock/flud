@@ -79,7 +79,7 @@ taken to respond.
 # XXX: disallow requests originating from self.
 
 
-fludproto_ver = '0.1'
+fludproto_ver = '0.2'
 
 challengelength = 40  # XXX: is 40 bytes sufficient?
 

@@ -9,6 +9,7 @@ FludNode is the process that runs to talk with other nodes in the flud backup ne
 
 import sys
 from flud.FludNode import FludNode
+from flud.protocol.FludCommUtil import getCanonicalIP
 
 if __name__ == '__main__':
 	from twisted.python import failure

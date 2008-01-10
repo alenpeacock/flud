@@ -120,12 +120,12 @@ class FludConfig:
 				logger.warn("cannot determine FLUDHOME.")
 				logger.warn("Please set HOME or FLUDHOME environment variable")
 
-		if os.path.isdir(self.fludhome) == False:
+		if not os.path.isdir(self.fludhome):
 			os.mkdir(self.fludhome, 0700)
 
 		self.fludconfig = self.fludhome+"/flud.conf"
 		self.configParser = ConfigParser.ConfigParser()
-		if os.path.isfile(self.fludconfig) == False:
+		if not os.path.isfile(self.fludconfig):
 			conffile = file(self.fludconfig, "w")
 		else:
 			conffile = file(self.fludconfig, "r")
@@ -184,25 +184,25 @@ class FludConfig:
 				long(self.nodeID, 16), self.Ku.exportPublicKey()['n']))
 
 		self.storedir, self.generosity, self.minoffer = self._getStoreConf()
-		if os.path.isdir(self.storedir) == False:
+		if not os.path.isdir(self.storedir):
 			os.mkdir(self.storedir)
 			os.chmod(self.storedir, 0700)
 		logger.debug('storedir = %s' % self.storedir)
 
 		self.kstoredir = self._getkStoreConf()
-		if os.path.isdir(self.kstoredir) == False:
+		if not os.path.isdir(self.kstoredir):
 			os.mkdir(self.kstoredir)
 			os.chmod(self.kstoredir, 0700)
 		logger.debug('kstoredir = %s' % self.kstoredir)
 
 		self.clientdir = self._getClientConf()
-		if os.path.isdir(self.clientdir) == False:
+		if not os.path.isdir(self.clientdir):
 			os.mkdir(self.clientdir)
 			os.chmod(self.clientdir, 0700)
 		logger.debug('clientdir = %s' % self.clientdir)
 
 		self.metadir, self.metamaster = self._getMetaConf()
-		if os.path.isdir(self.metadir) == False:
+		if not os.path.isdir(self.metadir):
 			os.mkdir(self.metadir)
 			os.chmod(self.metadir, 0700)
 		logger.debug('metadir = %s' % self.metadir)
@@ -230,7 +230,7 @@ class FludConfig:
 		"""
 		Returns logging configuration: logfile and loglevel 
 		"""
-		if (self.configParser.has_section("logging") == False):
+		if not self.configParser.has_section("logging"):
 			self.configParser.add_section("logging")
 		
 		try:
@@ -260,7 +260,7 @@ class FludConfig:
 		# get the keys and IDs from the config file.
 		# If these values don't exist, generate a pub/priv key pair, nodeID,
 		# and groupIDs.
-		if (self.configParser.has_section("identification") == False):
+		if not self.configParser.has_section("identification"):
 			self.configParser.add_section("identification")
 		
 		try:
@@ -307,7 +307,7 @@ class FludConfig:
 		"""
 		Returns server configuration: port number
 		"""
-		if (self.configParser.has_section("server") == False):
+		if not self.configParser.has_section("server"):
 			self.configParser.add_section("server")
 		
 		try:
@@ -332,7 +332,7 @@ class FludConfig:
 		"""
 		Returns directory configuration
 		"""
-		if (configParser.has_section(section) == False):
+		if not configParser.has_section(section):
 			configParser.add_section(section)
 		
 		try:
@@ -361,6 +361,8 @@ class FludConfig:
 		except:
 			logger.debug("no trustdeltas specified, using default")
 
+		if not self.configParser.has_section("client"):
+			self.configParser.add_section("client")
 		self.configParser.set("client", "trustdeltas",
 				dict((v, eval("TrustDeltas.%s" % v)) for v in dir(TrustDeltas)
 					if v[0] != '_'))
@@ -436,7 +438,7 @@ class FludConfig:
 		the config file's "=" operator be a valid python type, as eval()
 		will be invoked on it
 		"""
-		if (configParser.has_section(section) == False):
+		if not configParser.has_section(section):
 			configParser.add_section(section)
 		
 		try:
@@ -464,7 +466,7 @@ class FludConfig:
 		"""
 		if mygroup == None:
 			mygroup = self.groupIDu
-		if self.nodes.has_key(nodeID) == False:
+		if not self.nodes.has_key(nodeID):
 			self.nodes[nodeID] = {'host': host, 'port': port, 
 					'Ku': Ku.exportPublicKey(), 'mygroup': mygroup}
 			#logger.log(logging.DEBUG, "nodes: " % str(self.nodes))

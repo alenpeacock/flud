@@ -1,3 +1,21 @@
+flud (0.2.0-1ubuntu1) gutsy; urgency=low
+
+  * 0.2 release 
+
+ -- alen <alen@ubuntu-box>  Wed, 09 Jan 2008 22:15:39 -0700
+
+flud (0.1.1-1) gutsy; urgency=low
+
+  * fixes for fludrules.init (first run of GUI)
+
+ -- alen <alen@alen-laptop>  Sat, 01 Dec 2007 16:17:17 -0700
+
+flud (0.1.0-1ubuntu) gutsy; urgency=low
+
+  * 0.1.0
+
+ -- alen <alen@ubuntu-box>  Tue, 27 Nov 2007 02:08:05 -0700
+
 flud (0.0.2-1) unstable; urgency=low
 
   * Initial debs

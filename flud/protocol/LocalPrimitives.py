@@ -23,10 +23,9 @@ from Crypto.Cipher import AES
 from flud.FludCrypto import FludRSA, hashstring, generateRandom
 import flud.FludkRouting
 from flud.fencode import fencode, fdecode
-from flud.FludFileOperations import *
+import flud.FludFileOperations as FileOps
 
-from FludCommUtil import *
-from FludServer import *
+import flud.protocol.ServerPrimitives as ServerPrimitives
 
 logger = logging.getLogger("flud.local.server")
 
@@ -57,13 +56,13 @@ class LocalProtocol(basic.LineReceiver):
 		#print "got command '%s'" % command
 		if command == "PUTF":
 			logger.debug("PUTF %s", fname);
-			return StoreFile(self.factory.node, fname).deferred
+			return FileOps.StoreFile(self.factory.node, fname).deferred
 		elif command == "GETI":
 			logger.debug("GETI %s", fname);
-			return RetrieveFile(self.factory.node, fname).deferred
+			return FileOps.RetrieveFile(self.factory.node, fname).deferred
 		elif command == "GETF":
 			logger.debug("GETF %s", fname);
-			return RetrieveFilename(self.factory.node, fname).deferred
+			return FileOps.RetrieveFilename(self.factory.node, fname).deferred
 		elif command == "FNDN":
 			logger.debug("FNDN %s" % fname);
 			try: 
@@ -140,10 +139,10 @@ class LocalProtocol(basic.LineReceiver):
 			return defer.succeed(self.factory.config.master)
 		elif command == "GETM":
 			logger.debug("GETM")
-			return RetrieveMasterIndex(self.factory.node).deferred
+			return FileOps.RetrieveMasterIndex(self.factory.node).deferred
 		elif command == "PUTM":
 			logger.debug("PUTM")
-			return UpdateMasterIndex(self.factory.node).deferred
+			return FileOps.UpdateMasterIndex(self.factory.node).deferred
 		else:
 			#print "fname is '%s'" % fname
 			host = fname[:fname.find(':')]
@@ -282,7 +281,8 @@ class LocalFactory(protocol.ServerFactory):
 		self.config = node.config
 
 	def sendChallenge(self):
-		self.challenge = fencode(generateRandom(challengelength))
+		self.challenge = fencode(generateRandom(
+				ServerPrimitives.challengelength))
 		echallenge = self.config.Ku.encrypt(self.challenge)[0]
 		echallenge = fencode(echallenge)
 		return echallenge

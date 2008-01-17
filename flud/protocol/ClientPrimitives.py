@@ -26,6 +26,8 @@ loggerdele = logging.getLogger("flud.client.op.dele")
 loggervrfy = logging.getLogger("flud.client.op.vrfy")
 loggerauth = logging.getLogger("flud.client.op.auth")
 
+CLIENT_PROTOCOL_VERSION = '0.2'
+
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
 TARFILE_TO = 2        # timeout for checking aggregated tar files
 
@@ -61,7 +63,7 @@ class REQUEST(object):
 			self.node = node
 			self.config = node.config
 		self.headers = {'Fludprotocol': fludproto_ver,
-				'User-Agent': 'FludClient 0.1'}
+				'User-Agent': 'FludClient %s' % CLIENT_PROTOCOL_VERSION}
 
 
 class SENDGETID(REQUEST):

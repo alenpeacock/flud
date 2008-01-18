@@ -43,7 +43,7 @@ def testUnexpectedSuccess(res, message, node):
 	raise "bad"
 
 def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
-	if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
+	if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
 		print "%s" % msg
 		# the end
 	else:
@@ -136,7 +136,7 @@ def testVERIFYNotFound(nKu, node, host, port):
 	return deferred
 
 def testRETRIEVEIllegalPathFailed(failure, msg, node, nKu, host, port):
-	if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
+	if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
 		print "%s" % msg
 		return testVERIFYNotFound(nKu, node, host, port)
 	else:

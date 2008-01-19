@@ -15,7 +15,6 @@ from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
-from flud.FludConfig import PeerFailures
 import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
@@ -138,10 +137,9 @@ class StoreFile:
 		self.routing = self.config.routing
 		self.metadir = self.config.metadir
 		self.parentcodedir = self.config.clientdir # XXX: clientdir?
-		#self.nodeChoices = self.routing.knownExternalNodes()
 		# ask for code_m + X nodes (we prefer a pool slightly larger than
-		# code_m).  XXX: 20 is magic
-		self.nodeChoices = self.config.getOrderedNodes(code_m+20)
+		# code_m).  XXX: X=10 is magic
+		self.nodeChoices = self.config.getPreferredNodes(code_m+10)
 		self.usedNodes = {}
 
 		self.deferred = self._storeFile()
@@ -315,7 +313,7 @@ class StoreFile:
 		if not self.nodeChoices:
 			#self.nodeChoices = self.routing.knownExternalNodes()
 			# XXX: instead of asking for code_k, ask for code_k - still needed
-			self.nodeChoices = self.config.getOrderedNodes(code_k, 
+			self.nodeChoices = self.config.getPreferredNodes(code_k, 
 					self.usedNodes.keys())
 			logger.warn(self.ctx("asked for more nodes, %d nodes found", 
 				len(self.nodeChoices)))
@@ -354,7 +352,7 @@ class StoreFile:
 			# value in _storeBlock().
 			d.addErrback(self._storeFileErr, "couldn't store block %s" 
 					% fencode(hash), lambda: self.config.modifyReputation(nID,
-						TrustDeltas.PUT_FAIL_PENALTY, PeerFailures.PUT))
+						TrustDeltas.PUT_FAIL))
 			return d
 		else:
 			self.usedNodes[nID] = True
@@ -363,14 +361,14 @@ class StoreFile:
 			d = defer.Deferred()
 			d.addErrback(self._storeFileErr, "couldn't store block %s"
 					% fencode(hash), lambda: self.config.modifyReputation(nID,
-						TrustDeltas.PUT_FAIL_PENALTY, PeerFailures.PUT))
+						TrustDeltas.PUT_FAIL))
 			d.errback()
 			return d
 
 	def _blockStored(self, result, nID, i, blockhash, location):
 		self.usedNodes[nID] = True
 		logger.debug(self.ctx("_blcokStored %s", fencode(blockhash)))
-		self.config.modifyReputation(location, TrustDeltas.PUT_SUCCEED_REWARD)
+		self.config.modifyReputation(location, TrustDeltas.PUT_SUCCEED)
 		self.blockMetadata[(i, blockhash)] = location
 		return fencode(blockhash)
 
@@ -443,8 +441,7 @@ class StoreFile:
 					seg, segl, nID, noopVerify)
 			deferred.addErrback(self._storeFileErr, 
 					"couldn't find node %s... for VERIFY" % ('%x' % nID)[:8],
-					self.config.modifyReputation(nID, 
-						TrustDeltas.VRFY_FAIL_PENALTY, PeerFailures.VRFY))
+					self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL))
 			dlist.append(deferred)
 		dl = defer.DeferredList(dlist)
 		#dl.addCallback(self._storeMetadata)
@@ -517,8 +514,7 @@ class StoreFile:
 			return fencode(seg)
 
 	def _checkVerifyErr(self, failure, nID, i, seg, sfile, mfile, hash):
-		self.config.modifyReputations(nID, TrustDeltas.VRFY_FAIL_PENALTY,
-				PeerFailures.VRFY)
+		self.config.modifyReputations(nID, TrustDeltas.VRFY_FAIL)
 		logger.debug(self.ctx("Couldn't VERIFY: %s", failure.getErrorMessage()))
 		logger.info(self.ctx("Couldn't VERIFY %s, performing STORE", 
 			fencode(seg)))
@@ -601,6 +597,9 @@ class StoreFile:
 			functor=None):
 		if functor:
 			functor()
+		if self.eK not in self.currentOps:
+			logger.warn(self.ctx("no %s in currentOps for StoreFile", self.eK))
+			raise failure
 		(d, counter) = self.currentOps[self.eK]
 		counter = counter - 1
 		if counter == 0:
@@ -721,8 +720,7 @@ class RetrieveFile:
 
 	def _findNodeErr(self, failure, msg, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.config.modifyReputation(id, TrustDeltas.FNDN_FAIL_PENALTY,
-				PeerFailures.FNDN)
+		self.config.modifyReputation(id, TrustDeltas.FNDN_FAIL)
 
 	def _retrieveBlock(self, kdata, block, id):
 		#print type(kdata)
@@ -751,7 +749,7 @@ class RetrieveFile:
 	
 	def _retrievedBlock(self, msg, nID, block, mkey):
 		logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
-		self.config.modifyReputation(nID, TrustDeltas.GET_SUCCEED_REWARD)
+		self.config.modifyReputation(nID, TrustDeltas.GET_SUCCEED)
 		blockname = [f for f in msg if f[-len(block):] == block][0]
 		expectedmeta = "%s.%s.meta" % (block, mkey)
 		metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
@@ -764,8 +762,7 @@ class RetrieveFile:
 
 	def _retrieveBlockErr(self, failure, nID, message, host, port, id):
 		logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-		self.config.modifyReputation(nID, TrustDeltas.GET_FAIL_PENALTY,
-				PeerFailures.GET)
+		self.config.modifyReputation(nID, TrustDeltas.GET_FAIL)
 		# don't propogate the error -- one block doesn't cause the file
 		# retrieve to fail.
 

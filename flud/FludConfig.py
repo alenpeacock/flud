@@ -535,20 +535,26 @@ class FludConfig:
 		numitems = len(items)
 		logger.debug("%d items in reps" % numitems)
 		if throttle:
-			# XXX: refactor; the only difference between the two branches of
-			# 'if throttle' is the addition of 'and k not in self.throttled' to
-			# the list comprehensions
+
+			now = int(time.time())
+			for t in self.throttled:
+				if self.throttled[t] < now:
+					self.throttled.pop(t)
+
 			if exclude:
-				items = [(v,k) for (k,v) in items if k not in exclude 
-						and k not in self.throttled]
+				items = [(v,k) for (k,v) in items if k not in throttle and 
+						k not in exclude]
 				if num and len(items) < num and numitems >= num:
-					exitems = [(v,k) for (k,v) in items if k in exclude 
-							and k not in self.throttled]
+					exitems = [(v,k) for (k,v) in items if k not in throttle 
+							and k in exclude]
 					items += exitems[num-len(item):]
 				logger.debug("%d items now in reps" % len(items))
 			else:
-				items = [(v,k) for (k,v) in items and k not in self.throttled]
+				items = [(v,k) for (k,v) in items if k not in throttle]
+		
 		else:
+			# XXX: refactor; 'if exclude else' is same as above, but without
+			# the 'if k not in throttle' bits
 			if exclude:
 				items = [(v,k) for (k,v) in items if k not in exclude]
 				if num and len(items) < num and numitems >= num:
@@ -557,6 +563,7 @@ class FludConfig:
 				logger.debug("%d items now in reps" % len(items))
 			else:
 				items = [(v,k) for (k,v) in items]
+
 		items.sort()
 		items.reverse()
 		items = [(k,v) for (v,k) in items]

@@ -237,8 +237,12 @@ class LocalProtocol(basic.LineReceiver):
 				nodes = []
 				for n in nodetups:
 					node = list(n)
-					if self.factory.config.reputations.has_key(n[2]):
+					if n[2] in self.factory.config.reputations:
 						node.append(self.factory.config.reputations[n[2]])
+					else:
+						node.append(0)
+					if n[2] in self.factory.config.throttled:
+						node.append(self.factory.config.throttled[n[2]])
 					else:
 						node.append(0)
 					nodes.append(tuple(node))

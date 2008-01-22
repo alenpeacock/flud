@@ -81,7 +81,7 @@ class FludRSA(RSA.RSAobj):
 	generate = staticmethod(generate)
 
 
-def generateKeys(len=1024):
+def generateKeys(len=2048):
 	fludkey = FludRSA.generate(len)
 	return fludkey.publickey(), fludkey.privatekey()
 
@@ -150,7 +150,7 @@ def hashcash(match, len, timestamp=False):
 
 # XXX: should move all testing to doctest
 if __name__ == '__main__':
-	fludkey = FludRSA.generate(1024)
+	fludkey = FludRSA.generate()
 	print "fludkey (pub) is: "+str(fludkey.exportPublicKey())
 	print "fludkey (priv) is: "+str(fludkey.exportPrivateKey())
 	print ""

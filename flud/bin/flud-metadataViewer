@@ -48,7 +48,7 @@ if __name__ == "__main__":
 	if raw:
 		print data
 	else:
-		m = data.pop('m')
+		m = data.pop('k')
 		n = data.pop('n')
 		print "encoded %d/%d" % (m, n)
 		for (i, h) in data:

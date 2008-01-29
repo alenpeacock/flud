@@ -661,6 +661,7 @@ class RetrieveFile:
 
 	def _findFileErr(self, failure, message, raiseException=True):
 		logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+		logger.debug(self.ctx("%s" % (failure.getTraceback(),)))
 		if raiseException:
 			return failure
 
@@ -685,24 +686,67 @@ class RetrieveFile:
 		self.decoded = False
 		return self._getSomeBlocks(code_k)
 
+	def _orderNodes(self, meta):
+		def score(k, node):
+			logger.debug(self.ctx("scoring node %s" % node))
+			v = (k, self.config.reputations[node] \
+							if node in self.config.reputations \
+							else TrustDeltas.INITIAL_SCORE)
+			if node in self.config.throttled \
+					and self.config.throttled[node] > curtime:
+				v = (k, TrustDeltas.NEGATIVE_CAP)
+			return v
+
+		keys = meta.keys()
+		r = []
+		logger.info(self.ctx("_orderNodes"))
+		curtime = int(time.time())
+		for k in keys:
+			logger.debug(self.ctx("thinkin bout key %s" % str(k)))
+			node = meta[k]
+			if isinstance(node, list):
+				# score it according to the highest scored node
+				v = (k, TrustDeltas.NEGATIVE_CAP)
+				for n in node:
+					newv = score(k, n)
+					if newv[1] > v[1]:
+						v = newv
+				r.append(v)
+			else:
+				r.append(score(k, node))
+		logger.debug(self.ctx("done scoring, now sorting"))
+		r.sort(lambda x,y:cmp(x[1],y[1]))
+		return keys
+
 	def _getSomeBlocks(self, reqs=code_k):
 		tries = 0
 		if reqs > len(self.meta):
 			reqs = len(self.meta)
 		dlist = []
+		logger.debug(self.ctx("about to order nodes"))
+		keys = self._orderNodes(self.meta)
+		logger.debug(self.ctx("keys are now: %s" % str(keys)))
 		for i in range(reqs):
-			c = random.choice(self.meta.keys())
-			block = fencode(c[1])
-			id = self.meta[c]
+			#c = random.choice(self.meta.keys())
+			choice = keys.pop(0)
+			logger.info(self.ctx("choice is %s" % str(choice)))
+			block = fencode(choice[1])
+			id = self.meta[choice]
 			if isinstance(id, list):
 				logger.info(self.ctx(
 					"multiple location choices, choosing one randomly."))
 				id = random.choice(id)
-				# XXX: for now, this just picks one of the alternatives at
-				#      random.  If the chosen one fails, should try each of the
-				#      others until it works or exhausts the list
-			#logger.info(self.ctx("retrieving %s from %s" 
-			#		% (block, fencode(id))))
+				# If the chosen one fails, try each of the others until
+				# it works or exhausts the list (thus the keys.insert bit)
+				self.meta[choice].remove(id)
+				if len(self.meta[choice]) == 0:
+					#self.meta.pop(choice)
+					pass
+				else:
+					keys.insert(0,choice)
+			else:
+				#self.meta.pop(choice)
+				pass
 			logger.info(self.ctx("retrieving %s from %s" % (block, id)))
 			# look up nodes by id, then do a retrieve.
 			deferred = self.node.client.kFindNode(id) 
@@ -711,7 +755,7 @@ class RetrieveFile:
 					"couldn't find node %s for block %s" % (fencode(id), block),
 					id)
 			dlist.append(deferred)
-			self.meta.pop(c)
+			self.meta.pop(choice)
 			tries = tries + 1
 			if tries >= reqs:
 				break;
@@ -823,7 +867,8 @@ class RetrieveFile:
 		return result
 
 	def _decodeError(self, err):
-		logger.warn(self.ctx("could not decode: %s", err))
+		logger.warn(self.ctx("could not decode: %s", str(err)))
+		logger.debug(self.ctx("%s", (err.getTraceback(),)))
 		return err
 
 	def _decodeDone(self, decoded, metadecoded):

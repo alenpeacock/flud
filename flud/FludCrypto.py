@@ -76,7 +76,7 @@ class FludRSA(RSA.RSAobj):
 		return FludRSA(pkey)
 	importPrivateKey = staticmethod(importPrivateKey)
 
-	def generate(keylength):
+	def generate(keylength=2048):
 		return FludRSA(RSA.generate(keylength, FludRSA.rand.get_bytes))
 	generate = staticmethod(generate)
 
@@ -150,7 +150,7 @@ def hashcash(match, len, timestamp=False):
 
 # XXX: should move all testing to doctest
 if __name__ == '__main__':
-	fludkey = FludRSA.generate()
+	fludkey = FludRSA.generate(2048)
 	print "fludkey (pub) is: "+str(fludkey.exportPublicKey())
 	print "fludkey (priv) is: "+str(fludkey.exportPrivateKey())
 	print ""
@@ -172,13 +172,17 @@ if __name__ == '__main__':
 	print "ciphertext is: "+str(ciphertext)
 	plaintext2 = fludkeyPriv.decrypt(ciphertext)
 	print "decrypted plaintext is: "+plaintext2
+	assert plaintext2==plaintext
+
 	randstring = str(generateRandom(80))
 	print "80 bytes of random data: '"+binascii.hexlify(randstring)
+	data1=randstring
 
+	# leading zeroes get lost, since encryption treats the data as a number
+	#data1='\x00\x00\x00\x1e4%`K\xef\xf6\xdd\x8a\x0eUP\x7f\xb0G\x1d\xb9\xe4\x82\x11n\n\xff\x1a\xc9\x013\xe9\x8e\x99\xb0]M@y\x86l\xb3l'
 
-	data1='\x00\x1e4%`K\xef\xf6\xdd\x8a\x0eUP\x7f\xb0G\x1d\xb9\xe4\x82\x11n\n\xff\x1a\xc9\x013\xe9\x8e\x99\xb0]M@y\x86l\xb3l'
 	edata1=fludkeyPub.encrypt(data1)[0]
 	data2=fludkeyPriv.decrypt(edata1)
 	print binascii.hexlify(data1)
 	print binascii.hexlify(data2)
-	print data1 == data2
+	assert data1 == data2

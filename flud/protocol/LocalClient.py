@@ -127,8 +127,8 @@ class LocalClient(LineReceiver):
 			response, data = data.split(status, 1)
 			logger.debug("%s: failure" % command)
 			if self.factory.pending.has_key(command):
-				if not self.factory.pending[command].has_key(data):
-					print "data key is '%s'" % data
+				if data not in self.factory.pending[command]:
+					#print "data key is '%s'" % data
 					print "pending is '%s'" % self.factory.pending[command]
 					if len(self.factory.pending[command]):
 						d = self.factory.pending[command].popitem()

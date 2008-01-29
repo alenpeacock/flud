@@ -161,9 +161,10 @@ class StoreFile:
 		# 2: create filesystem metadata locally.
 		sbody = filemetadata(self.filename)
 		sbody = fencode(sbody)
+		cryptSize = (self.Ku.size()+1) / 8
 		self.eNodeFileMetadata = ""
-		for i in range(0, len(sbody), 128):
-			self.eNodeFileMetadata += self.Ku.encrypt(sbody[i:i+128])[0]
+		for i in range(0, len(sbody), cryptSize):
+			self.eNodeFileMetadata += self.Ku.encrypt(sbody[i:i+cryptSize])[0]
 		fsMetadata = fencode({'eeK' : fencode(self.eeK[0]), 
 				'meta' : fencode(self.eNodeFileMetadata)})
 
@@ -895,9 +896,10 @@ class RetrieveFile:
 		#      the file data?
 		#print "decoding nmeta meta"
 		efmeta = fdecode(self.nmeta['meta'])
+		cryptSize = (self.Kr.size()+1) / 8
 		fmeta = ""
-		for i in range(0, len(efmeta), 128):
-			fmeta += self.Kr.decrypt(efmeta[i:i+128])
+		for i in range(0, len(efmeta), cryptSize):
+			fmeta += self.Kr.decrypt(efmeta[i:i+cryptSize])
 		fmeta = fdecode(fmeta)
 		
 		result = [fmeta['path']]

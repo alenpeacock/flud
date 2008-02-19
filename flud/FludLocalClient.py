@@ -177,7 +177,7 @@ class CmdClientFactory(LocalClientFactory):
 		for i in helpkeys:
 			print "%s:\t %s" % (i, helpDict[i])
 
-	def promptLoop(self, r):
+	def output(self):
 		for c in self.pending:
 			for i in self.pending[c].keys():
 				if self.pending[c][i] == True:
@@ -188,6 +188,9 @@ class CmdClientFactory(LocalClientFactory):
 					self.pending[c].pop(i)
 				else:
 					print "%s on %s pending" % (c, i)
+
+	def promptLoop(self, r):
+		self.output()
 
 		while len(self.msgs) > 0:
 			# this prints in reverse order, perhaps pop() all into a new list,
@@ -218,6 +221,7 @@ class CmdClientFactory(LocalClientFactory):
 		self.err(msg)
 
 	def err(self, r):
+		self.output()
 		print "bah!: %s" % r
 		reactor.stop()
 

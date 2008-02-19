@@ -28,18 +28,46 @@ def testError(failure, message, node):
 	print "At least 1 test FAILED"
 	return failure
 
-def gotSuccess(r, desc):
+def verifySuccess(r, desc):
 	print "%s succeeded" % desc
 
-def testConcurrent(r, node, files, desc):
+def checkRetrieveFile(res, node, fname):
+	print "retrieve of %s succeeded" % fname
+	return res  # <- *VITAL* for concurrent dup ops to succeed.
+
+def testRetrieveFile(node, fname):
+	d = RetrieveFilename(node, fname).deferred
+	d.addCallback(checkRetrieveFile, node, fname)
+	d.addErrback(testError, fname, node)
+	return d
+
+def retrieveSequential(r, node, filenamelist, desc):
+	def loop(r, node, filenamelist, desc):
+		if filenamelist:
+			fname = filenamelist.pop()
+			print "testing retrieve (%s) %s" % (desc, fname)
+			d = testRetrieveFile(node, fname)
+			d.addCallback(loop, node, filenamelist, desc)
+			d.addErrback(testError)
+			return d
+		else:
+			print "retrieve sequential (%s) done" % desc
+
+	print "test retrieveSequential %s" % desc
+	return loop(None, node, filenamelist, desc)
+
+def storeSuccess(r, desc):
+	print "%s succeeded" % desc
+
+def storeConcurrent(r, node, files, desc):
 	#print "r was %s" % r
-	print "testConcurrent %s" % desc
+	print "test storeConcurrent %s" % desc
 	dlist = []
 	for file in files:
 		d = testStoreFile(node, file)
 		dlist.append(d)
 	dl = FludDefer.ErrDeferredList(dlist)
-	dl.addCallback(gotSuccess, desc)
+	dl.addCallback(storeSuccess, desc)
 	dl.addErrback(testError)
 	return dl
 
@@ -48,7 +76,7 @@ def checkStoreFile(res, node, fname):
 	if fname not in master:
 		return defer.fail(failure.DefaultException("file not stored"))
 	else:
-		print "store on %s verified" % fname
+		print "store of %s appeared successful" % fname
 	return res  # <- *VITAL* for concurrent dup ops to succeed.
 
 def testStoreFile(node, fname):
@@ -59,14 +87,19 @@ def testStoreFile(node, fname):
 
 def doTests(node, smallfnames, largefnames, dupsmall, duplarge):
 	d = testStoreFile(node, smallfnames[0])
-	d.addCallback(testConcurrent, node, smallfnames, "small")
-	d.addCallback(testConcurrent, node, largefnames, "large")
-	d.addCallback(testConcurrent, node, dupsmall, "small duplicates")
-	d.addCallback(testConcurrent, node, duplarge, "large duplicates")
+	d.addCallback(storeConcurrent, node, smallfnames, "small")
+	d.addCallback(storeConcurrent, node, largefnames, "large")
+	d.addCallback(storeConcurrent, node, dupsmall, "small duplicates")
+	d.addCallback(storeConcurrent, node, duplarge, "large duplicates")
 
-	#d = testConcurrent(None, node, dupsmall, "small duplicates")
-	#d = testConcurrent(None, node, duplarge, "large duplicates")
+	#d = storeConcurrent(None, node, dupsmall, "small duplicates")
+	#d = storeConcurrent(None, node, duplarge, "large duplicates")
 	
+	d.addCallback(retrieveSequential, node, smallfnames, "small")
+	d.addCallback(retrieveSequential, node, largefnames, "large")
+	d.addCallback(retrieveSequential, node, dupsmall, "small duplicates")
+	d.addCallback(retrieveSequential, node, duplarge, "large duplicates")
+
 	return d
 
 def cleanup(_, node, filenamelist):

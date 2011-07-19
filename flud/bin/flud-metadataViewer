@@ -13,48 +13,58 @@ from flud.fencode import fencode, fdecode
 from flud.FludCrypto import FludRSA
 
 if __name__ == "__main__":
-	if len(sys.argv) < 2 or len(sys.argv) > 3:
-		print "usage: %s [-r] <filename> " % sys.argv[0]
-		print "       -r print as a raw dict"
-		sys.exit()
-	if len(sys.argv) == 3:
-		fname = sys.argv[2]
-		raw = True
-	else:
-		fname = sys.argv[1]
-		raw = False
-	
-	try:
-		# try to use Ku to decrypt metadata
-		try:
-			fludhome = os.environ['FLUDHOME']
-		except:
-			home = os.environ['HOME']
-			fludhome = home+"/.flud"
-		fludconfig = fludhome+"/flud.conf"
-		c = ConfigParser.ConfigParser()
-		if os.path.isfile(fludconfig) == True:
-			conffile = file(fludconfig, "r")
-			c.readfp(conffile)
-		privkey = FludRSA.importPrivateKey( 
-				eval(c.get("identification","Kr"))) 
-	except:
-		privkey = None
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print "usage: %s [-r|-h] <filename> " % sys.argv[0]
+        print "       -r print as a raw dict"
+        print "       -h print hex values"
+        sys.exit()
+    hexo = False
+    raw = False
+    if len(sys.argv) == 3:
+        fname = sys.argv[2]
+        if sys.argv[1] == '-r':
+            raw = True
+        elif sys.argv[1] == '-h':
+            hexo = True
+    else:
+        fname = sys.argv[1]
+    
+    try:
+        # try to use Ku to decrypt metadata
+        try:
+            fludhome = os.environ['FLUDHOME']
+        except:
+            home = os.environ['HOME']
+            fludhome = home+"/.flud"
+        fludconfig = fludhome+"/flud.conf"
+        c = ConfigParser.ConfigParser()
+        if os.path.isfile(fludconfig) == True:
+            conffile = file(fludconfig, "r")
+            c.readfp(conffile)
+        privkey = FludRSA.importPrivateKey( 
+                eval(c.get("identification","Kr"))) 
+    except:
+        privkey = None
 
-	f = os.open(fname, os.O_RDONLY)
-	data = os.read(f,1280000)
-	os.close(f)
-	data = fdecode(data)
-	if raw:
-		print data
-	else:
-		m = data.pop('k')
-		n = data.pop('n')
-		print "encoded %d/%d" % (m, n)
-		for (i, h) in data:
-			print "%d %s stored on:" % (i, fencode(h))
-			d = data[(i,h)]
-			print "        %s" % fencode(d)
-		print
-		print "%d blocks" % len(data)
+    f = os.open(fname, os.O_RDONLY)
+    data = os.read(f,1280000)
+    os.close(f)
+    data = fdecode(data)
+    if raw:
+        print data
+    else:
+        m = data.pop('k')
+        n = data.pop('n')
+        print "encoded %d/%d" % (m, n)
+        for (i, h) in data:
+            if not hexo:
+                print "%d %s stored on:" % (i, fencode(h))
+                d = data[(i,h)]
+                print "        %s" % fencode(d)
+            else:
+                print "%d %x stored on:" % (i, h)
+                d = data[(i,h)]
+                print "        %x" % d
+        print
+        print "%d blocks" % len(data)
 

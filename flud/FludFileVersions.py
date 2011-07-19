@@ -27,9 +27,9 @@ about versioning -- it just backs up the current data.  The local CVS repo
 is in charge of worrying about versions.  To the user, its all the same.
 
 The advantages of this scheme are mainly:
-	1) simplicity
-	2) storage consumption minimization, opt-in
-	3) decoupling of versioning layer from backup layer
+    1) simplicity
+    2) storage consumption minimization, opt-in
+    3) decoupling of versioning layer from backup layer
 
 Of the three, #1 is really the most appealing.  We just back up the current
 view.  This also greatly simplifies the verification mechanism -- the verifier

@@ -1,3 +1,3 @@
 
 class FludException(Exception):
-	pass
+    pass

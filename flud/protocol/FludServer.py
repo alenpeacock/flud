@@ -23,37 +23,37 @@ from FludCommUtil import *
 threadable.init()
 
 class FludServer(threading.Thread):
-	"""
-	This class runs the webserver, responding to all requests.
-	"""
-	def __init__(self, node, port):
-		threading.Thread.__init__(self)
-		self.port = port
-		self.node = node
-		self.clientport = node.config.clientport
-		self.logger = node.logger
-		self.root = ROOT(self)
-		self.root.putChild('ID', ID(self))     # GET (node identity)
-		self.root.putChild('file', FILE(self)) # POST, GET, and DELETE (files)
-		self.root.putChild('hash', HASH(self)) # GET (verify op)
-		self.root.putChild('proxy', PROXY(self)) # currently noop
-		self.root.putChild('nodes', NODES(self))
-		self.root.putChild('meta', META(self))
-		self.site = server.Site(self.root)
-		reactor.listenTCP(self.port, self.site)
-		reactor.listenTCP(self.clientport, LocalFactory(node), 
-				interface="127.0.0.1")
-		#print "FludServer will listen on port %d, local client on %d"\
-		#		% (self.port, self.clientport)
-		self.logger.log(logging.INFO,\
-				"FludServer will listen on port %d, local client on %d" 
-				% (self.port, self.clientport))
-		
-	def run(self):
-		self.logger.log(logging.INFO, "FludServer starting")
-		return reactor.run(installSignalHandlers=0)
+    """
+    This class runs the webserver, responding to all requests.
+    """
+    def __init__(self, node, port):
+        threading.Thread.__init__(self)
+        self.port = port
+        self.node = node
+        self.clientport = node.config.clientport
+        self.logger = node.logger
+        self.root = ROOT(self)
+        self.root.putChild('ID', ID(self))     # GET (node identity)
+        self.root.putChild('file', FILE(self)) # POST, GET, and DELETE (files)
+        self.root.putChild('hash', HASH(self)) # GET (verify op)
+        self.root.putChild('proxy', PROXY(self)) # currently noop
+        self.root.putChild('nodes', NODES(self))
+        self.root.putChild('meta', META(self))
+        self.site = server.Site(self.root)
+        reactor.listenTCP(self.port, self.site)
+        reactor.listenTCP(self.clientport, LocalFactory(node), 
+                interface="127.0.0.1")
+        #print "FludServer will listen on port %d, local client on %d"\
+        #       % (self.port, self.clientport)
+        self.logger.log(logging.INFO,\
+                "FludServer will listen on port %d, local client on %d" 
+                % (self.port, self.clientport))
+        
+    def run(self):
+        self.logger.log(logging.INFO, "FludServer starting")
+        return reactor.run(installSignalHandlers=0)
 
-	def stop(self):
-		self.logger.log(logging.INFO, "FludServer stopping")
-		reactor.stop()
+    def stop(self):
+        self.logger.log(logging.INFO, "FludServer stopping")
+        reactor.stop()
 

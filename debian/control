@@ -8,5 +8,5 @@ Standards-Version: 3.6.1
 Package: flud
 Architecture: i386
 Description: flud decentralized backup
-Depends: python, python-wxgtk2.6, python-wxtools, python-twisted, python-twisted-core, python-twisted-web, python-twisted-bin, python-twisted-mail, python-twisted-names, python-wxversion, python-crypto, zfec
+Depends: python, python-wxgtk2.6, python-wxtools, python-twisted, python-twisted-core, python-twisted-web, python-twisted-bin, python-twisted-mail, python-twisted-names, python-wxversion, python-crypto, python-zfec
 

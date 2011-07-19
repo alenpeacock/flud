@@ -18,16 +18,16 @@ from flud.FludConfig import FludConfig
 from flud.FludClient import FludFrame
 
 if __name__ == '__main__':
-	app = wx.PySimpleApp()
-	
-	conf = FludConfig()
-	conf.load(doLogging=False)
+    app = wx.PySimpleApp()
+    
+    conf = FludConfig()
+    conf.load(doLogging=False)
 
-	f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
-			style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
-			config=conf)
+    f = FludFrame(None, wx.ID_ANY, 'flud backup client', size=(795,600),
+            style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
+            config=conf)
 
-	from twisted.internet import reactor
-	reactor.registerWxApp(app)
-	reactor.run()
+    from twisted.internet import reactor
+    reactor.registerWxApp(app)
+    reactor.run()
 

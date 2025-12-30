@@ -8,7 +8,7 @@ CheckboxState represents the states which a checkbox in DirCtrl can take
 
 class CheckboxState:
     (UNSELECTED, SELECTED, SELECTEDCHILD, SELECTEDPARENT, EXCLUDED, 
-            EXCLUDEDCHILD) = range(6)
+            EXCLUDEDCHILD) = list(range(6))
     
     def offset(oldstate, newstate):
         return newstate - oldstate

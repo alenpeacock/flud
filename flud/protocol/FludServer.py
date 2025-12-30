@@ -5,7 +5,7 @@ the terms of the GNU General Public License (the GPL), version 3.
 flud server operations
 """
 
-import threading, binascii, time, os, stat, httplib, gc, re, sys, logging, sets
+import threading, binascii, time, os, stat, gc, re, sys, logging
 from twisted.web import server, resource, client
 from twisted.web.resource import Resource
 from twisted.internet import reactor, threads, defer
@@ -15,10 +15,10 @@ from twisted.python import threadable, failure
 from flud.FludCrypto import FludRSA
 import flud.FludkRouting
 
-from ServerPrimitives import *
-from ServerDHTPrimitives import *
-from LocalPrimitives import *
-from FludCommUtil import *
+from .ServerPrimitives import *
+from .ServerDHTPrimitives import *
+from .LocalPrimitives import *
+from .FludCommUtil import *
 
 threadable.init()
 
@@ -33,12 +33,12 @@ class FludServer(threading.Thread):
         self.clientport = node.config.clientport
         self.logger = node.logger
         self.root = ROOT(self)
-        self.root.putChild('ID', ID(self))     # GET (node identity)
-        self.root.putChild('file', FILE(self)) # POST, GET, and DELETE (files)
-        self.root.putChild('hash', HASH(self)) # GET (verify op)
-        self.root.putChild('proxy', PROXY(self)) # currently noop
-        self.root.putChild('nodes', NODES(self))
-        self.root.putChild('meta', META(self))
+        self.root.putChild(b'ID', ID(self))     # GET (node identity)
+        self.root.putChild(b'file', FILE(self)) # POST, GET, and DELETE (files)
+        self.root.putChild(b'hash', HASH(self)) # GET (verify op)
+        self.root.putChild(b'proxy', PROXY(self)) # currently noop
+        self.root.putChild(b'nodes', NODES(self))
+        self.root.putChild(b'meta', META(self))
         self.site = server.Site(self.root)
         reactor.listenTCP(self.port, self.site)
         reactor.listenTCP(self.clientport, LocalFactory(node), 
@@ -56,4 +56,3 @@ class FludServer(threading.Thread):
     def stop(self):
         self.logger.log(logging.INFO, "FludServer stopping")
         reactor.stop()
-

@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import time, os, stat, random, sys, logging, socket, tempfile
 from twisted.python import failure
-from StringIO import StringIO
+from io import StringIO
 from zlib import crc32
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -21,19 +21,20 @@ of ROOT and REQUEST in FludProtocol.
 
 # metadatablock: (block#,n,k,blockdata)
 metadatablock = fencode((1,20,40,'adfdsfdffffffddddddddddddddd'))
+metadatablock_bytes = metadatablock.encode("utf-8")
 fake_mkey_offset = 111111
 
 def testerror(failure, message, node):
     """
     error handler for test errbacks
     """
-    print "testerror message: %s" % message
-    print "testerror: %s" % str(failure)
-    print "At least 1 test FAILED"
+    print("testerror message: %s" % message)
+    print("testerror: %s" % str(failure))
+    print("At least 1 test FAILED")
     return failure
 
 def allGood(_, nKu):
-    print "all tests PASSED"
+    print("all tests PASSED")
     return nKu 
 
 def checkDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
@@ -41,19 +42,19 @@ def checkDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
     # totalDelete = True if this delete op should remove all meta (and data)
     if totalDelete:
         # try to retrieve with any metakey, should fail
-        print "expecting failed retrieve, any metakey"
+        print("expecting failed retrieve, any metakey")
         return testRETRIEVE(res, nKu, fname, fkey, True, node, host, port,
                 lambda args=(res, nKu): allGood(*args), False)
     else:
         # try to retrieve with any metakey, should succeed
-        print "expecting successful retrieve, any metakey"
+        print("expecting successful retrieve, any metakey")
         return testRETRIEVE(res, nKu, fname, fkey, True, node, host, port,
                 lambda args=(res, nKu, fname, fkey, mkey+fake_mkey_offset, 
                     node, host, port, True): testDELETE(*args))
 
 def testDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
     """ Tests sendDelete, and invokes checkDELETE on success """
-    print "starting testDELETE %s.%s" % (fname, mkey)
+    print("starting testDELETE %s.%s" % (fname, mkey))
     #return checkDELETE(None, nKu, fname, fkey, mkey, node, host, port, False)
     deferred = node.client.sendDelete(fkey, mkey, host, port, nKu)
     deferred.addCallback(checkDELETE, nKu, fname, fkey, mkey, node, host, port,
@@ -63,10 +64,10 @@ def testDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
 
 def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash, newmeta):
     """ executes after testVERIFY """
-    if long(hash, 16) != long(res, 16):
+    if int(hash, 16) != int(res, 16):
         raise failure.DefaultException("verify didn't match: %s != %s"
                 % (hash, res))
-    print "checkVERIFY (%s) %s success" % (newmeta, fname)
+    print("checkVERIFY (%s) %s success" % (newmeta, fname))
     if newmeta:
         return testDELETE(res, nKu, fname, fkey, mkey, node, host, port, False)
     else:
@@ -79,7 +80,7 @@ def testVERIFY(nKu, fname, fkey, mkey, node, host, port, newmeta):
         thismkey = mkey+fake_mkey_offset
     else: 
         thismkey = mkey
-    print "starting testVERIFY (%s) %s.%s" % (newmeta, fname, thismkey)
+    print("starting testVERIFY (%s) %s.%s" % (newmeta, fname, thismkey))
     
     fd = os.open(fname, os.O_RDONLY)
     fsize = os.fstat(fd)[stat.ST_SIZE]
@@ -101,9 +102,9 @@ def failedRETRIEVE(res, nextCallable):
 
 def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
     """ Compares the file that was stored with the one that was retrieved """
-    f1 = open(fname)
+    f1 = open(fname, "rb")
     filename = [f for f in res if f[-len(fkey):] == fkey][0]
-    f2 = open(filename)
+    f2 = open(filename, "rb")
     if (f1.read() != f2.read()):
         f1.close()
         f2.close()
@@ -119,9 +120,9 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
         metanames = [f for f in res if f[-len(expectedmeta):] == expectedmeta]
         if not metanames:
             raise failure.DefaultException("expected metadata was missing")
-        f3 = open(metanames[0])
+        f3 = open(metanames[0], "rb")
         md = f3.read()
-        if md != metadatablock:
+        if md != metadatablock_bytes:
             raise failure.DefaultException("upload/download metadata doesn't"
                     " match (%s != %s)" % (md, metadatablock))
     return nextCallable()
@@ -129,7 +130,7 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
 def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable,
         expectSuccess=True):
     """ Tests sendRetrieve, and invokes checkRETRIEVE on success """
-    print "starting testRETRIEVE %s.%s" % (fname, mkey)
+    print("starting testRETRIEVE %s.%s" % (fname, mkey))
     deferred = node.client.sendRetrieve(fkey, host, port, nKu, mkey)
     deferred.addCallback(checkRETRIEVE, nKu, fname, fkey, mkey, node, host, 
             port, nextCallable)
@@ -140,9 +141,9 @@ def testRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable,
     return deferred
 
 def testSTORE2(nKu, fname, fkey, node, host, port):
-    mkey = crc32(fname)
+    mkey = crc32(fname.encode("utf-8")) & 0xffffffff
     mkey2 = mkey+(2*fake_mkey_offset)
-    print "starting testSTORE %s.%s" % (fname, mkey2)
+    print("starting testSTORE %s.%s" % (fname, mkey2))
     deferred = node.client.sendStore(fname, (mkey2, StringIO(metadatablock)), 
             host, port, nKu)
     deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey2, node, host,
@@ -153,8 +154,8 @@ def testSTORE2(nKu, fname, fkey, node, host, port):
 
 def testSTORE(nKu, fname, fkey, node, host, port):
     """ Tests sendStore, and invokes testRETRIEVE on success """
-    mkey = crc32(fname)
-    print "starting testSTORE %s.%s" % (fname, mkey)
+    mkey = crc32(fname.encode("utf-8")) & 0xffffffff
+    print("starting testSTORE %s.%s" % (fname, mkey))
     deferred = node.client.sendStore(fname, (mkey, StringIO(metadatablock)), 
             host, port, nKu)
     deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey, node, host, port,
@@ -164,17 +165,17 @@ def testSTORE(nKu, fname, fkey, node, host, port):
 
 def testID(node, host, port):
     """ Tests sendGetID(), and invokes testSTORE on success """
-    print "starting testID"
+    print("starting testID")
     deferred = node.client.sendGetID(host, port)
     deferred.addErrback(testerror, "failed at testID", node)
     return deferred
 
 def testAggSTORE(nKu, aggFiles, node, host, port):
-    print "starting testAggSTORE"
+    print("starting testAggSTORE")
     dlist = []
     for fname, fkey in aggFiles:
-        mkey = crc32(fname) 
-        print "testAggSTORE %s (%s)" % (fname, mkey)
+        mkey = crc32(fname.encode("utf-8")) & 0xffffffff
+        print("testAggSTORE %s (%s)" % (fname, mkey))
         deferred = node.client.sendStore(fname, (mkey, StringIO(metadatablock)),
                 host, port, nKu)
         deferred.addCallback(testRETRIEVE, nKu, fname, fkey, mkey, node, host, 
@@ -193,13 +194,13 @@ def cleanup(_, node, filenamelist):
         try:
             os.remove(f)
         except:
-            print "couldn't remove %s" % f
+            print("couldn't remove %s" % f)
     reactor.callLater(1, node.stop)
 
 def generateTestData(minSize):
     fname = tempfile.mktemp()
-    f = open(fname, 'w')
-    data = FludCrypto.generateRandom(minSize/50)
+    f = open(fname, 'wb')
+    data = FludCrypto.generateRandom(minSize//50)
     for i in range(0, 51+random.randrange(50)):
         f.write(data)
     f.close()

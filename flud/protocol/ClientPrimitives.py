@@ -5,17 +5,17 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Primitive client storage protocol
 """
 
-from twisted.web import http, client
+from twisted.web import http as twebhttp, client
 from twisted.internet import reactor, threads, defer, error
 from twisted.python import failure
-import time, os, stat, httplib, sys, logging, tarfile, gzip
-from StringIO import StringIO
+import time, os, stat, sys, logging, tarfile, gzip
+from io import StringIO, BytesIO
 
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
 
-import ConnectionQueue
-from FludCommUtil import *
+from . import ConnectionQueue
+from .FludCommUtil import *
 
 logger = logging.getLogger("flud.client.op")
 loggerid = logging.getLogger("flud.client.op.id")
@@ -105,7 +105,7 @@ class SENDGETID(REQUEST):
         if not hasattr(factory, 'status'):
             raise failure.DefaultException(
                     "SENDGETID FAILED: no status in factory")
-        if eval(factory.status) != http.OK:
+        if eval(factory.status) != twebhttp.OK:
             raise failure.DefaultException("SENDGETID FAILED to "+self.dest+": "
                     +"server sent status "+factory.status+", '"+response+"'")
         try:
@@ -215,9 +215,11 @@ class SENDSTORE(REQUEST):
     def _getSendStore2(self, response, httpconn, nKu, host, port,
             filekey, datafile, metadata, params, headers):
         httpconn.close()
-        if response.status == http.UNAUTHORIZED:
+        if response.status == twebhttp.UNAUTHORIZED:
             loggerstor.info("SENDSTORE unauthorized, sending credentials")
             challenge = response.reason
+            if isinstance(challenge, bytes):
+                challenge = challenge.decode("utf-8")
             d = answerChallengeDeferred(challenge, self.node.config.Kr,
                     self.node.config.groupIDu, nKu.id(), headers)
             d.addCallback(self._sendRequest, nKu, host, port, filekey,
@@ -226,12 +228,12 @@ class SENDSTORE(REQUEST):
                     headers, nKu, host, port, filekey, datafile, metadata,
                     params, httpconn)
             return d
-        elif response.status == http.CONFLICT:
+        elif response.status == twebhttp.CONFLICT:
             result = response.read()
             # XXX: client should check key before ever sending request
             raise BadCASKeyException("%s %s" 
                     % (response.status, response.reason))
-        elif response.status != http.OK:
+        elif response.status != twebhttp.OK:
             result = response.read()
             raise failure.DefaultException( 
                     "received %s in SENDSTORE response: %s"
@@ -249,16 +251,16 @@ class SENDSTORE(REQUEST):
             #print "SENDSTORE request error: %s" % err.__class__.__name__
             self.timeoutcount += 1
             if self.timeoutcount < MAXTIMEOUTS:
-                print "trying again [#%d]...." % self.timeoutcount
+                print("trying again [#%d]...." % self.timeoutcount)
                 return self._sendRequest(headers, nKu, host, port, filekey,
                         datafile, metadata, params)
             else:
-                print "Maxtimeouts exceeded: %d" % self.timeoutcount
+                print("Maxtimeouts exceeded: %d" % self.timeoutcount)
         elif err.check(BadCASKeyException):
             pass
         else:
-            print "%s: unexpected error in SENDSTORE: %s" % (msg, 
-                    str(err.getErrorMessage()))
+            print("%s: unexpected error in SENDSTORE: %s" % (msg, 
+                    str(err.getErrorMessage())))
         # XXX: updateNode
         if httpconn:
             httpconn.close()
@@ -285,7 +287,7 @@ class AggregateStore:
                 +'-'+host+'-'+str(port)+".tar"
         loggerstoragg.debug("tarfile name is %s" % tarfilename)
         if not os.path.exists(tarfilename) \
-                or not aggDeferredMap.has_key(tarfilename):
+                or tarfilename not in aggDeferredMap:
             loggerstoragg.debug("creating tarfile %s to append %s" 
                     % (tarfilename, datafile))
             tar = tarfile.open(tarfilename, "w")
@@ -314,6 +316,15 @@ class AggregateStore:
                 if isinstance(metadata[1], StringIO):
                     loggerstoragg.debug("metadata is StringIO")
                     tinfo = tarfile.TarInfo(metafilename)
+                    meta_bytes = metadata[1].getvalue()
+                    if isinstance(meta_bytes, str):
+                        meta_bytes = meta_bytes.encode("utf-8")
+                    metaio = BytesIO(meta_bytes)
+                    tinfo.size = len(meta_bytes)
+                    tar.addfile(tinfo, metaio)
+                elif isinstance(metadata[1], BytesIO):
+                    loggerstoragg.debug("metadata is BytesIO")
+                    tinfo = tarfile.TarInfo(metafilename)
                     metadata[1].seek(0,2)
                     tinfo.size = metadata[1].tell()
                     metadata[1].seek(0,0)
@@ -325,7 +336,7 @@ class AggregateStore:
                 import traceback
                 loggerstoragg.debug("exception while adding metadata to"
                         " tarball")
-                print sys.exc_info()[2]
+                print(sys.exc_info()[2])
                 traceback.print_exc()
 
         tar.close()
@@ -359,7 +370,8 @@ class AggregateStore:
                 % (gtarball, host, port))
         # XXX: bad blocking io
         gtar = gzip.GzipFile(gtarball, 'wb')
-        gtar.write(file(tarball, 'r').read())
+        with open(tarball, 'rb') as src:
+            gtar.write(src.read())
         gtar.close()
         os.remove(tarball)
         self.deferred = SENDSTORE(nKu, node, host, port, gtarball).deferred
@@ -385,9 +397,9 @@ class AggregateStore:
                         cbs.append(d)
         except KeyError:
             loggerstoragg.warn("aggDeferredMap has keys: %s" 
-                    % str(aggDeferredMap.keys()))
+                    % str(list(aggDeferredMap.keys())))
             loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
-                    str(aggDeferredMap[tarball].keys())))
+                    str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
         loggerstoragg.debug("deleting tarball %s" % gtarball)
         os.remove(gtarball)
@@ -409,9 +421,9 @@ class AggregateStore:
                     cbs.append(d)
         except KeyError:
             loggerstoragg.warn("aggDeferredMap has keys: %s" 
-                    % str(aggDeferredMap.keys()))
+                    % str(list(aggDeferredMap.keys())))
             loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
-                    str(aggDeferredMap[tarball].keys())))
+                    str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
         loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
         #os.remove(gtarball)
@@ -461,7 +473,7 @@ class SENDRETRIEVE(REQUEST):
 
     def _getSendRetrieve(self, response, nKu, host, port, factory):
         loggerrtrv.info("_getSendRetrieve to %s:%s" % (host, str(port)))
-        if eval(factory.status) == http.OK:
+        if eval(factory.status) == twebhttp.OK:
             # response is None, since it went to file (if a server error
             # occured, it may be printed in this file)
             # XXX: need to check that file hashes to key! If we don't do this,
@@ -476,7 +488,7 @@ class SENDRETRIEVE(REQUEST):
             loggerrtrv.info("_getSendRetrieve fail from %s:%s" 
                     % (host, str(port)))
             raise failure.DefaultException("SENDRETRIEVE FAILED: "
-                    +"server sent status "+factory.status+", '"+response+"'")
+                    +"server sent status "+factory.status+", '"+str(response)+"'")
 
     def _errSendRetrieve(self, err, nKu, host, port, factory, url, headers):
         loggerrtrv.info("_errSendRetrieve from %s:%s" % (host, str(port)))
@@ -493,9 +505,11 @@ class SENDRETRIEVE(REQUEST):
                 #print "RETR timeout exceeded: %d" % self.timeoutcount
                 pass
         elif hasattr(factory, 'status') and \
-                eval(factory.status) == http.UNAUTHORIZED:
+                eval(factory.status) == twebhttp.UNAUTHORIZED:
             loggerrtrv.info("SENDRETRIEVE unauthorized, sending credentials")
-            challenge = err.getErrorMessage()[4:]
+            challenge = getattr(factory, "reason", "") or ""
+            if isinstance(challenge, bytes):
+                challenge = challenge.decode("utf-8")
             d = answerChallengeDeferred(challenge, self.node.config.Kr,
                     self.node.config.groupIDu, nKu.id(), headers)
             d.addCallback(self._sendRequest, nKu, host, port, url)
@@ -507,14 +521,14 @@ class SENDRETRIEVE(REQUEST):
             #return self._sendRequest(nKu, host, port, url, extraheaders)
         # XXX: these remaining else clauses are really just for debugging...
         elif hasattr(factory, 'status'):
-            if eval(factory.status) == http.NOT_FOUND:
+            if eval(factory.status) == twebhttp.NOT_FOUND:
                 err = NotFoundException(err)
-            elif eval(factory.status) == http.BAD_REQUEST:
+            elif eval(factory.status) == twebhttp.BAD_REQUEST:
                 err = BadRequestException(err)
         elif err.check('twisted.internet.error.ConnectionRefusedError'):
             pass # fall through to return err
         else:
-            print "non-timeout, non-UNAUTH RETR request error: %s" % err
+            print("non-timeout, non-UNAUTH RETR request error: %s" % err)
         # XXX: updateNode
         loggerrtrv.info("SENDRETRIEVE failed")
         raise err
@@ -558,7 +572,7 @@ class SENDDELETE(REQUEST):
         return deferred
 
     def _getSendDelete(self, response, nKu, host, port, factory):
-        if eval(factory.status) == http.OK:
+        if eval(factory.status) == twebhttp.OK:
             loggerdele.info("received SENDDELETE response")
             updateNode(self.node.client, self.config, host, port, nKu)
             return response
@@ -576,13 +590,15 @@ class SENDDELETE(REQUEST):
                 #print "trying again [#%d]...." % self.timeoutcount
                 return self._sendRequest(headers, nKu, host, port, url) 
         elif hasattr(factory, 'status') and \
-                eval(factory.status) == http.UNAUTHORIZED and \
+                eval(factory.status) == twebhttp.UNAUTHORIZED and \
                 self.authRetry < MAXAUTHRETRY:
             # XXX: add this authRetry stuff to all the other op classes (so
             # that we don't DOS ourselves and another node
             self.authRetry += 1
             loggerdele.info("SENDDELETE unauthorized, sending credentials")
-            challenge = err.getErrorMessage()[4:]
+            challenge = getattr(factory, "reason", "") or ""
+            if isinstance(challenge, bytes):
+                challenge = challenge.decode("utf-8")
             d = answerChallengeDeferred(challenge, self.node.config.Kr,
                     self.node.config.groupIDu, nKu.id(), headers)
             d.addCallback(self._sendRequest, nKu, host, port, url)
@@ -592,9 +608,9 @@ class SENDDELETE(REQUEST):
         elif hasattr(factory, 'status'):
             # XXX: updateNode
             loggerdele.info("SENDDELETE failed")
-            if eval(factory.status) == http.NOT_FOUND:
+            if eval(factory.status) == twebhttp.NOT_FOUND:
                 err = NotFoundException(err)
-            elif eval(factory.status) == http.BAD_REQUEST:
+            elif eval(factory.status) == twebhttp.BAD_REQUEST:
                 err = BadRequestException(err)
             raise err
         return err
@@ -649,7 +665,7 @@ class SENDVERIFY(REQUEST):
 
     def _getSendVerify(self, response, nKu, host, port, factory):
         loggervrfy.debug("got vrfy response")
-        if eval(factory.status) == http.OK:
+        if eval(factory.status) == twebhttp.OK:
             loggervrfy.info("received SENDVERIFY response")
             updateNode(self.node.client, self.config, host, port, nKu)
             return response
@@ -669,9 +685,11 @@ class SENDVERIFY(REQUEST):
                 #print "trying again [#%d]...." % self.timeoutcount
                 return self._sendRequest(headers, nKu, host, port, url) 
         elif hasattr(factory, 'status') and \
-                eval(factory.status) == http.UNAUTHORIZED:
+                eval(factory.status) == twebhttp.UNAUTHORIZED:
             loggervrfy.info("SENDVERIFY unauthorized, sending credentials")
-            challenge = err.getErrorMessage()[4:]
+            challenge = getattr(factory, "reason", "") or ""
+            if isinstance(challenge, bytes):
+                challenge = challenge.decode("utf-8")
             d = answerChallengeDeferred(challenge, self.node.config.Kr,
                     self.node.config.groupIDu, nKu.id(), headers)
             d.addCallback(self._sendRequest, nKu, host, port, url)
@@ -683,9 +701,9 @@ class SENDVERIFY(REQUEST):
         elif hasattr(factory, 'status'):
             # XXX: updateNode
             loggervrfy.info("SENDVERIFY failed: %s" % err.getErrorMessage())
-            if eval(factory.status) == http.NOT_FOUND:
+            if eval(factory.status) == twebhttp.NOT_FOUND:
                 err = NotFoundException(err)
-            elif eval(factory.status) == http.BAD_REQUEST:
+            elif eval(factory.status) == twebhttp.BAD_REQUEST:
                 err = BadRequestException(err)
         raise err
 
@@ -736,8 +754,10 @@ def answerChallenge(challenge, Kr, groupIDu, sID, headers={}):
     loggerauth.debug("  challenge response: '%s'" % fencode(response))
     response = fencode(response)+":"+groupIDu
     loggerauth.debug("response:groupIDu=%s" % response)
+    if isinstance(response, str):
+        response = response.encode("utf-8")
     response = binascii.b2a_base64(response)
     loggerauth.debug("b64(response:groupIDu)=%s" % response)
-    response = "Basic %s" % response
+    response = b"Basic " + response.strip()
     headers['Authorization'] = response
     return headers 

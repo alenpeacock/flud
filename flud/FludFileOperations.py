@@ -7,15 +7,15 @@ Implements file storage and retrieval operations using flud primitives.
 
 import os, stat, sys, logging, binascii, random, time
 from zlib import crc32
-from StringIO import StringIO
+from io import StringIO
 from twisted.internet import defer, threads
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
-import fludfilefec
+from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
 
@@ -152,9 +152,10 @@ class StoreFile:
         #    sK
         self.eK = hashfile(self.filename)
         logger.debug(self.ctx("_storefile %s (%s)", self.filename, self.eK))
-        self.sK = long(hashstring(self.eK), 16)
+        self.sK = int(hashstring(self.eK), 16)
         self.eeK = self.Ku.encrypt(binascii.unhexlify(self.eK))
-        self.eKey = AES.new(binascii.unhexlify(self.eK))
+        self.eKeyIV = generateRandom(16)
+        self.eKey = AES.new(binascii.unhexlify(self.eK), AES.MODE_CBC, self.eKeyIV)
         #logger.debug(self.ctx("file %s eK:%s, storage key:%d" 
         #       % (self.filename, self.eK, self.sK)))
 
@@ -188,7 +189,7 @@ class StoreFile:
         # XXX: piggybacking doesn't work with new metadata scheme, must fix it
         # to append metadata, or if already in progress, redo via verify ops
         # if already storing identical file by CAS, piggyback on it
-        if self.currentOps.has_key(self.eK):
+        if self.eK in self.currentOps:
             logger.debug(self.ctx("reusing callback on %s", self.eK))
             (d, counter) = self.currentOps[self.eK]
             self.currentOps[self.eK] = (d, counter+1)
@@ -203,7 +204,8 @@ class StoreFile:
 
         # 3: encrypt and encode the file locally.
         self.efilename = os.path.join(self.metadir,self.flatname+appendEncrypt)
-        e = open(self.efilename, "w+")
+        e = open(self.efilename, "wb+")
+        e.write(self.eKeyIV)
         fd = os.open(self.filename, os.O_RDONLY)
         fstat = os.fstat(fd)
         fsize = fstat[stat.ST_SIZE]
@@ -212,14 +214,14 @@ class StoreFile:
         fpad = int(16 - fsize%16);
         #logger.debug(self.ctx("fsize=%d, padding with %d bytes" 
         #       % (fsize, fpad)))
-        paddata = chr(fpad)+(fpad-1)*'\x00'
+        paddata = bytes([fpad]) + b'\x00'*(fpad-1)
         buf = paddata + os.read(fd,16-len(paddata))
         e.write(self.eKey.encrypt(buf));
         # now write the rest of the file
         while 1:
             # XXX: can we do this in larger than 16-byte chunks?
             buf = os.read(fd,16)
-            if buf == "":
+            if buf == b"":
                 break
             e.write(self.eKey.encrypt(buf));
         #e.close()
@@ -236,7 +238,7 @@ class StoreFile:
         self.segHashesLocal = []
         for i in range(len(self.sfiles)):
             sfile = self.sfiles[i]
-            h = long(hashfile(sfile),16)
+            h = int(hashfile(sfile),16)
             logger.debug(self.ctx("file block %s hashes to %s", i, fencode(h)))
             destfile = os.path.join(self.encodedir,fencode(h))
             if os.path.exists(destfile):
@@ -293,7 +295,7 @@ class StoreFile:
             port = node[1]
             nID = node[2]
             nKu = FludRSA.importPublicKey(node[3])
-            self.blockMetadata[(i, hash)] = long(nKu.id(), 16)
+            self.blockMetadata[(i, hash)] = int(nKu.id(), 16)
         return self._storeMetadata(None)
 
     # 5a -- store all blocks
@@ -315,7 +317,7 @@ class StoreFile:
             #self.nodeChoices = self.routing.knownExternalNodes()
             # XXX: instead of asking for code_k, ask for code_k - still needed
             self.nodeChoices = self.config.getPreferredNodes(code_k, 
-                    self.usedNodes.keys())
+                    list(self.usedNodes.keys()))
             logger.warn(self.ctx("asked for more nodes, %d nodes found", 
                 len(self.nodeChoices)))
         if not self.nodeChoices:
@@ -327,7 +329,7 @@ class StoreFile:
         port = node[1]
         nID = node[2]
         nKu = FludRSA.importPublicKey(node[3])
-        location = long(nKu.id(), 16)
+        location = int(nKu.id(), 16)
         logger.info(self.ctx("STOREing under %s on %s:%d", fencode(hash), 
             host, port))
         logger.debug(self.ctx("mfile is %s", mfile))
@@ -392,7 +394,7 @@ class StoreFile:
                 result = False
         for i, fname in enumerate(fileNames):
             hname = os.path.basename(fname)
-            if not storedFiles.has_key((i, fdecode(hname))):
+            if (i, fdecode(hname)) not in storedFiles:
                 logger.warn(self.ctx("%s not in storedMetadata", hname))
                 result = False
         if result == False:
@@ -413,7 +415,7 @@ class StoreFile:
         n = meta['n']
         for i in [x for x in meta if x != 'k' and x != 'n']:
             sortedKeys[i[0]] = i
-        for i in xrange(k+n):
+        for i in range(k+n):
             self.sfiles.append(fencode(sortedKeys[i][1]))
         return self._verifyAndStoreBlocks(meta, True)
 
@@ -423,7 +425,7 @@ class StoreFile:
         dlist = []
         for i, sfile in enumerate(self.sfiles):
             # XXX: metadata should be StringIO to begin with
-            f = file(self.mfiles[i])
+            f = open(self.mfiles[i], "r")
             mfile = StringIO(f.read())
             f.close()
             seg = os.path.basename(sfile)
@@ -478,7 +480,7 @@ class StoreFile:
         logger.info(self.ctx("verifying %s on %s:%d", seg, host, port))
         if noopVerify:
             offset = length = 0
-            verhash = long(hashstring(''), 16)
+            verhash = int(hashstring(''), 16)
             self.sfiles = []
         else:
             fd = os.open(sfile, os.O_RDONLY)
@@ -492,7 +494,7 @@ class StoreFile:
             os.lseek(fd, offset, 0)
             data = os.read(fd, length)
             os.close(fd)
-            verhash = long(hashstring(data), 16)
+            verhash = int(hashstring(data), 16)
         
         deferred = self.node.client.sendVerify(seg, offset, length, 
                     host, port, nKu, (self.mkey, mfile)) 
@@ -503,7 +505,7 @@ class StoreFile:
         return deferred
 
     def _checkVerify(self, result, nKu, host, port, i, seg, sfile, mfile, hash):
-        if hash != long(result, 16):
+        if hash != int(result, 16):
             logger.info(self.ctx(
                 "VERIFY hash didn't match for %s, performing STORE",
                 fencode(seg)))
@@ -635,7 +637,7 @@ class RetrieveFile:
         self.mkey = mkey
         try:
             self.sK = fdecode(key)
-        except Exception, inst:
+        except Exception as inst:
             self.deferred = defer.fail(inst)
             return
         self.ctx = Ctx(crc32(str(self.sK))).msg
@@ -697,7 +699,7 @@ class RetrieveFile:
                 v = (k, TrustDeltas.NEGATIVE_CAP)
             return v
 
-        keys = meta.keys()
+        keys = list(meta.keys())
         r = []
         logger.info(self.ctx("_orderNodes"))
         curtime = int(time.time())
@@ -772,7 +774,7 @@ class RetrieveFile:
         #print kdata
         #if len(kdata['k']) > 1:
         if kdata['k'][0][2] != id:
-            print "%s != %s" (kdata['k'][0], id)
+            print("%s != %s" % (kdata['k'][0], id))
             raise ValueError("couldn't find node %s" % fencode(id))
             #raise ValueError("this shouldn't really be a ValueError..."
             #       " should be a GotMoreKnodesThanIBargainedForError: k=%s"
@@ -833,7 +835,7 @@ class RetrieveFile:
         logger.debug(self.ctx("_decodeData"))
         self.fname = os.path.join(self.parentcodedir,fencode(self.sK))+".rec1"
         d = threads.deferToThread(self.decodeData, self.fname, 
-                self.blocks.values(), self.config.clientdir)
+                list(self.blocks.values()), self.config.clientdir)
         d.addCallback(self._decodeFsMetadata, self.blocks)
         d.addErrback(self._decodeError)
         return d
@@ -842,7 +844,7 @@ class RetrieveFile:
         logger.debug(self.ctx("_decodeFsMetadata"))
         self.mfname = os.path.join(self.parentcodedir,fencode(self.sK))+".m"
         d = threads.deferToThread(self.decodeData, self.mfname, 
-                self.fsmetas.values(), self.config.clientdir)
+                list(self.fsmetas.values()), self.config.clientdir)
         d.addCallback(self._decodeDone, decoded)
         d.addErrback(self._decodeError)
         return d
@@ -900,40 +902,67 @@ class RetrieveFile:
         # 3: Retrieve eK from sK by eK=Kr(eeK).  Use eK to decrypt file.  Strip
         #    off leading pad.
         skey = fencode(self.sK)
-        f1 = open(os.path.join(self.parentcodedir,skey+".rec1"), "r")
-        f2 = open(os.path.join(self.parentcodedir,skey+".rec2"), "w")
+        rec1 = os.path.join(self.parentcodedir, skey+".rec1")
+        rec2 = os.path.join(self.parentcodedir, skey+".rec2")
+        f1 = open(rec1, "rb")
+        f2 = open(rec2, "wb")
         #logger.info(self.ctx("decoding nmeta eeK for %s" % dir(self)))
         eeK = fdecode(self.nmeta['eeK'])
         # d_eK business is to ensure that eK is zero-padded to 32 bytes
         d_eK = self.Kr.decrypt(eeK)
         d_eK = '\x00'*(32%len(d_eK))+d_eK # XXX: magic 32, should be keyspace/8
         eK = binascii.hexlify(d_eK)
-        eKey = AES.new(binascii.unhexlify(eK))
+        iv = f1.read(16)
+        eKey = AES.new(binascii.unhexlify(eK), AES.MODE_CBC, iv)
         # XXX: bad blocking stuff, move into thread
         while 1:
             buf = f1.read(16)
-            if buf == "":
+            if buf == b"":
                 break;
             f2.write(eKey.decrypt(buf))
         f1.close()
         f2.close()
-        os.remove(os.path.join(self.parentcodedir,skey+".rec1"))
-        f2 = open(os.path.join(self.parentcodedir,skey+".rec2"), "r")
-        f3 = open(os.path.join(self.parentcodedir,skey+".rec3"), "w")
-        padlen = f2.read(1)
+        f2 = open(rec2, "rb")
+        first_byte = f2.read(1)
+        if not first_byte:
+            padlen = -1
+        else:
+            padlen = first_byte[0] - 1
+        if padlen < 0 or padlen > 15:
+            # Fall back to legacy ECB if we detect invalid padding (old data)
+            f2.close()
+            f2 = open(rec2, "wb")
+            f1 = open(rec1, "rb")
+            legacyKey = AES.new(binascii.unhexlify(eK), AES.MODE_ECB)
+            while 1:
+                buf = f1.read(16)
+                if buf == b"":
+                    break
+                f2.write(legacyKey.decrypt(buf))
+            f1.close()
+            f2.close()
+            f2 = open(rec2, "rb")
+            first_byte = f2.read(1)
+            if not first_byte:
+                padlen = -1
+            else:
+                padlen = first_byte[0] - 1
+        if padlen < 0 or padlen > 15:
+            f2.close()
+            raise RuntimeError("unable to decrypt data: invalid padding length")
+        f3 = open(os.path.join(self.parentcodedir,skey+".rec3"), "wb")
         #print "%s" % repr(padlen)
-        padlen = ord(padlen)
-        padlen -= 1
         #print "throwing away %d pad bytes" % padlen
         pad = f2.read(padlen) # throw away pad.
         while 1:
             buf = f2.read(16)
-            if buf == "":
+            if buf == b"":
                 break;
             f3.write(buf)
         f2.close()
         f3.close()
-        os.remove(os.path.join(self.parentcodedir,skey+".rec2"))
+        os.remove(rec1)
+        os.remove(rec2)
 
         # 4: Move file to its correct path, imbue it with properties from 
         #    metadata.
@@ -1024,7 +1053,7 @@ class RetrieveFilename:
                 dlist = []
                 dirname = self.filename+os.path.sep
                 # XXX: this should be calling a config.getAllFromMasterMeta()
-                for i in [x for x in self.config.master.keys() 
+                for i in [x for x in list(self.config.master.keys()) 
                         if dirname == x[:len(dirname)]]:
                     filekey = self.config.getFromMasterMeta[i]
                     metakey = crc32(i)
@@ -1092,7 +1121,7 @@ class RetrieveMasterIndex:
     
     def __init__(self, node):
         self.node = node
-        nodeID = long(self.node.config.nodeID, 16)
+        nodeID = int(self.node.config.nodeID, 16)
         # 1. CAS = kfindval(nodeID) (CAS for last FLUDHOME/meta/master)
         logger.info("looking for key %x" % nodeID)
         self.deferred = self.node.client.kFindValue(nodeID)
@@ -1135,12 +1164,12 @@ class UpdateMasterIndex:
 
     def _removeOldMasterIndex(self, res):
         # 0.2. for i in oldmaster: delete(i)
-        print "removing old master not yet implemented"
+        print("removing old master not yet implemented")
         return self._storeMasterIndex(res)
 
     def _storeMasterIndex(self, res_or_err):
         # 1. store FLUDHOME/meta/master
-        print "going to store %s" % self.metamaster
+        print("going to store %s" % self.metamaster)
         d = StoreFile(self.node, self.metamaster).deferred
         d.addCallback(self._updateCAS)
         d.addErrback(self._updateMasterIndexErr, "couldn't store master index")
@@ -1151,8 +1180,8 @@ class UpdateMasterIndex:
         #print "stored = %s" % str(stored)
         key, meta = stored
         logger.info("storing %s at %x" % (key, 
-            long(self.node.config.nodeID,16)))
-        d = self.node.client.kStore(long(self.node.config.nodeID,16), 
+            int(self.node.config.nodeID,16)))
+        d = self.node.client.kStore(int(self.node.config.nodeID,16), 
                 key)  # XXX: key should be fdecode()ed
         return d
 
@@ -1162,7 +1191,7 @@ class UpdateMasterIndex:
 
 
 if __name__ == "__main__":
-    from FludNode import FludNode
+    from .FludNode import FludNode
 
     def successTest(res, fname, whatfor, nextStage=None):
         logger.info("finished %s" % whatfor)
@@ -1173,7 +1202,7 @@ if __name__ == "__main__":
 
     def fileKey(fname):
         EK = hashfile(fname)
-        return fencode(long(hashstring(EK), 16))
+        return fencode(int(hashstring(EK), 16))
 
     def clearMeta(fname):
         # delete any metadata that might exist for this file.
@@ -1194,13 +1223,14 @@ if __name__ == "__main__":
         d.addCallback(nextStage, fname, 'store op', doCorruptSegAndStore)
         d.addErrback(errTest)
 
-    def doDelSegAndStore((key, meta), fname, msg=None, nextStage=successTest):
+    def doDelSegAndStore(xxx_todo_changeme, fname, msg=None, nextStage=successTest):
         # only works if stores are local
+        (key, meta) = xxx_todo_changeme
         if msg != None:
             logger.info("finished %s ------" % msg)
             logger.info("---------------------------------------------------\n")
         # delete a block and do a store
-        c = random.choice(meta.keys())
+        c = random.choice(list(meta.keys()))
         logger.info("removing %s" % fencode(c))
         os.remove(os.path.join(n.config.storedir,fencode(c)))
         logger.info("test removed %s" % os.path.join(n.config.storedir,
@@ -1209,14 +1239,15 @@ if __name__ == "__main__":
         d.addCallback(nextStage, fname, 'lost block op')
         d.addErrback(errTest)
         
-    def doCorruptSegAndStore((key, meta), fname, msg=None, 
+    def doCorruptSegAndStore(xxx_todo_changeme1, fname, msg=None, 
             nextStage=successTest):
         # only works if stores are local
+        (key, meta) = xxx_todo_changeme1
         if msg != None:
             logger.info("finished %s ------" % msg)
             logger.info("---------------------------------------------------\n")
         # corrupt a block and do a store
-        c = random.choice(meta.keys())
+        c = random.choice(list(meta.keys()))
         logger.info("corrupting %s" % fencode(c))
         f = open(os.path.join(n.config.storedir,fencode(c)), 'r')
         data = f.read()

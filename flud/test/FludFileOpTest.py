@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 FludFileOpTest.py,  (c) 2003-2006 Alen Peacock.  This program is distributed
@@ -23,16 +23,16 @@ from flud.protocol.LocalClient import listMeta
 logger = logging.getLogger('flud')
 
 def testError(failure, message, node):
-    print "testError message: %s" % message
-    print "testError: %s" % str(failure)
-    print "At least 1 test FAILED"
+    print("testError message: %s" % message)
+    print("testError: %s" % str(failure))
+    print("At least 1 test FAILED")
     return failure
 
 def verifySuccess(r, desc):
-    print "%s succeeded" % desc
+    print("%s succeeded" % desc)
 
 def checkRetrieveFile(res, node, fname):
-    print "retrieve of %s succeeded" % fname
+    print("retrieve of %s succeeded" % fname)
     return res  # <- *VITAL* for concurrent dup ops to succeed.
 
 def testRetrieveFile(node, fname):
@@ -45,23 +45,23 @@ def retrieveSequential(r, node, filenamelist, desc):
     def loop(r, node, filenamelist, desc):
         if filenamelist:
             fname = filenamelist.pop()
-            print "testing retrieve (%s) %s" % (desc, fname)
+            print("testing retrieve (%s) %s" % (desc, fname))
             d = testRetrieveFile(node, fname)
             d.addCallback(loop, node, filenamelist, desc)
             d.addErrback(testError)
             return d
         else:
-            print "retrieve sequential (%s) done" % desc
+            print("retrieve sequential (%s) done" % desc)
 
-    print "test retrieveSequential %s" % desc
+    print("test retrieveSequential %s" % desc)
     return loop(None, node, filenamelist, desc)
 
 def storeSuccess(r, desc):
-    print "%s succeeded" % desc
+    print("%s succeeded" % desc)
 
 def storeConcurrent(r, node, files, desc):
     #print "r was %s" % r
-    print "test storeConcurrent %s" % desc
+    print("test storeConcurrent %s" % desc)
     dlist = []
     for file in files:
         d = testStoreFile(node, file)
@@ -76,7 +76,7 @@ def checkStoreFile(res, node, fname):
     if fname not in master:
         return defer.fail(failure.DefaultException("file not stored"))
     else:
-        print "store of %s appeared successful" % fname
+        print("store of %s appeared successful" % fname)
     return res  # <- *VITAL* for concurrent dup ops to succeed.
 
 def testStoreFile(node, fname):
@@ -106,10 +106,10 @@ def cleanup(_, node, filenamelist):
     #print _
     for f in filenamelist:
         try:
-            print "deleting %s" % f
+            print("deleting %s" % f)
             os.remove(f)
         except:
-            print "couldn't remove %s" % f
+            print("couldn't remove %s" % f)
     reactor.callLater(1, node.stop)
 
 def generateTestFile(minSize):
@@ -151,6 +151,6 @@ if __name__ == '__main__':
         # talk to [1] on port [2], listen on port [3]
         runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
     else:
-        print "must run this test against a flud network (no single node op)"
-        print "usage: %s [<othernodehost othernodeport> |"\
-                " <othernodehost othernodeport listenport>]" % sys.argv[0]
+        print("must run this test against a flud network (no single node op)")
+        print("usage: %s [<othernodehost othernodeport> |"\
+                " <othernodehost othernodeport listenport>]" % sys.argv[0])

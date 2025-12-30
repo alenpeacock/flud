@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import tarfile, tempfile, random, os, sys
 import gzip
-from Crypto.Hash import SHA256
+from Cryptodome.Hash import SHA256
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
@@ -14,21 +14,21 @@ def maketarball(numfiles, avgsize, hashnames=False, addmetas=False):
     tarball = tarfile.open(tarballname, 'w')
     if addmetas:
         metafname = tempfile.mktemp()
-        metaf = file(metafname, 'w')
+        metaf = open(metafname, 'w')
         metaf.write('m'*48)
         metaf.close()
-    for i in xrange(numfiles):
+    for i in range(numfiles):
         fname = tempfile.mktemp()
-        f = file(fname, 'wb')
+        f = open(fname, 'wb')
         size = int(avgsize * (random.random()+0.5))
         blocksize = 65*1024
         if hashnames:
             sha256 = SHA256.new()
         for j in range(0, size, blocksize):
             if j+blocksize > size:
-                block = 'a'*(size-j)
+                block = b'a'*(size-j)
             else:
-                block = 'a'*blocksize
+                block = b'a'*blocksize
             if hashnames:
                 sha256.update(block)
             f.write(block)
@@ -48,7 +48,8 @@ def maketarball(numfiles, avgsize, hashnames=False, addmetas=False):
 
 def gzipTarball(tarball):
     f = gzip.GzipFile(tarball+".gz", 'wb')
-    f.write(file(tarball, 'rb').read())
+    with open(tarball, 'rb') as src:
+        f.write(src.read())
     f.close()
     os.remove(tarball)
     return tarball+".gz"
@@ -119,7 +120,7 @@ def main():
 
     # test TarfileUtils.verifyHashes(plain with meta)
     (tballname, contents) = maketarball(5, 4096, True, True)
-    assert(TarfileUtils.verifyHashes(tballname, contents[2:4]), ".meta")
+    assert TarfileUtils.verifyHashes(tballname, contents[2:4]), ".meta"
     os.remove(tballname)
 
     # test TarfileUtils.verifyHashes(gzipped no meta)
@@ -131,10 +132,10 @@ def main():
     # test TarfileUtils.verifyHashes(gzipped with meta)
     (tballname, contents) = maketarball(5, 4096, True, True)
     tballname = gzipTarball(tballname)
-    assert(TarfileUtils.verifyHashes(tballname, contents[2:4]), ".meta")
+    assert TarfileUtils.verifyHashes(tballname, contents[2:4]), ".meta"
     os.remove(tballname)
 
-    print "all tests passed"
+    print("all tests passed")
 
 if __name__ == "__main__":
     main()

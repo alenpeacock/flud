@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import sys
 from twisted.internet import reactor
@@ -15,7 +15,7 @@ def main():
     
     if len(sys.argv) == 2:
         config.clientport = int(sys.argv[1])
-    print "connecting to localhost:%d" % config.clientport
+    print("connecting to localhost:%d" % config.clientport)
     reactor.connectTCP('localhost', config.clientport, factory)
 
     scheduler = FludScheduler(config, factory)

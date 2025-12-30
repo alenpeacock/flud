@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 FludNode.py (c) 2003-2006 Alen Peacock.  This program is distributed under the
@@ -103,8 +103,8 @@ class FludNode(object):
             
             def refreshDone(results):
                 self.logger.info("bucket refreshes finished: %s" % results)
-                print "flud node connected and listening on port %d"\
-                        % self.config.port
+                print("flud node connected and listening on port %d"\
+                        % self.config.port)
             
             #print "found knodes %s" % knodes
             dlist = []

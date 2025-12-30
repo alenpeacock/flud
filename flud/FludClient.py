@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 FludClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed under
@@ -33,7 +33,7 @@ def getFileIcon(file, il, checkboxes, icondict):
         return icondict['generic']
     else:
         desc = ft.GetDescription()
-        if icondict.has_key(desc):
+        if desc in icondict:
             return icondict[desc]
         else:
             icon = ft.GetIcon()
@@ -214,14 +214,14 @@ class DirCheckboxCtrl(wx.TreeCtrl):
                     self.expandDir(node)
                     self.Expand(node)
                 else:
-                    print "couldn't traverse to HOME dir on %s" % d
+                    print("couldn't traverse to HOME dir on %s" % d)
                     break
     
     def checkFlush(self):
-        print "checking for flush"
+        print("checking for flush")
         if self.stateChangeTime > self.flushTime:
             self.flushTime = time.time()
-            print "flushing"
+            print("flushing")
             self.parent.flushFileConfig()
         reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
         
@@ -526,7 +526,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
         if event.KeyCode() == ord('F') and event.ShiftDown() \
                 and event.ControlDown():
             self.flushTime = time.time()
-            print "flushing"
+            print("flushing")
             self.parent.flushFileConfig()
         event.Skip()
 
@@ -859,7 +859,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
 
     def itemChanged(self, item, data):
         (path, isDir, expanded, state) = data
-        if self.itemdict.has_key(path):
+        if path in self.itemdict:
             item = self.itemdict[path][0]
             image = getFileIcon(path, self.il, self.checkboxes,
                     self.icondict) + state
@@ -890,7 +890,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
         for item in selections:
             path = os.path.join(self.GetItem(item,1).GetText(), 
                     self.GetItemText(item))
-            if self.itemdict.has_key(path):
+            if path in self.itemdict:
                 result.append(self.itemdict[path][1])
         return result
 
@@ -940,7 +940,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
                 searchSourceItems.append(i)
             self.searchSourceItems = [self.peerctrl.GetItemData(s).GetData()[0]
                     for s in searchSourceItems]
-            print "sources: %s" % self.searchSourceItems
+            print("sources: %s" % self.searchSourceItems)
             return ("Search results will appear as files that match your"
                     " search are found.", None)
         return (None, None)
@@ -961,7 +961,7 @@ class FileListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
         else:
             terms = [x for x in searchstring.split(' ') if x != '']
             for term in terms:
-                print path
+                print(path)
                 if path.find(term) > 0:
                     image = getFileIcon(path, self.il, self.checkboxes, 
                             self.icondict) + state
@@ -1122,18 +1122,18 @@ class SearchPanel(wx.Panel):
 
         # see if we should set the checkbox button from a previous rule
         state = None
-        if len(selections) > 0 and self.rules.has_key(selections[0]):
+        if len(selections) > 0 and selections[0] in self.rules:
             rule = self.rules[selections[0]]
-            if self.rules[selections[0]].has_key(event.searchstring):
+            if event.searchstring in self.rules[selections[0]]:
                 state = self.rules[selections[0]][event.searchstring]
             for i in selections:
-                if not self.rules.has_key(i) or self.rules[i] != rule:
+                if i not in self.rules or self.rules[i] != rule:
                     state = None
                     break
                 #for j in self.rules[i]:
 
         if state:
-            print "should restore checkbox to %s" % state
+            print("should restore checkbox to %s" % state)
             self.groupSelection.setState(state)
 
         self.searchButton.SetLabel('find!')
@@ -1157,7 +1157,7 @@ class SearchPanel(wx.Panel):
         b = wx.BusyCursor()
         selections = self.searchResults.setGroup(state) 
         for s in selections:
-            if not self.rules.has_key(s):
+            if s not in self.rules:
                 self.rules[s] = {}
             if state == CheckboxState.UNSELECTED:
                 try:
@@ -1166,7 +1166,7 @@ class SearchPanel(wx.Panel):
                     pass
             else:
                 self.rules[s][self.searchField.GetValue()] = state
-        print self.rules
+        print(self.rules)
 
 class FilePanel(wx.SplitterWindow):
     def __init__(self, parent, searchButtonAction=None):
@@ -1176,7 +1176,7 @@ class FilePanel(wx.SplitterWindow):
         self.Bind(wx.EVT_SIZE, self.OnSize)
         self.SetNeedUpdating(True)
 
-        print self.GetSize()
+        print(self.GetSize())
         self.tree = DirCheckboxCtrl(self, -1, dir="/") 
         
         # XXX: fludrules.init path should be in config
@@ -1206,7 +1206,7 @@ class FilePanel(wx.SplitterWindow):
 
         # XXX: fludfile.conf path should be in config
         self.fludfiles = self.getFludHome()+"/fludfile.conf"
-        print self.fludfiles
+        print(self.fludfiles)
         if os.path.isfile(self.fludfiles):
             file = open(self.fludfiles, 'r')
             states = eval(file.read())
@@ -1218,15 +1218,15 @@ class FilePanel(wx.SplitterWindow):
 
         self.SetMinimumPaneSize(50)
         self.SplitVertically(self.tree, self.searchPanel) #, 300)
-        print self.GetSize()
+        print(self.GetSize())
 
     def getFludHome(self):
-        if os.environ.has_key('FLUDHOME'):
+        if 'FLUDHOME' in os.environ:
             fludhome = os.environ['FLUDHOME']
         else:
             fludhome = os.environ['HOME']+"/.flud"
         if not os.path.isdir(fludhome):
-            os.mkdir(fludhome, 0700)
+            os.mkdir(fludhome, 0o700)
         return fludhome 
 
     def shutdown(self, event):
@@ -1239,7 +1239,7 @@ class FilePanel(wx.SplitterWindow):
         f.write(str(states))
         f.close()
         for i in states:
-            print "%s %s" % (i, states[i])
+            print("%s %s" % (i, states[i]))
 
     def OnSize(self, event):
         w,h = self.GetClientSizeTuple()
@@ -1394,7 +1394,7 @@ class RestorePanel(wx.Panel):
     def onRestoreClick(self, event):
         for n in self.tree.getSelected():
             (path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
-            print "restoring %s" % path
+            print("restoring %s" % path)
             d = self.factory.sendGETF(path)
             d.addCallback(self.restored, n)
             d.addErrback(self.restoreFailed, n)
@@ -1402,13 +1402,13 @@ class RestorePanel(wx.Panel):
 
     def restored(self, res, n):
         (path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
-        print "yay, %s" % path
+        print("yay, %s" % path)
         self.tree.SetItemTextColour(n, '#005804')
         self.tree.changeState(n)
 
     def restoreFailed(self, err, n):
         (path, isDir, expanded, state) = self.tree.GetItemData(n).GetData()
-        print "boo, %s: %s" % (path, err)
+        print("boo, %s: %s" % (path, err))
         self.tree.SetItemTextColour(n, wx.RED)
         self.tree.changeState(n)
 
@@ -1439,7 +1439,7 @@ class FludNotebook(wx.Notebook):
         self.config = parent.config
 
         self.factory = LocalClientFactory(self.config)
-        print "connecting to localhost:%d" % self.config.clientport
+        print("connecting to localhost:%d" % self.config.clientport)
         reactor.connectTCP('localhost', self.config.clientport, self.factory)
 
         wx.Notebook.__init__(self, parent, id, pos, style=style)

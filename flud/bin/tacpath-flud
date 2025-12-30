@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import os
 import flud.FludNode
 
-print os.path.join(flud.FludNode.getPath(),'FludNode.tac')
+print(os.path.join(flud.FludNode.getPath(),'FludNode.tac'))

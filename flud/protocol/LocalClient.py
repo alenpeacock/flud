@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
 LocalClient.py (c) 2003-2006 Alen Peacock.  This program is distributed
 under the terms of the GNU General Public License (the GPL), version 3.
@@ -16,12 +16,12 @@ threadable.init()
 
 from flud.fencode import fencode, fdecode
 
-from LocalPrimitives import *
+from .LocalPrimitives import *
 
 logger = logging.getLogger("flud.local.client")
 
 opTimeout = 1200
-VALIDOPS = LocalProtocol.commands.keys() + ['AUTH', 'DIAG']
+VALIDOPS = list(LocalProtocol.commands.keys()) + ['AUTH', 'DIAG']
 
 # XXX: print commands should either be raised, or put on factory.msgs
 
@@ -38,10 +38,10 @@ class LocalClient(LineReceiver):
         logger.debug("received line '%s'" % line)
         command = line[0:4]
         if not command in VALIDOPS:
-            print "error: invalid command op ('%s')-- "\
+            print("error: invalid command op ('%s')-- "\
                     " are you trying to connect to the wrong port"\
                     " (local client port is usually external port + 500)?"\
-                    % command
+                    % command)
             return None
         status = line[4]
         data = line[5:]
@@ -62,13 +62,13 @@ class LocalClient(LineReceiver):
                 if command == "AUTH" and status == "!":
                     logger.warn("authentication failed (is FLUDHOME set"
                         " correctly?)")
-                    print "authentication failed (is FLUDHOME set correctly?)"
+                    print("authentication failed (is FLUDHOME set correctly?)")
                 else:
                     logger.warn("unknown message received before being"
                             " authenticated:")
                     logger.warn("  %s : %s" % (command, status))
-                    print "unknown message received before being authenticated:"
-                    print "  %s : %s" % (command, status)
+                    print("unknown message received before being authenticated:")
+                    print("  %s : %s" % (command, status))
                 self.factory.setDie()
         elif command == "DIAG":
             subcommand = data[:4]
@@ -126,10 +126,10 @@ class LocalClient(LineReceiver):
         elif status == "!":
             response, data = data.split(status, 1)
             logger.debug("%s: failure" % command)
-            if self.factory.pending.has_key(command):
+            if command in self.factory.pending:
                 if data not in self.factory.pending[command]:
                     #print "data key is '%s'" % data
-                    print "pending is '%s'" % self.factory.pending[command]
+                    print("pending is '%s'" % self.factory.pending[command])
                     if len(self.factory.pending[command]):
                         d = self.factory.pending[command].popitem()
                         d.errback(failure.DefaultException(response))
@@ -137,10 +137,10 @@ class LocalClient(LineReceiver):
                     d = self.factory.pending[command].pop(data)
                     d.errback(failure.DefaultException(response))
             else:
-                print "failed command '%s' not in pending?" % command
-                print "pending is: %s" % self.factory.pending
+                print("failed command '%s' not in pending?" % command)
+                print("pending is: %s" % self.factory.pending)
         if command != 'AUTH' and command != 'DIAG' and \
-                not None in self.factory.pending[command].values():
+                not None in list(self.factory.pending[command].values()):
             logger.debug("%s done at %s" % (command, time.ctime()))
 
 
@@ -169,7 +169,7 @@ class LocalClientFactory(ClientFactory):
 
     def cleanup(self, msg):
         # override me for cleanup
-        print msg;
+        print(msg);
 
     def clientReady(self, instance):
         self.client = instance
@@ -192,14 +192,14 @@ class LocalClientFactory(ClientFactory):
         return challenge
 
     def expire(self, pending, key):
-        if pending.has_key(fname):
+        if fname in pending:
             logger.debug("timing out operation for %s" % key)
             #print "timing out operation for %s" % key
             pending.pop(key)
     
     def addFile(self, type, fname):
         logger.debug("addFile %s %s" % (type, fname))
-        if not self.pending[type].has_key(fname):
+        if fname not in self.pending[type]:
             d = defer.Deferred()
             self.pending[type][fname] = d
             self._sendMessage(type+"?"+fname)
@@ -223,7 +223,7 @@ class LocalClientFactory(ClientFactory):
                 dlist.append(self.sendPUTF(os.path.join(fname,i)))
             dl = defer.DeferredList(dlist)
             return dl
-        elif not self.pending['PUTF'].has_key(fname):
+        elif fname not in self.pending['PUTF']:
             d = defer.Deferred()
             self.pending['PUTF'][fname] = d
             self._sendMessage("PUTF?"+fname)
@@ -235,7 +235,7 @@ class LocalClientFactory(ClientFactory):
     def sendCRED(self, passphrase, email):
         logger.debug("sendCRED")
         key = fencode((self.config.Ku.encrypt(passphrase)[0], email))
-        if not self.pending['CRED'].has_key(key):
+        if key not in self.pending['CRED']:
             d = defer.Deferred()
             self.pending['CRED'][key] = d
             self._sendMessage("CRED?"+key)
@@ -245,7 +245,7 @@ class LocalClientFactory(ClientFactory):
     
     def sendGETI(self, fID):
         logger.debug("sendGETI")
-        if not self.pending['GETI'].has_key(fID):
+        if fID not in self.pending['GETI']:
             d = defer.Deferred()
             self.pending['GETI'][fID] = d
             self._sendMessage("GETI?"+fID)
@@ -256,7 +256,7 @@ class LocalClientFactory(ClientFactory):
     def sendGETF(self, fname):
         logger.debug("sendGETF")
         master = listMeta(self.config)
-        if master.has_key(fname):
+        if fname in master:
             return self.addFile("GETF",fname)
         elif fname[-1:] == os.path.sep:
             dlist = []
@@ -268,7 +268,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendFNDN(self, nID):
         logger.debug("sendFNDN")
-        if not self.pending['FNDN'].has_key(nID):
+        if nID not in self.pending['FNDN']:
             d = defer.Deferred()
             self.pending['FNDN'][nID] = d
             self._sendMessage("FNDN?"+nID)
@@ -278,7 +278,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendLIST(self):
         logger.debug("sendLIST")
-        if not self.pending['LIST'].has_key(""):
+        if "" not in self.pending['LIST']:
             d = defer.Deferred()
             self.pending['LIST'][''] = d
             logger.debug("LIST['']=%s" % d)
@@ -289,7 +289,7 @@ class LocalClientFactory(ClientFactory):
     
     def sendGETM(self):
         logger.debug("sendGETM")
-        if not self.pending['GETM'].has_key(''):
+        if '' not in self.pending['GETM']:
             d = defer.Deferred()
             self.pending['GETM'][''] = d
             logger.debug("GETM['']=%s" % d)
@@ -300,7 +300,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendPUTM(self):
         logger.debug("sendPUTM")
-        if not self.pending['PUTM'].has_key(''):
+        if '' not in self.pending['PUTM']:
             d = defer.Deferred()
             self.pending['PUTM'][''] = d
             self._sendMessage("PUTM?")
@@ -310,7 +310,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGNODE(self):
         logger.debug("sendDIAGNODE")
-        if not self.pending['NODE'].has_key(''):
+        if '' not in self.pending['NODE']:
             d = defer.Deferred()
             self.pending['NODE'][''] = d
             self._sendMessage("DIAG?NODE")
@@ -320,7 +320,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGBKTS(self):
         logger.debug("sendDIAGBKTS")
-        if not self.pending['BKTS'].has_key(''):
+        if '' not in self.pending['BKTS']:
             d = defer.Deferred()
             self.pending['BKTS'][''] = d
             self._sendMessage("DIAG?BKTS")
@@ -330,7 +330,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGSTOR(self, command):
         logger.debug("sendDIAGSTOR")
-        if not self.pending['STOR'].has_key(command):
+        if command not in self.pending['STOR']:
             d = defer.Deferred()
             self.pending['STOR'][command] = d
             self._sendMessage("DIAG?STOR "+command)
@@ -340,7 +340,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGRTRV(self, command):
         logger.debug("sendDIAGRTRV")
-        if not self.pending['RTRV'].has_key(command):
+        if command not in self.pending['RTRV']:
             d = defer.Deferred()
             self.pending['RTRV'][command] = d
             self._sendMessage("DIAG?RTRV "+command)
@@ -350,7 +350,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGVRFY(self, command):
         logger.debug("sendDIAGVRFY")
-        if not self.pending['VRFY'].has_key(command):
+        if command not in self.pending['VRFY']:
             d = defer.Deferred()
             self.pending['VRFY'][command] = d
             self._sendMessage("DIAG?VRFY "+command)
@@ -360,7 +360,7 @@ class LocalClientFactory(ClientFactory):
 
     def sendDIAGFNDV(self, val):
         logger.debug("sendDIAGFNDV")
-        if not self.pending['FNDV'].has_key(val):
+        if val not in self.pending['FNDV']:
             d = defer.Deferred()
             self.pending['FNDV'][val] = d
             self._sendMessage("FNDV?"+val)

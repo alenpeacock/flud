@@ -30,7 +30,7 @@ def fencode(d, lenField=False):
 
     >>> n = None
     >>> i = 123455566
-    >>> I = 1233433243434343434343434343434343509669586958695869L
+    >>> I = 1233433243434343434343434343434343509669586958695869
     >>> s = "hello there, everyone"
     >>> s2 = "long text ............................................................................... AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
     >>> d = {'a': 'adfasdfasd', 'aaa': 'rrreeeettt', 'f': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
@@ -125,42 +125,49 @@ def fencode(d, lenField=False):
         Returns the integer i as a three-byte length value.
 
         >>> makeLen(255)
-        '\\x00\\xff'
+        'AP8'
         >>> makeLen(65535)
-        '\\xff\\xff'
+        '//8'
         """
         if i > 65535 or i < 0:
             raise ValueError("illegal length for fencoded data"
                     "(0 < x <= 65535)")
         return fencode(i)[1:-1]
     
-    if isinstance(d, int) or isinstance(d, long):
-        val = "%x" % d
-        neg = False
-        c = 'i'
-        if isinstance(d, long):
-            c = 'o'
-        if d < 0:
-            neg = True
-            val = val[1:]
+    if isinstance(d, bool):
+        d = int(d)
+
+    if isinstance(d, int):
+        neg = d < 0
+        val_hex = f"{abs(d):x}"
+        if len(val_hex) % 2 != 0:
+            val_hex = f"0{val_hex}"
+        val = bytes.fromhex(val_hex)
+        if len(val) % 2 != 0:
+            val = b"\x00" + val
+        val = base64.urlsafe_b64encode(val).decode("ascii")
+        c = 'o' if abs(d) <= 0x7FFFFFFF else 'i'
+        if neg:
             c = c.upper()
-        if len(val) % 2 != 0:
-            val = "0%s" % val
-        val = val.decode('hex')
-        if len(val) % 2 != 0:
-            val = '\x00' + val
-        val = base64.urlsafe_b64encode(val) 
         if lenField:
             if len(val) > 65535:
                 raise ValueError("value to large for encode")
             return c+makeLen(len(val))+val
         else:
             return c+val
+    elif isinstance(d, bytes):
+        val = base64.urlsafe_b64encode(d).decode("ascii")
+        if lenField:
+            if len(val) > 65535:
+                raise ValueError("value to large for encode")
+            return 'b'+makeLen(len(val))+val
+        else:
+            return 'b'+val
     elif isinstance(d, str):
         # String data may contain characters outside the allowed charset.
         # urlsafe b64encoding ensures that data can be used inside http urls
         # (and other plaintext representations).
-        val = base64.urlsafe_b64encode(d)
+        val = base64.urlsafe_b64encode(d.encode("utf-8")).decode("ascii")
         if lenField:
             if len(val) > 65535:
                 raise ValueError("value to large for encode")
@@ -249,6 +256,9 @@ def fdecode(d, lenField=False, recurse=1):
     if isinstance(d, Fencoded):
         return fdecode(d.data, recurse=recurse)
 
+    if isinstance(d, bytes):
+        d = d.decode("utf-8")
+
     if not isinstance(d, str):
         raise ValueError("decode takes string data or Fencoded object only,"
                 " got %s" % type(d))
@@ -258,24 +268,25 @@ def fdecode(d, lenField=False, recurse=1):
         val = d[4:]
     else:
         val = d[1:len(d)]
+    def pad_b64(s):
+        return s + ("=" * ((4 - (len(s) % 4)) % 4))
+
     if valtype == 'i':
-        val = base64.urlsafe_b64decode(val)
-        val = val.encode('hex')
-        return int(val, 16)
+        val = base64.urlsafe_b64decode(pad_b64(val))
+        return int.from_bytes(val, 'big')
     elif valtype == 'I':
-        val = base64.urlsafe_b64decode(val)
-        val = val.encode('hex')
-        return -int(val, 16)
+        val = base64.urlsafe_b64decode(pad_b64(val))
+        return -int.from_bytes(val, 'big')
     elif valtype == 'o':
-        val = base64.urlsafe_b64decode(val)
-        val = val.encode('hex')
-        return long(val, 16)
+        val = base64.urlsafe_b64decode(pad_b64(val))
+        return int.from_bytes(val, 'big')
     elif valtype == 'O':
-        val = base64.urlsafe_b64decode(val)
-        val = val.encode('hex')
-        return -long(val, 16)
+        val = base64.urlsafe_b64decode(pad_b64(val))
+        return -int.from_bytes(val, 'big')
     elif valtype == 's':
-        return base64.urlsafe_b64decode(val)
+        return base64.urlsafe_b64decode(pad_b64(val)).decode("utf-8")
+    elif valtype == 'b':
+        return base64.urlsafe_b64decode(pad_b64(val))
     elif valtype == 'd':
         result = {}
         while len(val) != 0:
@@ -321,4 +332,3 @@ def fdecode(d, lenField=False, recurse=1):
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
-

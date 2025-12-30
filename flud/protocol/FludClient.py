@@ -7,11 +7,11 @@ flud client ops.
 
 from twisted.web import client
 from twisted.internet import error
-import os, stat, httplib, sys, logging
+import os, stat, http.client, sys, logging
 
-from ClientPrimitives import *
-from ClientDHTPrimitives import *
-import FludCommUtil
+from .ClientPrimitives import *
+from .ClientDHTPrimitives import *
+from . import FludCommUtil
 
 logger = logging.getLogger('flud.client')
 
@@ -27,10 +27,10 @@ class FludClient(object):
     Data storage primitives
     """
     def redoTO(self, f, node, host, port):
-        print "in redoTO: %s" % f
+        print("in redoTO: %s" % f)
         #print "in redoTO: %s" % dir(f.getTraceback())
         if f.getTraceback().find("error.TimeoutError"): 
-            print "retrying........"
+            print("retrying........")
             return self.sendGetID(host, port)
         else:
             return f
@@ -55,7 +55,7 @@ class FludClient(object):
         # XXX: need to remove from currentStorOps on success or failure
         key = "%s:%d:%s" % (host, port, filename)
 
-        if self.currentStorOps.has_key(key):
+        if key in self.currentStorOps:
             logger.debug("returning saved deferred for %s in sendStore" 
                     % filename)
             return self.currentStorOps[key]
@@ -74,8 +74,8 @@ class FludClient(object):
             #      proper
             logger.warn("not doing AggregateStore on small file because"
                     " of missing nKu")
-            print "not doing AggregateStore on small file because" \
-                    " of missing nKu"
+            print("not doing AggregateStore on small file because" \
+                    " of missing nKu")
             d = self.sendGetID(host, port)
             d.addCallback(sendStoreWithnKu, host, port, filename, metadata)
             self.currentStorOps[key] = d

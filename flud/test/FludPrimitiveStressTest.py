@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import time, os, stat, random, sys, logging, socket
 from twisted.python import failure
@@ -69,7 +69,7 @@ def checkVERIFY(results, nKu, host, port, hashes, num=CONCURRENT):
     for i in range(num):
         hash = hashes[i]
         res = results[i][1]
-        if long(hash, 16) != long(res, 16):
+        if int(hash, 16) != int(res, 16):
             raise failure.DefaultException("verify didn't match: %s != %s"
                     % (hash, res))
     logger.info("  ...VERIFY results good.")
@@ -229,7 +229,7 @@ Main currently invokes test code
 if __name__ == '__main__':
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
-        print "Warning: testing against self my result in timeout failures"
+        print("Warning: testing against self my result in timeout failures")
         runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
         runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]

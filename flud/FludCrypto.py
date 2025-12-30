@@ -2,37 +2,86 @@
 FludCrypto.py (c) 2003-2006 Alen Peacock.  This program is distributed under
 the terms of the GNU General Public License (the GPL), version 3.
 
-Provides FludRSA (an enhanced RSA._RSAobj), as well as convenience functions
-for creating hashes, finding hash collisions, etc.
+Provides FludRSA (a thin wrapper around Cryptodome.PublicKey.RSA.RsaKey), as
+well as convenience functions for creating hashes, finding hash collisions,
+etc.
 """
 
 import binascii
 import operator
 import struct
 import time
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import RSA, pubkey
-from Crypto.Util.randpool import RandomPool
-from Crypto.Random import atfork
+from Cryptodome.Cipher import PKCS1_v1_5
+from Cryptodome.Hash import SHA256
+from Cryptodome.PublicKey import RSA
+from Cryptodome.Random import atfork, get_random_bytes
+from Cryptodome.Util.number import inverse
 
-class FludRSA(RSA._RSAobj):
+class FludRSA(object):
     """
-    Subclasses the Crypto.PublicKey.RSAobj object to add access to the
-    privatekey as well as methods for exporting and importing an RSA obj.
+    Lightweight wrapper around Cryptodome.PublicKey.RSA.RsaKey that keeps the
+    legacy FludRSA interface without subclassing private PyCrypto internals.
     """
-    rand = RandomPool()
 
     def __init__(self, rsa):
-        self.__setstate__(rsa.__getstate__())
+        if isinstance(rsa, FludRSA):
+            rsa = rsa._key
+        if not isinstance(rsa, RSA.RsaKey):
+            raise TypeError("FludRSA requires an RSA.RsaKey, got %s" % type(rsa))
+        self._key = rsa
+
+    def __getattr__(self, name):
+        # Delegate to the underlying RsaKey for attributes like n, e, d, etc.
+        return getattr(self._key, name)
+
+    def __getstate__(self):
+        """
+        Return a dict representation compatible with older PyCrypto
+        __getstate__ output, so stored configs still round-trip.
+        """
+        state = {'n': self._key.n, 'e': self._key.e}
+        if self._key.has_private():
+            state['d'] = self._key.d
+            if getattr(self._key, 'p', None) and getattr(self._key, 'q', None):
+                p = self._key.p
+                q = self._key.q
+                state.update({
+                    'p': p,
+                    'q': q,
+                    'u': inverse(q, p),
+                    'exp1': self._key.d % (p - 1),
+                    'exp2': self._key.d % (q - 1),
+                })
+        return state
 
     def publickey(self):
-        return FludRSA(RSA.construct((self.n, self.e)))
+        return FludRSA(self._key.publickey())
 
     def privatekey(self):
-        return FludRSA(RSA.construct((self.n, self.e, self.d)))
+        if not self._key.has_private():
+            raise ValueError("public key does not include a private exponent")
+        return FludRSA(RSA.construct(
+            (self._key.n, self._key.e, self._key.d),
+            consistency_check=False))
 
     def encrypt(self, message):
-        return RSA._RSAobj.encrypt(self, message, "")
+        if isinstance(message, str):
+            message = message.encode()
+        cipher = PKCS1_v1_5.new(self._key)
+        # Keep compatibility with the old PyCrypto interface that returned
+        # a 1-tuple.
+        return (cipher.encrypt(message),)
+
+    def decrypt(self, ciphertext):
+        if isinstance(ciphertext, tuple):
+            ciphertext = ciphertext[0]
+        if isinstance(ciphertext, str):
+            ciphertext = ciphertext.encode()
+        cipher = PKCS1_v1_5.new(self._key)
+        plaintext = cipher.decrypt(ciphertext, None)
+        if plaintext is None:
+            raise ValueError("failed to decrypt ciphertext")
+        return plaintext
 
     def exportPublicKey(self):
         return self.publickey().__getstate__()
@@ -44,7 +93,6 @@ class FludRSA(RSA._RSAobj):
         """
         returns the hashstring of the public key
         """
-        #return hashstring(str(self.exportPublicKey()))
         return hashstring(str(self.exportPublicKey()['n']))
 
     def importPublicKey(key):
@@ -54,15 +102,15 @@ class FludRSA(RSA._RSAobj):
         is assumed to be 65537L).
         """
         if isinstance(key, str):
-            key = long(key, 16)
-            key = {'e': 65537L, 'n': key}
-        elif isinstance(key, long):
-            key = {'e': 65537L, 'n': key}
+            key = int(key, 16)
+            key = {'e': 65537, 'n': key}
+        elif isinstance(key, int):
+            key = {'e': 65537, 'n': key}
 
         if isinstance(key, dict):
-            state = key
-            pkey = RSA.construct((0L,0L))
-            pkey.__setstate__(state)
+            n = key['n']
+            e = key.get('e', 65537)
+            pkey = RSA.construct((n, e))
             return FludRSA(pkey)
         else:
             raise TypeError("type %s not supported by importPublicKey():"\
@@ -71,14 +119,23 @@ class FludRSA(RSA._RSAobj):
     importPublicKey = staticmethod(importPublicKey)
 
     def importPrivateKey(key):
-        state = key
-        pkey = RSA.construct((0L,0L,0L))
-        pkey.__setstate__(state)
+        if not isinstance(key, dict):
+            raise TypeError("importPrivateKey expects a dict with RSA values")
+        n = key['n']
+        e = key.get('e', 65537)
+        d = key['d']
+        p = key.get('p')
+        q = key.get('q')
+        if p and q:
+            pkey = RSA.construct((n, e, d, p, q), consistency_check=False)
+        else:
+            pkey = RSA.construct((n, e, d), consistency_check=False)
         return FludRSA(pkey)
     importPrivateKey = staticmethod(importPrivateKey)
 
     def generate(keylength=2048):
-        return FludRSA(RSA.generate(keylength, FludRSA.rand.get_bytes))
+        atfork()
+        return FludRSA(RSA.generate(keylength, randfunc=get_random_bytes))
     generate = staticmethod(generate)
 
 
@@ -88,15 +145,17 @@ def generateKeys(len=2048):
 
 def hashstring(string):
     sha256 = SHA256.new()
+    if isinstance(string, str):
+        string = string.encode()
     sha256.update(string)
     return sha256.hexdigest()
 
 def hashfile(filename):
     sha256 = SHA256.new()
-    f = open(filename, "r")
+    f = open(filename, "rb")
     while 1:
         buf = f.read(1048576) # XXX: 1Mb - magic number
-        if buf == "":
+        if buf == b"":
             break
         sha256.update(buf)
     f.close()
@@ -109,7 +168,7 @@ def hashstream(file, len):
         if len < readsize:
             readsize = len
         buf = file.read(readsize)
-        if buf == "":
+        if buf == b"":
             break
         sha256.update(buf)
         len = len - readsize
@@ -117,8 +176,7 @@ def hashstream(file, len):
 
 def generateRandom(n):
     atfork()
-    rand = RandomPool()  # using seperate instance of RandomPool purposely
-    return rand.get_bytes(n)
+    return get_random_bytes(n)
 
 
 def hashcash(match, len, timestamp=False):
@@ -131,7 +189,7 @@ def hashcash(match, len, timestamp=False):
     The result is hex-encoded, so to arrive at the matching hashvalue, you
     would hashstring(binascii.unhexlify(result)).
     """
-    matchint = long(match,16)
+    matchint = int(match,16)
     len = 2**(256-len)
     if date:
         gtime = struct.pack("I",int(time.time()))
@@ -144,7 +202,7 @@ def hashcash(match, len, timestamp=False):
             # even daily value)
             attempt = attempt[0:30]+gtime[2:4]
         attempthash = hashstring(attempt)
-        attemptint = long(attempthash,16)
+        attemptint = int(attempthash,16)
         distance = operator.xor(matchint, attemptint)
         if distance < len:
             break
@@ -153,31 +211,31 @@ def hashcash(match, len, timestamp=False):
 # XXX: should move all testing to doctest
 if __name__ == '__main__':
     fludkey = FludRSA.generate(2048)
-    print "fludkey (pub) is: "+str(fludkey.exportPublicKey())
-    print "fludkey (priv) is: "+str(fludkey.exportPrivateKey())
-    print ""
+    print("fludkey (pub) is: "+str(fludkey.exportPublicKey()))
+    print("fludkey (priv) is: "+str(fludkey.exportPrivateKey()))
+    print("")
     pubkeystring = fludkey.exportPublicKey()
     pubkeylongn = pubkeystring['n']
     pubkeystringn = hex(pubkeystring['n'])
     privkeystring = fludkey.exportPrivateKey()
     fludkeyPub = FludRSA.importPublicKey(pubkeystring)
-    print "fludkeyPub is: "+str(fludkeyPub.exportPublicKey())
+    print("fludkeyPub is: "+str(fludkeyPub.exportPublicKey()))
     fludkeyPub2 = FludRSA.importPublicKey(pubkeystringn)
-    print "fludkeyPub2 is: "+str(fludkeyPub2.exportPublicKey())
+    print("fludkeyPub2 is: "+str(fludkeyPub2.exportPublicKey()))
     fludkeyPub3 = FludRSA.importPublicKey(pubkeylongn)
-    print "fludkeyPub3 is: "+str(fludkeyPub3.exportPublicKey())
+    print("fludkeyPub3 is: "+str(fludkeyPub3.exportPublicKey()))
     fludkeyPriv = FludRSA.importPrivateKey(privkeystring)
-    print "fludkeyPriv is: "+str(fludkeyPriv.exportPrivateKey())
-    plaintext = "test message"
-    print "plaintext is: "+plaintext
+    print("fludkeyPriv is: "+str(fludkeyPriv.exportPrivateKey()))
+    plaintext = "test message".encode('utf-8')
+    print("plaintext is: {plaintext}")
     ciphertext = fludkeyPub.encrypt(plaintext)
-    print "ciphertext is: "+str(ciphertext)
+    print("ciphertext is: "+str(ciphertext))
     plaintext2 = fludkeyPriv.decrypt(ciphertext)
-    print "decrypted plaintext is: "+plaintext2
-    assert plaintext2==plaintext
+    print(f"decrypted plaintext is: {plaintext2}")
+    assert plaintext2 == plaintext
 
-    randstring = str(generateRandom(80))
-    print "80 bytes of random data: '"+binascii.hexlify(randstring)
+    randstring = str(generateRandom(80)).encode('utf-8')
+    print("80 bytes of random data: {binascii.hexlify(randstring)}")
     data1=randstring
 
     # leading zeroes get lost, since encryption treats the data as a number
@@ -185,6 +243,6 @@ if __name__ == '__main__':
 
     edata1=fludkeyPub.encrypt(data1)[0]
     data2=fludkeyPriv.decrypt(edata1)
-    print binascii.hexlify(data1)
-    print binascii.hexlify(data2)
+    print(binascii.hexlify(data1))
+    print(binascii.hexlify(data2))
     assert data1 == data2

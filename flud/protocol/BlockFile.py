@@ -1,4 +1,4 @@
-import os, __builtin__, tempfile, stat, sys, struct
+import os, builtins, tempfile, stat, sys, struct
 from binascii import crc32
 
 sys.path.append("..")
@@ -37,13 +37,13 @@ def convert(fname, nodeIDandMeta=None):
     being stored with this BlockFile)
     """
     tname = tempfile.mktemp()
-    f1 = __builtin__.open(fname, 'rb')
-    f2 = __builtin__.open(tname, 'wb')
+    f1 = builtins.open(fname, 'rb')
+    f2 = builtins.open(tname, 'wb')
     size = os.stat(fname)[stat.ST_SIZE]
     f2.write(struct.pack('=Q',size))
     while 1:
         buf = f1.read()
-        if buf == "":
+        if not buf:
             break
         f2.write(buf)
     if nodeIDandMeta == None:
@@ -57,7 +57,7 @@ def convert(fname, nodeIDandMeta=None):
             raise IOError("invalid metadata (should be a dict)")
         l = {} 
         l[nodeID] = meta
-    f2.write(fencode(l))
+    f2.write(fencode(l).encode("utf-8"))
     f2.close()
     f1.close()
     os.rename(tname, fname)
@@ -153,13 +153,13 @@ class BlockFile:
         # XXX: need to check fname and throw if it isn't a proper BlockFile
         self._fname = fname
         self.mode = mode
-        self._file = __builtin__.open(fname, mode)
+        self._file = builtins.open(fname, mode)
         sizeString = self._file.read(8)
         self._size = struct.unpack('=Q',sizeString)[0]
         self._dataend = 8 + self._size
         self._file.seek(self._dataend)
         self._accounting = fdecode(self._file.read())
-        self._accountingcrc = crc32(str(self._accounting))
+        self._accountingcrc = crc32(repr(self._accounting).encode("utf-8"))
         self._changed = False
         if mode[0] == 'a':
             self._file.seek(self._dataend)
@@ -176,7 +176,7 @@ class BlockFile:
             if self._file.tell()+len > self._dataend:
                 len = self._dataend - self._file.tell()
             if len <= 0:
-                return ""
+                return b""
         return self._file.read(len)
 
     def seek(self, pos):
@@ -209,10 +209,11 @@ class BlockFile:
         if not self._file.closed: # XXX
             if (self.mode[0] != 'r' or self.mode.find('+') > 0) \
                     and (self._changed 
-                        or crc32(str(self._accounting)) != self._accountingcrc):
+                        or crc32(repr(self._accounting).encode("utf-8"))
+                        != self._accountingcrc):
                 saved = self._file.tell()
                 self._file.seek(self._dataend)
-                self._file.write(fencode(self._accounting))
+                self._file.write(fencode(self._accounting).encode("utf-8"))
                 self._file.truncate()
                 self._file.seek(saved)
             self._file.close()

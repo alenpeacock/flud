@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import time, os, stat, random, sys, logging, socket, shutil, tempfile
 from binascii import crc32
-from StringIO import StringIO
+from io import StringIO
 from twisted.python import failure
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -32,27 +32,27 @@ def testerror(failure, message, node):
     """
     error handler for test errbacks
     """
-    print "testerror message: %s" % message
-    print "testerror: %s" % str(failure)
-    print "At least 1 test FAILED"
+    print("testerror message: %s" % message)
+    print("testerror: %s" % str(failure))
+    print("At least 1 test FAILED")
     raise failure
 
 def testUnexpectedSuccess(res, message, node):
-    print "unexpected success message: %s" % message
-    print "At least 1 test succeeded when it should have failed"
-    raise "bad"
+    print("unexpected success message: %s" % message)
+    print("At least 1 test succeeded when it should have failed")
+    raise RuntimeError("unexpected success")
 
 def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
-        print "%s" % msg
+        print("%s" % msg)
         # the end
     else:
-        print "\nDELETEBadKey expected NotFoundException," \
-                " but got a different failure:"
+        print("\nDELETEBadKey expected NotFoundException," \
+                " but got a different failure:")
         raise failure
 
 def testDELETEBadKey(nKu, node, host, port):
-    print "starting testDELETEBadKey"
+    print("starting testDELETEBadKey")
     path = os.path.join("somedir", largefilekey)
     deferred = node.client.sendDelete(path, crc32(path), host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "DELETE with bad key succeeded",
@@ -63,15 +63,15 @@ def testDELETEBadKey(nKu, node, host, port):
 
 def testVERIFYBadKeyFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testDELETEBadKey(nKu, node, host, port)
     else:
-        print "\nVERIFYBadKey expected NotFoundException," \
-                " but got a different failure:"
+        print("\nVERIFYBadKey expected NotFoundException," \
+                " but got a different failure:")
         raise failure
 
 def testVERIFYBadKey(nKu, node, host, port):
-    print "starting testVERIFYBadKey"
+    print("starting testVERIFYBadKey")
     fsize = os.stat(smallfilename)[stat.ST_SIZE]
     offset = fsize-20
     deferred = node.client.sendVerify(smallfilenamebad, offset, 5, host, 
@@ -84,15 +84,15 @@ def testVERIFYBadKey(nKu, node, host, port):
 
 def testVERIFYBadLengthFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testVERIFYBadKey(nKu, node, host, port)
     else:
-        print "\nVERIFYBadLength expected BadRequestException," \
-                " but got a different failure:"
+        print("\nVERIFYBadLength expected BadRequestException," \
+                " but got a different failure:")
         raise failure
 
 def testVERIFYBadLength(nKu, node, host, port):
-    print "starting testVERIFYBadOffset"
+    print("starting testVERIFYBadOffset")
     fsize = os.stat(smallfilename)[stat.ST_SIZE]
     offset = fsize-10
     deferred = node.client.sendVerify(smallfilekey, offset, 20, host, port, nKu)
@@ -104,15 +104,15 @@ def testVERIFYBadLength(nKu, node, host, port):
 
 def testVERIFYBadOffsetFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testVERIFYBadLength(nKu, node, host, port)
     else:
-        print "\nVERIFYBadOffset expected BadRequestException," \
-                " but got a different failure:"
+        print("\nVERIFYBadOffset expected BadRequestException," \
+                " but got a different failure:")
         raise failure
 
 def testVERIFYBadOffset(nKu, node, host, port):
-    print "starting testVERIFYBadOffset"
+    print("starting testVERIFYBadOffset")
     fsize = os.stat(smallfilename)[stat.ST_SIZE]
     offset = fsize+2
     deferred = node.client.sendVerify(smallfilekey, offset, 20, host, port, nKu)
@@ -124,15 +124,15 @@ def testVERIFYBadOffset(nKu, node, host, port):
 
 def testVERIFYNotFoundFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testVERIFYBadOffset(nKu, node, host, port)
     else:
-        print "\nVERIFYNotFound expected NotFoundException," \
-                " but got a different failure:"
+        print("\nVERIFYNotFound expected NotFoundException," \
+                " but got a different failure:")
         raise failure
 
 def testVERIFYNotFound(nKu, node, host, port):
-    print "starting testVERIFYNotFound"
+    print("starting testVERIFYNotFound")
     deferred = node.client.sendVerify(largefilekey, 10, 10, host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "verified non-existent file",
             node)
@@ -143,15 +143,15 @@ def testVERIFYNotFound(nKu, node, host, port):
 
 def testRETRIEVEIllegalPathFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testVERIFYNotFound(nKu, node, host, port)
     else:
-        print "\nRETRIEVEIllegalPath expected NotFoundException," \
-                " but got a different failure:"
+        print("\nRETRIEVEIllegalPath expected NotFoundException," \
+                " but got a different failure:")
         raise failure
 
 def testRETRIEVEIllegalPath(nKu, node, host, port):
-    print "starting testRETRIEVEIllegalPath"
+    print("starting testRETRIEVEIllegalPath")
     deferred = node.client.sendRetrieve(os.path.join("somedir",smallfilekey), 
             host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, 
@@ -163,15 +163,15 @@ def testRETRIEVEIllegalPath(nKu, node, host, port):
 
 def testRETRIEVENotFoundFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testRETRIEVEIllegalPath(nKu, node, host, port)
     else:
-        print "\nRETRIEVENotFound expected NotFoundException," \
-                " but got a different failure:"
+        print("\nRETRIEVENotFound expected NotFoundException," \
+                " but got a different failure:")
         raise failure
 
 def testRETRIEVENotFound(nKu, node, host, port):
-    print "starting testRETRIEVENotFound"
+    print("starting testRETRIEVENotFound")
     deferred = node.client.sendRetrieve(largefilekey, host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, 
             "retrieved file that shouldn't exist", node)
@@ -182,15 +182,15 @@ def testRETRIEVENotFound(nKu, node, host, port):
 
 def testSTORELargeFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.BadCASKeyException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testRETRIEVENotFound(nKu, node, host, port)
     else:
-        print "\nSTORELarge expected BadCASKeyException," \
-                " but got a different failure:"
+        print("\nSTORELarge expected BadCASKeyException," \
+                " but got a different failure:")
         raise failure
 
 def testSTOREBadKeyLarge(nKu, node, host, port):
-    print "starting testSTOREBadKeyLarge"
+    print("starting testSTOREBadKeyLarge")
     deferred = node.client.sendStore(largefilenamebad, 
             (crc32(largefilenamebad), StringIO(metadata)), host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "large file, bad key succeeded",
@@ -202,16 +202,16 @@ def testSTOREBadKeyLarge(nKu, node, host, port):
 
 def testSTORESmallFailed(failure, msg, node, nKu, host, port):
     if failure.check('flud.protocol.FludCommUtil.BadCASKeyException'):
-        print "%s" % msg
+        print("%s" % msg)
         return testSTOREBadKeyLarge(nKu, node, host, port)
     else:
-        print "\nSTORESmall expected BadCASKeyException," \
-                " but got a different failure:"
+        print("\nSTORESmall expected BadCASKeyException," \
+                " but got a different failure:")
         raise failure
 
 
 def testSTOREBadKeySmall(nKu, node, host, port):
-    print "starting testSTOREBadKeySmall"
+    print("starting testSTOREBadKeySmall")
     deferred = node.client.sendStore(smallfilenamebad, 
             (crc32(smallfilenamebad), StringIO(metadata)), host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "small file, bad key succeeded",
@@ -222,12 +222,12 @@ def testSTOREBadKeySmall(nKu, node, host, port):
     return deferred
 
 def testSTORESuccess(res, nKu, node, host, port):
-    print "testSTORE succeeded: %s" % res
+    print("testSTORE succeeded: %s" % res)
     return testSTOREBadKeySmall(nKu, node, host, port)
 
 def testSTORE(nKu, node, host, port):
     # store a file successfully for later failure tests (VERIFY, etc)
-    print "starting testSTORE"
+    print("starting testSTORE")
     deferred = node.client.sendStore(smallfilename, 
             (crc32(smallfilename), StringIO(metadata)), host, port, nKu)
     deferred.addCallback(testSTORESuccess, nKu, node, host, port)
@@ -239,7 +239,7 @@ def testSTORE(nKu, node, host, port):
 
 def testID(node, host, port):
     """ Tests sendGetID(), and invokes testSTORE on success """
-    print "starting testID"
+    print("starting testID")
     deferred = node.client.sendGetID(host, port)
     deferred.addCallback(testSTORE, node, host, port)
     #deferred.addCallback(testSTOREBadKeySmall, node, host, port)
@@ -249,9 +249,9 @@ def testID(node, host, port):
     
 def cleanup(err, node):
     if err:
-        print "cleaning up: %s" % err
+        print("cleaning up: %s" % err)
     else:
-        print "cleaning up"
+        print("cleaning up")
     os.remove(smallfilename)
     os.remove(smallfilenamebad)
     os.remove(largefilename)

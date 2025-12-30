@@ -1,4 +1,4 @@
-import urlparse, os, types
+import urllib.parse, os, types
 
 from twisted.web import client
 from twisted.internet import reactor, defer
@@ -64,8 +64,8 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
         requested.
         """
         if partialContent and not self.requestedPartial:
-            raise ValueError, "we shouldn't get partial content response if"\
-                    " we didn't want it!"
+            raise ValueError("we shouldn't get partial content response if"\
+                    " we didn't want it!")
         self.partialContent = partialContent
         if self.waiting:
             self.waiting = 0
@@ -74,37 +74,38 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
         self.boundary = None
 
     def getSubHeader(self, data):
-        newboundary = data[:data.find('\r\n')]
+        newboundary = data[:data.find(b'\r\n')]
         data = data[len(newboundary)+2:]
         if not self.boundary:
             self.boundary = newboundary
         if self.boundary != newboundary:
-            if self.boundary+"--" == newboundary:
+            if self.boundary+b"--" == newboundary:
                 # end of multiparts
                 return
             else:
-                raise ValueError, "found illegal boundary"
+                raise ValueError("found illegal boundary")
                 # XXX: print some of newboundary *safely*
                 #raise ValueError, "found illegal boundary: %s, was %s" \
                 #       % (newboundary[:80], self.boundary)
-        headerEnd = data.find('\r\n\r\n')
+        headerEnd = data.find(b'\r\n\r\n')
         if headerEnd != -1:
             self.inSubHeader = False
             self.subHeaders = {}
-            headers = data[:headerEnd].split('\r\n')
+            headers = data[:headerEnd].decode(
+                    "utf-8", errors="replace").split('\r\n')
             for header in headers:
                 k, v = header.split(':',1)
                 self.subHeaders[k.lower()] = v.lstrip(' ')
-            if not self.subHeaders.has_key('content-id'):
-                raise ValueError, "no Content-ID field in multipart,"\
-                        " can't continue"
+            if 'content-id' not in self.subHeaders:
+                raise ValueError("no Content-ID field in multipart,"\
+                        " can't continue")
             # XXX: need to check for badness (e.g, "../../) in content-id
             self.filename = os.path.join(self.dir, 
                     self.subHeaders['content-id'])
             self.file = self.openFile(self.partialContent)
-            if not self.subHeaders.has_key('content-length'):
-                raise ValueError, "no Content-Length field in multipart,"\
-                        " can't continue"
+            if 'content-length' not in self.subHeaders:
+                raise ValueError("no Content-Length field in multipart,"\
+                        " can't continue")
             self.filesizeRemaining = int(self.subHeaders['content-length'])
             self.pagePart(data[headerEnd+4:])
 
@@ -114,7 +115,7 @@ class HTTPMultipartDownloader(client.HTTPDownloader):
             self.getSubHeader(data)
         else:
             if not self.file:
-                raise ValueError, "file %s not open for output" % self.filename
+                raise ValueError("file %s not open for output" % self.filename)
             try:
                 if self.filesizeRemaining > len(data):
                     self.file.write(data)
@@ -147,7 +148,7 @@ def doit():
     return factory.deferred
 
 def didit(r):
-    print "didit: %s" % str(r)
+    print("didit: %s" % str(r))
     reactor.stop()
 
 if __name__ == "__main__":

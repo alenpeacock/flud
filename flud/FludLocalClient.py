@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 FludLocalClient.py, (c) 2003-2006 Alen Peacock.  This program is distributed
@@ -14,7 +14,7 @@ from flud.FludConfig import FludConfig
 from flud.fencode import fencode, fdecode
 from flud.FludCrypto import hashfile
 
-from protocol.LocalClient import *
+from .protocol.LocalClient import *
 
 logger = logging.getLogger('flud')
 
@@ -39,7 +39,7 @@ class CmdClientFactory(LocalClientFactory):
     def promptUser(self):
         helpDict = {}
 
-        command = raw_input("%s> " % time.ctime())
+        command = input("%s> " % time.ctime())
         commands = command.split(' ') # XXX: should tokenize on any whitespace
         commandkey = commands[0][:4]
         
@@ -122,14 +122,14 @@ class CmdClientFactory(LocalClientFactory):
             self.callFactory(self.sendDIAGBKTS, commands, self.msgs)
         elif commandkey == 'stat':
             # show pending actions
-            print self.pending
+            print(self.pending)
         elif commandkey == 'stor':
             # stor a block to a given node.  format: 'stor host:port,fname'
             storcommands = commands[1].split(',')
             try:
                 fileid = int(storcommands[1], 16)
             except:
-                linkfile = fencode(long(hashfile(storcommands[1]),16))
+                linkfile = fencode(int(hashfile(storcommands[1]),16))
                 if (os.path.islink(linkfile)):
                     os.remove(linkfile)
                 os.symlink(storcommands[1], linkfile)
@@ -149,7 +149,7 @@ class CmdClientFactory(LocalClientFactory):
             func = lambda: self.sendDIAGVRFY(commands[1])
             self.callFactory(func, commands, self.msgs)
         elif commandkey == 'dlet':
-            print "not yet implemented"
+            print("not yet implemented")
         elif commandkey == 'fndv':
             # try to retrieve a value from the DHT
             # format: 'fndv key'
@@ -172,22 +172,22 @@ class CmdClientFactory(LocalClientFactory):
             l.append((None, msg))
 
     def printHelp(self, helpDict):
-        helpkeys = helpDict.keys()
+        helpkeys = list(helpDict.keys())
         helpkeys.sort()
         for i in helpkeys:
-            print "%s:\t %s" % (i, helpDict[i])
+            print("%s:\t %s" % (i, helpDict[i]))
 
     def output(self):
         for c in self.pending:
-            for i in self.pending[c].keys():
+            for i in list(self.pending[c].keys()):
                 if self.pending[c][i] == True:
-                    print "%s on %s completed successfully" % (c, i)
+                    print("%s on %s completed successfully" % (c, i))
                     self.pending[c].pop(i)
                 elif self.pending[c][i] == False:
-                    print "%s on %s failed" % (c, i)
+                    print("%s on %s failed" % (c, i))
                     self.pending[c].pop(i)
                 else:
-                    print "%s on %s pending" % (c, i)
+                    print("%s on %s pending" % (c, i))
 
     def promptLoop(self, r):
         self.output()
@@ -197,9 +197,9 @@ class CmdClientFactory(LocalClientFactory):
             # reverse, then print
             (errmsg, m) = self.msgs.pop()
             if errmsg:
-                print "<- %s:\n%s" % (m, errmsg) 
+                print("<- %s:\n%s" % (m, errmsg)) 
             else:
-                print "<- %s" % m
+                print("<- %s" % m)
 
         if self.quit:
             reactor.stop()
@@ -222,7 +222,7 @@ class CmdClientFactory(LocalClientFactory):
 
     def err(self, r):
         self.output()
-        print "bah!: %s" % r
+        print("bah!: %s" % r)
         reactor.stop()
 
 def main():
@@ -241,7 +241,7 @@ def main():
     if len(sys.argv) == 2:
         config.clientport = int(sys.argv[1])
     
-    print "connecting to localhost:%d" % config.clientport
+    print("connecting to localhost:%d" % config.clientport)
     
     reactor.connectTCP('localhost', config.clientport, factory)
     

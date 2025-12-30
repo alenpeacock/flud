@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 flud-mastermetadataViewer (c) 2003-2006 Alen Peacock.  This program is
@@ -9,14 +9,14 @@ Utility for displaying master metadata.
 """
 
 import sys, os
-import ConfigParser
+import configparser
 
 from flud.fencode import fencode, fdecode
 from flud.FludCrypto import FludRSA
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print "usage: %s <filename> " % sys.argv[0]
+        print("usage: %s <filename> " % sys.argv[0])
         sys.exit()
     else:
         fname = sys.argv[1]
@@ -30,9 +30,9 @@ if __name__ == "__main__":
             home = os.environ['HOME']
             fludhome = home+"/.flud"
         fludconfig = fludhome+"/flud.conf"
-        c = ConfigParser.ConfigParser()
+        c = configparser.ConfigParser()
         if os.path.isfile(fludconfig) == True:
-            conffile = file(fludconfig, "r")
+            conffile = open(fludconfig, "r")
             c.readfp(conffile)
         privkey = FludRSA.importPrivateKey( 
                 eval(c.get("identification","Kr"))) 
@@ -46,9 +46,8 @@ if __name__ == "__main__":
     data = fdecode(data)
     for i in data:
         if isinstance(data[i],dict):
-            print "%s -> %s" % (i, data[i])
-    print "--------------------"
+            print("%s -> %s" % (i, data[i]))
+    print("--------------------")
     for i in data:
         if not isinstance(data[i],dict):
-            print "%s (%d) <- %s" % (fencode(data[i][0]), data[i][1], i)
-
+            print("%s (%d) <- %s" % (fencode(data[i][0]), data[i][1], i))

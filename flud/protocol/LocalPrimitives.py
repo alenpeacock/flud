@@ -11,14 +11,14 @@ command.  These are followed by a status byte, which is either '?'=request,
 the status byte.
 """
 
-import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
+import binascii, time, os, stat, gc, re, sys, logging
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import protocol, reactor, threads, defer
 from twisted.protocols import basic
 from twisted.mail import smtp
 from twisted.python import failure
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 from flud.FludCrypto import FludRSA, hashstring, generateRandom
 import flud.FludkRouting
@@ -66,7 +66,7 @@ class LocalProtocol(basic.LineReceiver):
         elif command == "FNDN":
             logger.debug("FNDN %s" % fname);
             try: 
-                intval = long(fname, 16)
+                intval = int(fname, 16)
             except: 
                 return defer.fail("fname was not hex")
             return self.factory.node.client.kFindNode(intval)
@@ -80,7 +80,7 @@ class LocalProtocol(basic.LineReceiver):
         elif command == "FNDV":
             logger.debug("FNDV %s", fname);
             try: 
-                intval = long(fname, 16)
+                intval = int(fname, 16)
             except: 
                 return defer.fail("fname was not hex")
             return self.factory.node.client.kFindValue(intval)
@@ -92,7 +92,7 @@ class LocalProtocol(basic.LineReceiver):
             Kr = self.factory.node.config.Kr.exportPrivateKey()
             Kr['g'] = self.factory.node.config.groupIDr
             fKr = fencode(Kr)
-            key = AES.new(binascii.unhexlify(hashstring(passphrase)))
+            key = AES.new(binascii.unhexlify(hashstring(passphrase)), AES.MODE_ECB)
             fKr = '\x00'*(16-(len(fKr)%16))+fKr
             efKr = fencode(key.encrypt(fKr))
             logger.debug("efKr = %s " % efKr)
@@ -148,7 +148,7 @@ class LocalProtocol(basic.LineReceiver):
             host = fname[:fname.find(':')]
             port = fname[fname.find(':')+1:fname.find(',')]
             fname = fname[fname.find(',')+1:]
-            print "%s: %s : %s , %s" % (command, host, port, fname)
+            print("%s: %s : %s , %s" % (command, host, port, fname))
             if command == "STOR":
                 logger.debug("STOR");
                 return self.factory.node.client.sendStore(fname, None, 
@@ -162,8 +162,8 @@ class LocalProtocol(basic.LineReceiver):
                 offset = port[port.find(':')+1:port.find('-')]
                 length = port[port.find('-')+1:]
                 port = port[:port.find(':')]
-                print "%s: %s : %s %s - %s , %s" % (command, host, port, 
-                        offset, length, fname)
+                print("%s: %s : %s %s - %s , %s" % (command, host, port, 
+                        offset, length, fname))
                 return self.factory.node.client.sendVerify(fname, int(offset), 
                         int(length), host, int(port))
             else:
@@ -175,7 +175,7 @@ class LocalProtocol(basic.LineReceiver):
                 self.commands[command][CONCURR] <= self.commands[command][MAX]:
             data = self.commands[command][QUEUE].pop()
             logger.info("servicing queue['%s'], item %s" % (command, data))
-            print "taking %s off the queue" % command
+            print("taking %s off the queue" % command)
             d = self.doOp(command, data)
             d.addCallback(self.sendSuccess, command, data)
             d.addErrback(self.sendFailure, command, data)
@@ -192,7 +192,7 @@ class LocalProtocol(basic.LineReceiver):
         try:
             self.serviceQueue(command)
         except:
-            print sys.exec_info()
+            print(sys.exec_info())
         return resp
 
     def sendFailure(self, err, command, data, prepend=None):
@@ -271,7 +271,7 @@ class LocalProtocol(basic.LineReceiver):
             else:
                 #print "doing %s" % line
                 logger.info("received %s request, executing" % command)
-                print self.commands[command]
+                print(self.commands[command])
                 self.commands[command][CONCURR] += 1
                 d = self.doOp(command, data)
                 d.addCallback(self.sendSuccess, command, data)
@@ -293,4 +293,3 @@ class LocalFactory(protocol.ServerFactory):
 
     def challengeAnswered(self, resp):
         return resp == self.challenge
-

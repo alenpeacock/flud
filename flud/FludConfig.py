@@ -6,7 +6,7 @@ manages configuration file for flud backup.
 """
 
 import os, sys, socket, re, logging, time
-import ConfigParser
+import configparser
 
 import flud.FludCrypto as FludCrypto
 from flud.FludCrypto import FludRSA
@@ -125,15 +125,15 @@ class FludConfig:
                 logger.warn("Please set HOME or FLUDHOME environment variable")
 
         if not os.path.isdir(self.fludhome):
-            os.mkdir(self.fludhome, 0700)
+            os.mkdir(self.fludhome, 0o700)
 
         self.fludconfig = self.fludhome+"/flud.conf"
-        self.configParser = ConfigParser.ConfigParser()
+        self.configParser = configparser.ConfigParser()
         if not os.path.isfile(self.fludconfig):
-            conffile = file(self.fludconfig, "w")
+            conffile = open(self.fludconfig, "w")
         else:
-            conffile = file(self.fludconfig, "r")
-            self.configParser.readfp(conffile)
+            conffile = open(self.fludconfig, "r")
+            self.configParser.read_file(conffile)
         conffile.close()
 
         logger.info('fludhome = %s' % self.fludhome)
@@ -158,7 +158,7 @@ class FludConfig:
             #logger.setLevel(self.loglevel)
             #logger.setLevel(logging.WARNING) # XXX: overrides user prefs
             #logger.setLevel(logging.DEBUG) # XXX: overrides user prefs
-            if os.environ.has_key("LOGFILTER"):
+            if "LOGFILTER" in os.environ:
                 self.filter = FludDebugLogFilter(
                         os.environ["LOGFILTER"].split(' '))
                 handler.addFilter(self.filter)
@@ -177,38 +177,38 @@ class FludConfig:
         if serverport != None:
             self.port = serverport
             self.clientport = serverport + CLIENTPORTOFFSET
-            self.configParser.set("server","port",self.port)
-            self.configParser.set("server","clientport",self.clientport)
+            self._setconf("server", "port", self.port)
+            self._setconf("server", "clientport", self.clientport)
         logger.debug('port = %s' % self.port)
         logger.debug('clientport = %s' % self.clientport)
         logger.debug('trustdeltas = %s' 
                 % [v for v in dir(TrustDeltas) if v[0] != '_'])
 
         self.routing = kRouting((socket.getfqdn(), self.port,
-                long(self.nodeID, 16), self.Ku.exportPublicKey()['n']))
+                int(self.nodeID, 16), self.Ku.exportPublicKey()['n']))
 
         self.storedir, self.generosity, self.minoffer = self._getStoreConf()
         if not os.path.isdir(self.storedir):
             os.mkdir(self.storedir)
-            os.chmod(self.storedir, 0700)
+            os.chmod(self.storedir, 0o700)
         logger.debug('storedir = %s' % self.storedir)
 
         self.kstoredir = self._getkStoreConf()
         if not os.path.isdir(self.kstoredir):
             os.mkdir(self.kstoredir)
-            os.chmod(self.kstoredir, 0700)
+            os.chmod(self.kstoredir, 0o700)
         logger.debug('kstoredir = %s' % self.kstoredir)
 
         self.clientdir = self._getClientConf()
         if not os.path.isdir(self.clientdir):
             os.mkdir(self.clientdir)
-            os.chmod(self.clientdir, 0700)
+            os.chmod(self.clientdir, 0o700)
         logger.debug('clientdir = %s' % self.clientdir)
 
         self.metadir, self.metamaster = self._getMetaConf()
         if not os.path.isdir(self.metadir):
             os.mkdir(self.metadir)
-            os.chmod(self.metadir, 0700)
+            os.chmod(self.metadir, 0o700)
         logger.debug('metadir = %s' % self.metadir)
 
         self.reputations = self._getReputations()
@@ -218,7 +218,7 @@ class FludConfig:
         logger.debug("known nodes = %s" % str(self.nodes))
 
         self.save()
-        os.chmod(self.fludconfig, 0600)
+        os.chmod(self.fludconfig, 0o600)
 
         self.loadMasterMeta()
 
@@ -226,9 +226,12 @@ class FludConfig:
         """
         saves configuration
         """
-        conffile = file(self.fludconfig, "w")
+        conffile = open(self.fludconfig, "w")
         self.configParser.write(conffile) 
         conffile.close()
+
+    def _setconf(self, section, option, value):
+        self.configParser.set(section, option, str(value))
 
     def _getLoggingConf(self):
         """
@@ -242,7 +245,7 @@ class FludConfig:
         except:
             logger.debug("no logfile specified, using default")
             logfile = self.fludhome+'/flud.log'
-        self.configParser.set("logging", "logfile", logfile)
+        self._setconf("logging", "logfile", logfile)
 
         try:
             loglevel = int(self.configParser.get("logging","loglevel"))
@@ -250,7 +253,7 @@ class FludConfig:
         except:
             logger.debug("no loglevel specified, using default")
             loglevel = logging.WARNING
-        self.configParser.set("logging", "loglevel", loglevel)
+        self._setconf("logging", "loglevel", loglevel)
 
         return logfile, loglevel 
 
@@ -298,11 +301,11 @@ class FludConfig:
                     +privgroupID)
 
         # write the settings back out to config object
-        self.configParser.set("identification","Kr",privkey.exportPrivateKey())
-        self.configParser.set("identification","Ku",pubkey.exportPublicKey())
-        self.configParser.set("identification","nodeID",nodeID)
-        self.configParser.set("identification","groupIDr",privgroupID)
-        self.configParser.set("identification","groupIDu",pubgroupID)
+        self._setconf("identification", "Kr", privkey.exportPrivateKey())
+        self._setconf("identification", "Ku", pubkey.exportPublicKey())
+        self._setconf("identification", "nodeID", nodeID)
+        self._setconf("identification", "groupIDr", privgroupID)
+        self._setconf("identification", "groupIDu", pubgroupID)
         
         # return the values
         return privkey, pubkey, nodeID, privgroupID, pubgroupID
@@ -327,8 +330,8 @@ class FludConfig:
             logger.debug("no clientport specified, using default")
             clientport = port+CLIENTPORTOFFSET 
         
-        self.configParser.set("server","port",port)
-        self.configParser.set("server","clientport",clientport)
+        self._setconf("server", "port", port)
+        self._setconf("server", "clientport", clientport)
 
         return port, clientport
 
@@ -348,7 +351,7 @@ class FludConfig:
         if not os.path.isdir(dir):
             os.makedirs(dir)
 
-        self.configParser.set(section,"dir",dir)
+        configParser.set(section, "dir", str(dir))
 
         return dir 
 
@@ -367,7 +370,7 @@ class FludConfig:
 
         if not self.configParser.has_section("client"):
             self.configParser.add_section("client")
-        self.configParser.set("client", "trustdeltas",
+        self._setconf("client", "trustdeltas",
                 dict((v, eval("TrustDeltas.%s" % v)) for v in dir(TrustDeltas)
                     if v[0] != '_'))
 
@@ -429,9 +432,9 @@ class FludConfig:
         # XXX: don't read known nodes for now
         result = self._getDict(self.configParser, "nodes")
         for i in result:
-            print str(i)
+            print(str(i))
             self.routing.insertNode( 
-                    (result[i]['host'], result[i]['port'], long(i, 16), 
+                    (result[i]['host'], result[i]['port'], int(i, 16), 
                         result[i]['nKu']))
         return result
 
@@ -452,7 +455,7 @@ class FludConfig:
                 #print item
                 try:
                     result[str(item[0])] = eval(item[1])
-                    configParser.set(section, item[0], item[1])
+                    configParser.set(section, item[0], str(item[1]))
                 except:
                     logger.warn("item '%s' in section '%s'"
                             " of the config file has an unreadable format" 
@@ -470,14 +473,14 @@ class FludConfig:
         """
         if mygroup == None:
             mygroup = self.groupIDu
-        if not self.nodes.has_key(nodeID):
+        if nodeID not in self.nodes:
             self.nodes[nodeID] = {'host': host, 'port': port, 
                     'Ku': Ku.exportPublicKey(), 'mygroup': mygroup}
             #logger.log(logging.DEBUG, "nodes: " % str(self.nodes))
             # XXX: disabled nodes saving
             #for k in self.nodes:
-            #   self.configParser.set('nodes', k, self.nodes[k])
-            n = self.routing.insertNode((host, int(port), long(nodeID, 16), 
+            #   self._setconf('nodes', k, self.nodes[k])
+            n = self.routing.insertNode((host, int(port), int(nodeID, 16), 
                 Ku.exportPublicKey()['n']))
             if n != None:
                 logger.warn("need to ping %s for LRU in routing table!" 
@@ -486,9 +489,9 @@ class FludConfig:
                 #      and when one of the nodes needs replaced (future query)
                 #      replace it with one of these. Sec 4.1
                 self.routing.replacementCache.insertNode(
-                        (host, int(port), long(nodeID, 16),
+                        (host, int(port), int(nodeID, 16),
                             Ku.exportPublicKey()['n']))
-            self.reputations[long(nodeID,16)] = TrustDeltas.INITIAL_SCORE
+            self.reputations[int(nodeID,16)] = TrustDeltas.INITIAL_SCORE
             # XXX: no management of reputations size: need to manage as a cache
     
     def modifyReputation(self, nodeID, reason):
@@ -497,8 +500,8 @@ class FludConfig:
         """
         logger.info("modify %s %s" % (nodeID, reason.value))
         if isinstance(nodeID, str):
-            nodeID = long(nodeID,16)
-        if not self.reputations.has_key(nodeID):
+            nodeID = int(nodeID,16)
+        if nodeID not in self.reputations:
             self.reputations[nodeID] = TrustDeltas.INITIAL_SCORE
             # XXX: no management of reputations size: need to manage as a cache
         self.reputations[nodeID] += reason.value
@@ -531,7 +534,7 @@ class FludConfig:
         # XXX: O(n) each time this is called.  Better performance if we
         # maintain sorted list when modified (modifyReputation, addNode), at a
         # bit higher mem expense.
-        items = self.reputations.items()
+        items = list(self.reputations.items())
         numitems = len(items)
         logger.debug("%d items in reps" % numitems)
         if throttle:

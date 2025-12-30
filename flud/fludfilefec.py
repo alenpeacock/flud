@@ -30,7 +30,7 @@ def encode_to_files(inf, fsize, dirname, prefix, k, m, suffix=".fec", overwrite=
 
             fn = os.path.join(dirname, format % (prefix, shnum, m, suffix,))
             if verbose:
-                print "Creating share file %r..." % (fn,)
+                print("Creating share file %r..." % (fn,))
             if overwrite:
                 f = open(fn, "wb")
             else:
@@ -49,8 +49,8 @@ def encode_to_files(inf, fsize, dirname, prefix, k, m, suffix=".fec", overwrite=
             if verbose:
                 if int((float(oldsumlen) / fsize) * 10) \
                         != int((float(sumlen[0]) / fsize) * 10):
-                    print str(int((float(sumlen[0]) / fsize) * 10) * 10) \
-                            + "% ...",
+                    print(str(int((float(sumlen[0]) / fsize) * 10) * 10) \
+                            + "% ...", end=' ')
             
             if sumlen[0] > fsize:
                 raise IOError("Wrong file size -- possibly the size of the"
@@ -62,22 +62,22 @@ def encode_to_files(inf, fsize, dirname, prefix, k, m, suffix=".fec", overwrite=
                 length -= len(data)
 
         filefec.encode_file_stringy_easyfec(inf, cb, k, m, chunksize=4096)
-    except EnvironmentError, le:
-        print "Cannot complete because of exception: "
-        print le
-        print "Cleaning up..."
+    except EnvironmentError as le:
+        print("Cannot complete because of exception: ")
+        print(le)
+        print("Cleaning up...")
         # clean up
         while fs:
             f = fs.pop()
             f.close() ; del f
             fn = fns.pop()
             if verbose:
-                print "Cleaning up: trying to remove %r..." % (fn,)
+                print("Cleaning up: trying to remove %r..." % (fn,))
             fileutil.remove_if_possible(fn)
         return None
     if verbose:
-        print 
-        print "Done!"
+        print() 
+        print("Done!")
     return fns
 
 # Note: if you really prefer base-2 and you change this code, then please
@@ -142,7 +142,7 @@ def decode_from_files(outf, infiles, verbose=False):
             if verbose:
                 if ((byteswritten - len(resultdata)) / (10*MILLION_BYTES)) \
                         != (byteswritten / (10*MILLION_BYTES)):
-                    print str(byteswritten / MILLION_BYTES) + " MB ...",
+                    print(str(byteswritten / MILLION_BYTES) + " MB ...", end=' ')
         else:
             # Then this was a short read, so we've reached the end of the
             # sharefiles.
@@ -150,8 +150,8 @@ def decode_from_files(outf, infiles, verbose=False):
             outf.write(resultdata)
             return True
     if verbose:
-        print
-        print "Done!"
+        print()
+        print("Done!")
     return True
 
 

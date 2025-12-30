@@ -151,7 +151,7 @@ class kRouting:
             # XXX: need to transfer key/vals that belong to new node?
             bucket.updateNode(node)
             self.replacementCache.removeNode(node)
-        except BucketFullException, e:
+        except BucketFullException as e:
             if (bucket.begin <= self.node[2] < bucket.end):
                 # bucket is full /and/ the local node is in this bucket, 
                 # split and try adding it again.
@@ -212,7 +212,7 @@ class kRouting:
                 nextbucket = self._nextbucket(nextbucket)
                 prevbucket = self._prevbucket(prevbucket)
             
-        nodes.sort(lambda a, b, n=nodeID: cmp(n ^ a[2], n ^ b[2]))
+        nodes.sort(key=lambda n, t=nodeID: t ^ n[2])
         return nodes[:self.k]
 
     def getNode(self, nodeID):
@@ -255,7 +255,7 @@ class kRouting:
         return result
 
     def _nextbucket(self, bucket):
-        if bucket == None:
+        if bucket is None:
             return bucket
         i = self.kBuckets.index(bucket)+1
         if i >= len(self.kBuckets):
@@ -263,7 +263,7 @@ class kRouting:
         return self.kBuckets[i]
 
     def _prevbucket(self, bucket):
-        if bucket == None:
+        if bucket is None:
             return bucket
         i = self.kBuckets.index(bucket)-1
         if i < 0:
@@ -434,8 +434,12 @@ class kBucket:
     # The following comparators allow us to use list & bisect on the buckets.
     # integers, longs, and buckets all may be compared to a bucket.
     def __eq__(self, i):
+        if i is None:
+            return False
         return i >= self.begin and self.end >= i
     def __ne__(self, i):
+        if i is None:
+            return True
         return i < self.begin or self.end < i
     def __lt__(self, i):
         return self.end < i

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
 FludNode.tac (c) 2003-2006 Alen Peacock.  This program is distributed under the
 terms of the GNU General Public License (the GPL).

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 FludScheduler.py (c) 2003-2006 Alen Peacock.  This program is distributed under
@@ -43,11 +43,11 @@ class FludScheduler:
         self.mastermetadata = master
 
     def errMasterMetadata(self, err):
-        print err
+        print(err)
         reactor.stop()
 
     def readFileConfig(self, mtime=None):
-        print "reading FileConfig"
+        print("reading FileConfig")
         file = open(self.fileconfigfile, 'r')
         self.fileconfig = eval(file.read())
         file.close()
@@ -78,7 +78,7 @@ class FludScheduler:
                 fileChangeTime = self.mastermetadata[file][1]
             else:
                 return True
-            print "mtime = %s, ctime = %s (%s)" % (mtime, fileChangeTime, file)
+            print("mtime = %s, ctime = %s (%s)" % (mtime, fileChangeTime, file))
             if mtime > fileChangeTime:
                 return True
         return False
@@ -106,10 +106,10 @@ class FludScheduler:
         # check config file to see if it has changed, then reparse it
         if not self.fileconfigfile:
             # first time through
-            print "checking fileconfigfile (initial)"
-            if os.environ.has_key('FLUDHOME'):
+            print("checking fileconfigfile (initial)")
+            if 'FLUDHOME' in os.environ:
                 fludhome = os.environ['FLUDHOME']
-            elif os.environ.has_key('HOME'):
+            elif 'HOME' in os.environ:
                 fludhome = os.environ['HOME']+"/.flud"
             else:
                 fludhome = ".flud"
@@ -119,10 +119,10 @@ class FludScheduler:
                 self.readFileConfig()
                 return True
             else:
-                print "no fileconfigfile to read"
+                print("no fileconfigfile to read")
         elif os.path.isfile(self.fileconfigfile):
             if self.fileChanged(self.fileconfigfile, self.fileconfigfileMTime):
-                print "fileconfigfile changed"
+                print("fileconfigfile changed")
                 mtime = time.time()
                 self.readFileConfig(mtime)
                 return True
@@ -142,7 +142,7 @@ class FludScheduler:
                 if entry not in checkedFiles and \
                         entry not in self.fileconfigExcluded and \
                         entry not in self.mastermetadata:
-                    print "checkFilesystem for %s" % entry
+                    print("checkFilesystem for %s" % entry)
                     if os.path.isdir(entry):
                         #print "dir %s" % entry
                         dirfiles = [os.path.join(entry, i) 
@@ -150,12 +150,12 @@ class FludScheduler:
                         checkedFiles.update([entry,])
                         checkList(dirfiles)
                     elif self.fileChanged(entry):
-                        print "%s changed" % entry
+                        print("%s changed" % entry)
                         if os.path.isfile(entry):
                             changedFiles.update([entry,])
                             #print "file %s changed" % entry
                         else:
-                            print "entry ?? %s ?? changed" % entry
+                            print("entry ?? %s ?? changed" % entry)
                     checkedFiles.update([entry,])
 
         checkList(self.fileconfigSelected)
@@ -163,18 +163,18 @@ class FludScheduler:
         return changedFiles
 
     def storefileFailed(self, err, file):
-        print "storing %s failed: %s" % (file, err)
+        print("storing %s failed: %s" % (file, err))
         err.printTraceback()
         #print dir(err)
 
     def storefileYay(self, r, file):
-        print "storing %s success" % file
+        print("storing %s success" % file)
 
     def storeFiles(self, changedFiles):
         #print "storing %s" % changedFiles
         dlist = []
         for f in changedFiles:
-            print "storing %s" % f
+            print("storing %s" % f)
             deferred = self.factory.sendPUTF(f)
             deferred.addCallback(self.storefileYay, f)
             deferred.addErrback(self.storefileFailed, f)
@@ -184,17 +184,17 @@ class FludScheduler:
         #return defer.succeed(True)
 
     def restartCheckTimer(self, v):
-        print "restarting timer (%d) to call run()" % CHECKTIME
+        print("restarting timer (%d) to call run()" % CHECKTIME)
         reactor.callLater(CHECKTIME, self.run)
 
     def updateMasterMetadata(self, v):
         return self.getMasterMetadata()
 
     def run(self):
-        print "run"
+        print("run")
         self.checkFileConfig()
         changedFiles = self.checkFilesystem()
-        print "%s changed" % changedFiles
+        print("%s changed" % changedFiles)
         d = self.storeFiles(changedFiles)
         d.addBoth(self.updateMasterMetadata)
         d.addBoth(self.restartCheckTimer)

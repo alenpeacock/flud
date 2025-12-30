@@ -1,0 +1,22 @@
+[project]
+name = "flud"
+version = "0.2.5"
+description = "Python3 and Poetry"
+authors = [
+    {name = "Alen 'Dwayne Johnson' Peacock",email = "alen@spacemonkey.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "argparse (>=1.4.0,<2.0.0)",
+    "pyutil (>=3.3.6,<4.0.0)",
+    "zfec (>=1.6.0.0,<2.0.0.0)",
+    "twisted (>=25.5.0,<26.0.0)",
+    "pycryptodomex (>=3.20.0,<4.0.0)",
+    "wxpython (>=4.2.4,<5.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

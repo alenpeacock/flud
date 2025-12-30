@@ -4,8 +4,8 @@ under the terms of the GNU General Public License (the GPL), version 3.
 
 Primitive client DHT protocol
 """
-import time, os, stat, httplib, sys, random, logging
-from twisted.web import http, client
+import time, os, stat, sys, random, logging
+from twisted.web import http as twebhttp, client
 from twisted.internet import reactor, threads, defer
 from twisted.python import failure
 import inspect, pdb
@@ -15,9 +15,9 @@ import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode, fdecode
 import flud.FludDefer as FludDefer
 
-import ConnectionQueue
-from ClientPrimitives import REQUEST
-from FludCommUtil import *
+from . import ConnectionQueue
+from .ClientPrimitives import REQUEST
+from .FludCommUtil import *
 
 logger = logging.getLogger("flud.client.dht")
 
@@ -50,7 +50,7 @@ def serviceWaiting(res, key, pending, waiting):
     # pending dict and waiting dict.  All deferreds in the waiting dict will
     # be called with the result, the waiting dict will be emptied of those
     # deferreds, and the pending dict will likewise be emptied.
-    if waiting.has_key(key):
+    if key in waiting:
         for d in waiting[key]:
             #print "offbacking %s" % key
             d.callback(res)
@@ -66,9 +66,9 @@ class kFindNode:
     Perform a kfindnode lookup.
     """
     def __init__(self, node, key):
-        if pendingkFindNodes.has_key(key):
+        if key in pendingkFindNodes:
             d = defer.Deferred()
-            if not waitingkFindNodes.has_key(key):
+            if key not in waitingkFindNodes:
                 waitingkFindNodes[key] = []
             waitingkFindNodes[key].append(d)
             logger.debug("piggybacking on previous kfindnode for %s" % key)
@@ -95,7 +95,7 @@ class kFindNode:
         localhost = getCanonicalIP('localhost')
         kd = {'id': self.node.config.nodeID, 'k': kclosest}
         d = self.updateLists(kd, key, localhost, self.node.config.port,
-                long(self.node.config.nodeID, 16))
+                int(self.node.config.nodeID, 16))
         d.addErrback(self.errkfindnode, key, localhost, self.node.config.port)
         pendingkFindNodes[key] = d
         d.addCallback(serviceWaiting, key, pendingkFindNodes, waitingkFindNodes)
@@ -132,7 +132,7 @@ class kFindNode:
 
         #for i in response['k']:
         #   print "   res: %s:%d" % (i[0], i[1])
-        id = long(response['id'], 16)
+        id = int(response['id'], 16)
         responder = (host, port, id)
         if responder in self.outstanding:
             self.outstanding.remove(responder)
@@ -140,15 +140,14 @@ class kFindNode:
 
         knodes = response['k']
         for n in knodes:
-            if not self.queried.has_key(n[2])\
+            if n[2] not in self.queried\
                     and not n in self.pending and not n in self.outstanding:
                 self.pending.append((n[0], n[1], n[2]))
             if n not in self.kclosest:
                 k = FludkRouting.k
                 # XXX: remove self it in the list?
                 self.kclosest.append(n)
-                self.kclosest.sort(
-                        lambda a, b: FludkRouting.kCompare(a[2], b[2], key))
+                self.kclosest.sort(key=lambda n, t=key: t ^ n[2])
                 self.kclosest = self.kclosest[:k]
 
         #for n in self.outstanding:
@@ -160,7 +159,7 @@ class kFindNode:
             if n in self.pending:
                 self.pending.remove(n) # ...and anyone who has responded.
         
-        self.pending.sort(lambda a, b: FludkRouting.kCompare(a[2], b[2], key))
+        self.pending.sort(key=lambda n, t=key: t ^ n[2])
 
         #print "queried: %s" % str(self.queried)
         #print "outstanding: %s" % str(self.outstanding)
@@ -224,8 +223,7 @@ class kFindNode:
                 % (self.abbrv, len(self.queried)))
         self.debugpath.append("FN: %s terminated successfully after %d queries."
                 % (self.abbrv, len(self.queried)))
-        self.kclosest.sort(
-                lambda a, b: FludkRouting.kCompare(a[2], b[2], key))
+        self.kclosest.sort(key=lambda n, t=key: t ^ n[2])
         result = {}
         if FludkRouting.k > len(self.kclosest):
             k = len(self.kclosest)
@@ -294,7 +292,7 @@ class kStore(kFindNode):
     def _kStoreErr(self, failure, host, port):
         logger.info("couldn't store on %s:%d -- %s" 
                 % (host, port, failure.getErrorMessage()))
-        print "_kStoreErr was: %s" % failure
+        print("_kStoreErr was: %s" % failure)
         # XXX: updateNode--
         return failure
 
@@ -314,9 +312,9 @@ class kFindValue(kFindNode):
         # present)
         localhost = getCanonicalIP('localhost')
         d = self.sendQuery(localhost, self.node.config.port, 
-                long(self.node.config.nodeID, 16), key)
+                int(self.node.config.nodeID, 16), key)
         d.addCallback(self.updateLists, key, localhost, self.node.config.port, 
-                long(self.node.config.nodeID, 16), 0)
+                int(self.node.config.nodeID, 16), 0)
         d.addErrback(self.errkfindnode, key, localhost, self.node.config.port)
         return d
 
@@ -363,7 +361,7 @@ class kFindValue(kFindNode):
             for success, resp in responses:
                 # only look at successful non-kData (dict) responses.
                 if success and resp != None and not isinstance(resp, dict):
-                    if result.has_key(resp):
+                    if resp in result:
                         result[resp] += 1
                     else:
                         result[resp] = 1
@@ -373,7 +371,7 @@ class kFindValue(kFindNode):
                 return None
             elif len(result) == 1:
                 # ... if they did, return the result
-                return result.keys()[0]
+                return list(result.keys())[0]
             else:
                 # ... otherwise, return the result of the majority
                 # (other options include returning all results)
@@ -432,14 +430,14 @@ class SENDkFINDNODE(REQUEST):
         logger.debug("kfindnode._gotResponse()")
         self._checkStatus(factory.status, response, host, port)
         response = eval(response)
-        nID = long(response['id'], 16)
+        nID = int(response['id'], 16)
         updateNode(node.client, node.config, host, port, None, nID)
         updateNodes(node.client, node.config, response['k'])
         return response
 
     def _checkStatus(self, status, response, host, port):
         logger.debug("kfindnode._checkStatus()")
-        if eval(status) != http.OK:
+        if eval(status) != twebhttp.OK:
             raise failure.DefaultException(self.commandName+" FAILED from "
                     +host+":"+str(port)+": received status "+status+", '"
                     +response+"'")
@@ -538,22 +536,21 @@ class SENDkFINDVALUE(SENDkFINDNODE):
         # If a node returns the value, content-type will be set to x-flud-data
         # and we should grab the data instead of continuing the recursive 
         # search.
-        if factory.response_headers.has_key('content-type')\
+        if 'content-type' in factory.response_headers\
                 and factory.response_headers['content-type']\
                         == ['application/x-flud-data']:
             logger.info("received SENDkFINDVALUE data.")
             nID = None
-            if factory.response_headers.has_key('nodeid'):
+            if 'nodeid' in factory.response_headers:
                 nID = factory.response_headers['nodeid'][0]
             updateNode(node.client, node.config, host, port, None, nID)
             return response
         
         response = eval(response)
-        nID = long(response['id'], 16)
+        nID = int(response['id'], 16)
         updateNode(node.client, node.config, host, port, None, nID)
 
         logger.info("received SENDkFINDVALUE nodes")
         logger.debug("received SENDkFINDVALUE nodes: %s" % response)
         updateNodes(node.client, node.config, response['k'])
         return response
-

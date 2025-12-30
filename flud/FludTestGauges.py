@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
 FludTestGauges.py (c) 2003-2006 Alen Peacock.  This program is distributed
 under the terms of the GNU General Public License (the GPL), version 3.
@@ -81,7 +81,7 @@ class FludTestGauges(wx.Frame):
             os.environ['FLUDHOME'] = self.gauges[i].dir;
             conf = FludConfig()
             conf.load(doLogging = False)
-            print "%s" % conf.nodeID
+            print("%s" % conf.nodeID)
             self.gauges[i].label = wx.StaticText(self, -1, "%2s" % dirs[i], 
                     (curCol*COLWIDTH, curRow+(rowheight/4)), 
                     size=(LABELWIDTH, -1))
@@ -135,7 +135,7 @@ class FludTestGauges(wx.Frame):
         home = self.gauges[idx].dir
         pidfile = os.path.join(home, 'twistd.pid')
         if os.path.exists(pidfile):
-            print "shutting down %s" % home
+            print("shutting down %s" % home)
             f = open(pidfile)
             pid = int(f.read())
             f.close()
@@ -156,17 +156,17 @@ class FludTestGauges(wx.Frame):
             self.gauges[idx].Hide()
             self.gauges[idx].dhtgauge.Hide()
         else:
-            print "powering up %s" % home
+            print("powering up %s" % home)
             # XXX: this exec no worky on windows
             fullcmd = "%s %s" % (' '.join(self.gauges[idx].savedEnv), 
                 self.gauges[idx].savedCmd)
-            print fullcmd
+            print(fullcmd)
             result = os.popen('%s %s' % (' '.join(self.gauges[idx].savedEnv), 
                 self.gauges[idx].savedCmd)).readlines()
             self.gauges[idx].power.SetLabel("turn OFF")
             self.gauges[idx].Show()
             self.gauges[idx].dhtgauge.Show()
-            print result
+            print(result)
 
     def update(self):
 
@@ -239,12 +239,12 @@ class FludTestGauges(wx.Frame):
 
 def main():
     if len(sys.argv) < 2:
-        print "usage: %s dircommon exts" % sys.argv[0]
-        print "  where exts will be appended to dircommon"
-        print "  e.g., '%s /home/joe/.flud 1,2,3,4,10,15,20'"\
-                % sys.argv[0]
-        print "  or, '%s /home/joe/.flud 1-10,15,20'"\
-                % sys.argv[0]
+        print("usage: %s dircommon exts" % sys.argv[0])
+        print("  where exts will be appended to dircommon")
+        print("  e.g., '%s /home/joe/.flud 1,2,3,4,10,15,20'"\
+                % sys.argv[0])
+        print("  or, '%s /home/joe/.flud 1-10,15,20'"\
+                % sys.argv[0])
         sys.exit()
     root = sys.argv[1]
     exts = []

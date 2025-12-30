@@ -5,21 +5,21 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Primitive server storage protocol
 """
 
-import binascii, time, os, stat, httplib, gc, re, sys, logging, sets
+import binascii, time, os, stat, gc, re, sys, logging
 import tempfile, tarfile
-from StringIO import StringIO
+from io import BytesIO
 from twisted.web.resource import Resource
 from twisted.web import server, resource, client
 from twisted.internet import reactor, threads, defer
-from twisted.web import http
+from twisted.web import http as twebhttp
 from twisted.python import failure
 
 from flud.FludCrypto import FludRSA, hashstring, hashfile, generateRandom
 import flud.TarfileUtils as TarfileUtils
 from flud.fencode import fencode, fdecode
 
-import BlockFile
-from FludCommUtil import *
+from . import BlockFile
+from .FludCommUtil import *
 
 logger = logging.getLogger("flud.server.op")
 loggerid = logging.getLogger("flud.server.op.id")
@@ -28,6 +28,28 @@ loggerretr = logging.getLogger("flud.server.op.rtrv")
 loggervrfy = logging.getLogger("flud.server.op.vrfy")
 loggerdele = logging.getLogger("flud.server.op.dele")
 loggerauth = logging.getLogger("flud.server.op.auth")
+
+def _as_bytes(data):
+    if isinstance(data, bytes):
+        return data
+    return str(data).encode("utf-8")
+
+def _write(request, data):
+    request.write(_as_bytes(data))
+
+def _as_text(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+def _arg_list(request, key):
+    candidates = [key]
+    if isinstance(key, str):
+        candidates.append(key.encode("utf-8"))
+    for candidate in candidates:
+        if candidate in request.args:
+            return request.args[candidate]
+    return None
 
 """
 These classes represent http requests received by this node, and the actions
@@ -135,7 +157,7 @@ class ROOT(Resource):
 
     def render_GET(self, request):
         self.setHeaders(request)
-        return "<html>Flud</hrml>"
+        return _as_bytes("<html>Flud</hrml>")
 
     def setHeaders(self, request):
         request.setHeader('Server','FludServer 0.1')
@@ -160,31 +182,34 @@ class ID(ROOT):
         try:
             required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = "%s in request received by ID" % inst.args[0] 
             loggerid.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             loggerid.info("received ID request from %s..." 
                     % params['nodeID'][:10])
             loggerid.info("returning ID response")
             #try:
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             if reqKu.id() != params['nodeID']:
-                request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
-                return "requesting node's ID and public key do not match"
+                request.setResponseCode(twebhttp.BAD_REQUEST,
+                        _as_bytes("Bad Identity"))
+                return _as_bytes(
+                        "requesting node's ID and public key do not match")
             host = getCanonicalIP(request.getClientIP())
             updateNode(self.node.client, self.config, host,
                     int(params['port']), reqKu, params['nodeID'])
-            return str(self.config.Ku.exportPublicKey())
+            return _as_bytes(str(self.config.Ku.exportPublicKey()))
             #except:
             #   msg = "can't return ID"
             #   loggerid.log(logging.WARN, msg)
-            #   request.setResponseCode(http.NO_CONTENT, msg)
+            #   request.setResponseCode(twebhttp.NO_CONTENT, msg)
             #   return msg
 
 class FILE(ROOT):
@@ -211,7 +236,7 @@ class FILE(ROOT):
         reference-listed (reference count with owners) by the BlockFile object.
         """
         loggerstor.debug("file POST, %s", request.prepath)
-        filekey = request.prepath[1]
+        filekey = _as_text(request.prepath[1])
         self.setHeaders(request)
         return StoreFile(self.node, self.config, request, filekey).deferred
 
@@ -225,7 +250,7 @@ class FILE(ROOT):
                              GROUPCHALLENGE failed) 
         """
         loggerstor.debug("file GET, %s", request.prepath)
-        filekey = request.prepath[1]
+        filekey = _as_text(request.prepath[1])
         self.setHeaders(request)
         return RetrieveFile(self.node, self.config, request, filekey).deferred
 
@@ -240,7 +265,7 @@ class FILE(ROOT):
                             block) 
         """
         loggerstor.debug("file DELETE, %s", request.prepath)
-        filekey = request.prepath[1]
+        filekey = _as_text(request.prepath[1])
         self.setHeaders(request)
         return DeleteFile(self.node, self.config, request, filekey).deferred
 
@@ -290,9 +315,11 @@ class HASH(ROOT):
         if len(request.prepath) != 2:
             # XXX: add support for sending multiple verify ops in a single
             # request
-            request.setResponseCode(http.BAD_REQUEST, "expected filekey")
-            return "expected file/[filekey], got %s" % '/'.join(request.prepath)
-        filekey = request.prepath[1]
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("expected filekey"))
+            return _as_bytes("expected file/[filekey], got %s" 
+                    % '/'.join(request.prepath))
+        filekey = _as_text(request.prepath[1])
         self.setHeaders(request)
         return VerifyFile(self.node, self.config, request, filekey).deferred
 
@@ -306,11 +333,12 @@ class StoreFile(object):
         try:
             required = ('size', 'Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by STORE" 
             loggerstor.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             host = getCanonicalIP(request.getClientIP())
             port = int(params['port'])
@@ -318,14 +346,14 @@ class StoreFile(object):
 
             requestedSize = int(params['size'])
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             nodeID = reqKu.id()
 
             #if requestedSize > 10:
             #   msg = "unwilling to enter into storage relationship"
-            #   request.setResponseCode(http.PAYMENT_REQUIRED, msg) 
+            #   request.setResponseCode(twebhttp.PAYMENT_REQUIRED, msg) 
             #   return msg
 
             return authenticate(request, reqKu, host, port, 
@@ -376,7 +404,8 @@ class StoreFile(object):
             tarball = None
         loggerstor.debug("tarball is %s" % str(tarball))
 
-        data = request.args.get('filename')[0]  # XXX: file in mem! need web2.
+        data_args = _arg_list(request, 'filename')
+        data = data_args[0]  # XXX: file in mem! need web2.
         # XXX: bad blocking stuff here
         f = open(tmpfile, 'wb')
         f.write(data)
@@ -398,29 +427,39 @@ class StoreFile(object):
                         " STORE tarball"
                 loggerstor.debug(msg)
                 os.remove(tmpfile)
-                request.setResponseCode(http.CONFLICT, msg) 
-                return msg
+                request.setResponseCode(twebhttp.CONFLICT, _as_bytes(msg)) 
+                return _as_bytes(msg)
             # XXX: add digests to a db of already stored files (for quick 
             # lookup)
             if tarball:
                 tarname, tarnameMode = tarball
                 loggerstor.debug("concatenating tarfiles %s and %s" 
                         % (tarname, tmpfile))
-                f1 = tarfile.open(tarname, tarnameMode)
-                f2 = tarfile.open(tmpfile, tmpTarMode)
-                f1names = f1.getnames()
-                f2names = f2.getnames()
-                f1.close()
-                f2.close()
-                dupes = [f for f in f1names if f in f2names]
-                TarfileUtils.delete(tmpfile, dupes)
-                ftype = os.popen('file %s' % tarname)
-                loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
-                ftype.close()
-                TarfileUtils.concatenate(tarname, tmpfile)
-                ftype = os.popen('file %s' % tarname)
-                loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
-                ftype.close()
+                try:
+                    f1 = tarfile.open(tarname, tarnameMode)
+                    f2 = tarfile.open(tmpfile, tmpTarMode)
+                    f1names = f1.getnames()
+                    f2names = f2.getnames()
+                    f1.close()
+                    f2.close()
+                except tarfile.ReadError:
+                    loggerstor.debug("existing tarball corrupt, replacing: %s"
+                            % tarname)
+                    try:
+                        os.remove(tarname)
+                    except:
+                        pass
+                    tarball = None
+                if tarball:
+                    dupes = [f for f in f1names if f in f2names]
+                    TarfileUtils.delete(tmpfile, dupes)
+                    ftype = os.popen('file %s' % tarname)
+                    loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
+                    ftype.close()
+                    TarfileUtils.concatenate(tarname, tmpfile)
+                    ftype = os.popen('file %s' % tarname)
+                    loggerstor.debug("ftype of %s is %s" % (tarname, ftype.read()))
+                    ftype.close()
             else:
                 loggerstor.debug("saving %s as tarfile %s" % (tmpfile, 
                     targetTar))
@@ -428,18 +467,24 @@ class StoreFile(object):
         else:
             # client sent regular file
             h = hashfile(tmpfile)
-            if request.args.has_key('meta') and request.args.has_key('metakey'):
-                metakey = request.args.get('metakey')[0]
-                meta = request.args.get('meta')[0]  # XXX: file in mem! 
+            meta_args = _arg_list(request, 'meta')
+            metakey_args = _arg_list(request, 'metakey')
+            if meta_args and metakey_args:
+                metakey = metakey_args[0]
+                if isinstance(metakey, bytes):
+                    metakey = metakey.decode("utf-8")
+                meta = meta_args[0]  # XXX: file in mem! 
+                if isinstance(meta, str):
+                    meta = meta.encode("utf-8")
             else:
                 metakey = None
                 meta = None
-            if fencode(long(h, 16)) != filekey:
+            if fencode(int(h, 16)) != filekey:
                 msg = "Attempted to use non-CAS storage key for STORE data "
-                msg += "(%s != %s)" % (filekey, fencode(long(h, 16)))
+                msg += "(%s != %s)" % (filekey, fencode(int(h, 16)))
                 os.remove(tmpfile)
-                request.setResponseCode(http.CONFLICT, msg) 
-                return msg
+                request.setResponseCode(twebhttp.CONFLICT, _as_bytes(msg)) 
+                return _as_bytes(msg)
             fname = os.path.join(self.config.storedir, filekey)
             if os.path.exists(fname):
                 loggerstor.debug("adding metadata to %s" % fname)
@@ -451,7 +496,7 @@ class StoreFile(object):
             else:
                 if os.path.exists(nodeID+".tar"):
                     # XXX: need to do something with metadata!
-                    print "XXX: need to do something with metadata for tar!"
+                    print("XXX: need to do something with metadata for tar!")
                     tarball = tarfile.open(tarname, 'r')
                     if fname in tarball.getnames():
                         loggerstor.debug("%s already stored in tarball" % fname)
@@ -459,7 +504,7 @@ class StoreFile(object):
                         # update its timestamp and return success.
                         loggerstor.debug("%s already stored" % filekey)
                         # XXX: update timestamp for filekey in tarball
-                        return "Successful STORE"
+                        return _as_bytes("Successful STORE")
                     else:
                         loggerstor.debug("tarball for %s, but %s not in tarball"
                                 % (nodeID,fname))
@@ -486,7 +531,7 @@ class StoreFile(object):
                                 metakey)
                         loggerstor.debug("adding metadata file to tarball %s" 
                                 % metafilename)
-                        metaio = StringIO(meta)
+                        metaio = BytesIO(meta)
                         tinfo = tarfile.TarInfo(metafilename)
                         tinfo.size = len(meta)
                         tarball.addfile(tinfo, metaio)
@@ -499,20 +544,21 @@ class StoreFile(object):
                     BlockFile.convert(fname, (int(nodeID,16), {metakey: meta}))
 
         loggerstor.debug("successful STORE for %s" % filekey)
-        return "Successful STORE"
+        return _as_bytes("Successful STORE")
     
     def _storeErr(self, error, request, msg):
         out = msg+": "+error.getErrorMessage()
-        print "%s" % str(error)
+        print("%s" % str(error))
         loggerstor.info(out)
         # update trust, routing
-        request.setResponseCode(http.UNAUTHORIZED, 
-                "Unauthorized: %s" % msg) # XXX: wrong code
-        return msg
+        request.setResponseCode(twebhttp.UNAUTHORIZED,
+                _as_bytes("Unauthorized: %s" % msg)) # XXX: wrong code
+        return _as_bytes(msg)
 
     def render_GET(self, request):
-        request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-        return "STORE request must be sent using POST"
+        request.setResponseCode(twebhttp.BAD_REQUEST,
+                _as_bytes("Bad Request"))
+        return _as_bytes("STORE request must be sent using POST")
 
 
 class RetrieveFile(object):
@@ -525,22 +571,26 @@ class RetrieveFile(object):
         try:
             required = ('Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by RETRIEVE" 
             loggerretr.log(logging.INFO, msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             host = getCanonicalIP(request.getClientIP())
             port = int(params['port'])
             loggerretr.info("received RETRIEVE request for %s from %s:%s...",
                     request.path, host, port)
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
-            if request.args.has_key('metakey'):
-                returnMeta = request.args['metakey']
+            metakey_args = _arg_list(request, 'metakey')
+            if metakey_args:
+                returnMeta = metakey_args[0]
+                if isinstance(returnMeta, bytes):
+                    returnMeta = returnMeta.decode("utf-8")
                 if returnMeta == 'True':
                     returnMeta = True
             else:
@@ -559,6 +609,8 @@ class RetrieveFile(object):
             loggerretr.debug("returnMeta = %s" % returnMeta)
             request.setHeader('Content-type', 'Multipart/Related')
             rand_bound = binascii.hexlify(generateRandom(13))
+            if isinstance(rand_bound, bytes):
+                rand_bound = rand_bound.decode("ascii")
             request.setHeader('boundary', rand_bound)
         if not os.path.exists(fname):
             # check for tarball for originator
@@ -574,7 +626,25 @@ class RetrieveFile(object):
             for tarball, openmode in tarballs:
                 tar = tarfile.open(tarball, openmode)
                 try:
-                    tinfo = tar.getmember(filekey)
+                    try:
+                        tinfo = tar.getmember(filekey)
+                    except KeyError:
+                        names = tar.getnames()
+                        alt = None
+                        for n in names:
+                            if n == filekey:
+                                alt = n
+                                break
+                            if n.startswith("./") and n[2:] == filekey:
+                                alt = n
+                                break
+                            if n.endswith(filekey):
+                                alt = n
+                                break
+                        if alt:
+                            tinfo = tar.getmember(alt)
+                        else:
+                            raise
                     returnedMeta = False
                     if returnMeta:
                         loggerretr.debug("tar returnMeta %s" % filekey)
@@ -593,18 +663,18 @@ class RetrieveFile(object):
                                 H.append("Content-Length: %d" % minfo.size)
                                 H.append("")
                                 H = '\r\n'.join(H)
-                                request.write(H)
-                                request.write('\r\n')
+                                _write(request, H)
+                                _write(request, '\r\n')
                                 tarm = tar.extractfile(minfo)
                                 loggerretr.debug("successful metadata"
                                     " RETRIEVE (from %s)" % tarball)
                                 # XXX: bad blocking stuff
                                 while 1:
                                     buf = tarm.read()
-                                    if buf == "":
+                                    if not buf:
                                         break
-                                    request.write(buf)
-                                    request.write('\r\n')
+                                    _write(request, buf)
+                                    _write(request, '\r\n')
                                 tarm.close()
 
                             H = []
@@ -614,8 +684,8 @@ class RetrieveFile(object):
                             H.append("Content-Length: %d" % tinfo.size)
                             H.append("")
                             H = '\r\n'.join(H)
-                            request.write(H)
-                            request.write('\r\n')
+                            _write(request, H)
+                            _write(request, '\r\n')
                             returnedMeta = True
                         except:
                             # couldn't find any metadata, just return normal
@@ -630,9 +700,9 @@ class RetrieveFile(object):
                     # XXX: bad blocking stuff
                     while 1:
                         buf = tarf.read()
-                        if buf == "":
+                        if not buf:
                             break
-                        request.write(buf)
+                        _write(request, buf)
                     tarf.close()
                     tar.close()
                     if returnedMeta:
@@ -641,12 +711,13 @@ class RetrieveFile(object):
                         T.append("--%s--" % rand_bound)
                         T.append("")
                         T = '\r\n'.join(T)
-                        request.write(T)
-                    return ""
+                        _write(request, T)
+                    return _as_bytes("")
                 except:
                     tar.close()
-            request.setResponseCode(http.NOT_FOUND, "Not found: %s" % filekey)
-            request.write("Not found: %s" % filekey)
+            request.setResponseCode(twebhttp.NOT_FOUND,
+                    _as_bytes("Not found: %s" % filekey))
+            _write(request, "Not found: %s" % filekey)
         else:
             f = BlockFile.open(fname,"rb")
             loggerretr.log(logging.INFO, "successful RETRIEVE for %s" % filekey)
@@ -654,6 +725,7 @@ class RetrieveFile(object):
             if returnMeta and meta:
                 loggerretr.debug("returnMeta %s" % filekey)
                 loggerretr.debug("returnMetas=%s" % meta)
+                meta = {k: _as_bytes(v) for k, v in meta.items()}
                 for m in meta:
                     H = []
                     H.append("--%s" % rand_bound)
@@ -661,10 +733,11 @@ class RetrieveFile(object):
                     H.append("Content-ID: %s.%s.meta" % (filekey, m))
                     H.append("Content-Length: %d" % len(meta[m]))
                     H.append("")
-                    H.append(meta[m])
                     H = '\r\n'.join(H)
-                    request.write(H)
-                    request.write('\r\n')
+                    _write(request, H)
+                    _write(request, '\r\n')
+                    _write(request, _as_bytes(meta[m]))
+                    _write(request, '\r\n')
 
                 H = []
                 H.append("--%s" % rand_bound)
@@ -673,29 +746,30 @@ class RetrieveFile(object):
                 H.append("Content-Length: %d" % f.size())
                 H.append("")
                 H = '\r\n'.join(H)
-                request.write(H)
-                request.write('\r\n')
+                _write(request, H)
+                _write(request, '\r\n')
             # XXX: bad blocking stuff
             while 1:
                 buf = f.read()
-                if buf == "":
+                if not buf:
                     break
-                request.write(buf)
+                _write(request, buf)
             f.close()
             if returnMeta and meta:
                 T = []
                 T.append("")
                 T.append("--%s--" % rand_bound)
                 T.append("")
-                request.write('\r\n'.join(T))
-            return ""
+                _write(request, '\r\n'.join(T))
+            return _as_bytes("")
     
     def _sendErr(self, error, request, msg):
         out = msg+": "+error.getErrorMessage()
         loggerretr.log(logging.INFO, out )
         # update trust, routing
-        request.setResponseCode(http.UNAUTHORIZED, "Unauthorized: %s" % msg)
-        request.write(msg)
+        request.setResponseCode(twebhttp.UNAUTHORIZED,
+                _as_bytes("Unauthorized: %s" % msg))
+        _write(request, msg)
         request.finish()
 
 
@@ -724,20 +798,30 @@ class VerifyFile(object):
         try:
             required = ('Ku_e', 'Ku_n', 'port', 'offset', 'length')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by VERIFY" 
             loggervrfy.log(logging.INFO, msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
             loggervrfy.debug("BAD REQUEST")
-            return msg 
+            return _as_bytes(msg)
         else:
             host = getCanonicalIP(request.getClientIP())
             port = int(params['port'])
             loggervrfy.log(logging.INFO,
                     "received VERIFY request from %s:%s...", host, port)
-            if 'meta' in request.args:
-                params['metakey'] = request.args['metakey'][0]
-                params['meta'] = fdecode(request.args['meta'][0])
+            meta_args = _arg_list(request, 'meta')
+            metakey_args = _arg_list(request, 'metakey')
+            if meta_args and metakey_args:
+                params['metakey'] = metakey_args[0]
+                if isinstance(params['metakey'], bytes):
+                    params['metakey'] = params['metakey'].decode("utf-8")
+                meta_raw = meta_args[0]
+                if isinstance(meta_raw, bytes):
+                    meta_raw = meta_raw.decode("utf-8")
+                params['meta'] = fdecode(meta_raw)
+                if isinstance(params['meta'], str):
+                    params['meta'] = params['meta'].encode("utf-8")
                 loggerretr.info("VERIFY contained meta field with %d chars"
                         % len(params['meta']))
                 meta = (params['metakey'], params['meta'])
@@ -751,11 +835,11 @@ class VerifyFile(object):
                 msg = "Bad request:"\
                         " filekey contains illegal path seperator tokens."
                 loggerretr.debug(msg)
-                request.setResponseCode(http.BAD_REQUEST, msg)
-                return msg
+                request.setResponseCode(twebhttp.BAD_REQUEST, _as_bytes(msg))
+                return _as_bytes(msg)
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             nodeID = reqKu.id()
 
@@ -798,8 +882,9 @@ class VerifyFile(object):
                         loggervrfy.debug("VERIFY response failed (from %s):"
                                 " bad offset/length" % tarball)
                         msg = "Bad request: bad offset/length in VERIFY"
-                        request.setResponseCode(http.BAD_REQUEST, msg) 
-                        return msg
+                        request.setResponseCode(twebhttp.BAD_REQUEST,
+                                _as_bytes(msg))
+                        return _as_bytes(msg)
                     # XXX: could avoid seek/read if length == 0
                     tarf.seek(offset)
                     # XXX: bad blocking read
@@ -825,7 +910,7 @@ class VerifyFile(object):
                                     tarball = TarfileUtils.gunzipTarball(
                                             tarball)
                                 tar = tarfile.open(tarball, 'a')
-                                metaio = StringIO(meta[1])
+                                metaio = BytesIO(meta[1])
                                 tinfo = tarfile.TarInfo(mfname)
                                 tinfo.size = len(meta[1])
                                 tar.addfile(tinfo, metaio)
@@ -845,7 +930,7 @@ class VerifyFile(object):
                             if openmode == 'r:gz':
                                 tarball = TarfileUtils.gunzipTarball(tarball)
                             tar = tarfile.open(tarball, 'a')
-                            metaio = StringIO(meta[1])
+                            metaio = BytesIO(meta[1])
                             tinfo = tarfile.TarInfo(mfname)
                             tinfo.size = len(meta[1])
                             tar.addfile(tinfo, metaio)
@@ -857,13 +942,13 @@ class VerifyFile(object):
                     tar.close()
                     hash = hashstring(data)
                     loggervrfy.info("successful VERIFY (from %s)" % tarball)
-                    return hash
+                    return _as_bytes(hash)
                 except:
                     tar.close()
             loggervrfy.debug("requested file %s doesn't exist" % fname)
             msg = "Not found: not storing %s" % filekey
-            request.setResponseCode(http.NOT_FOUND, msg)
-            return msg
+            request.setResponseCode(twebhttp.NOT_FOUND, _as_bytes(msg))
+            return _as_bytes(msg)
 
         # make sure request is reasonable   
         fsize = os.stat(fname)[stat.ST_SIZE]
@@ -871,8 +956,8 @@ class VerifyFile(object):
             # XXX: should limit length
             loggervrfy.debug("VERIFY response failed (bad offset/length)")
             msg = "Bad request: bad offset/length in VERIFY"
-            request.setResponseCode(http.BAD_REQUEST, msg) 
-            return msg
+            request.setResponseCode(twebhttp.BAD_REQUEST, _as_bytes(msg))
+            return _as_bytes(msg)
         else:
             # XXX: blocking
             # XXX: could avoid seek/read if length == 0 (noop for meta update)
@@ -886,14 +971,15 @@ class VerifyFile(object):
             f.close()
             hash = hashstring(data)
             loggervrfy.debug("returning VERIFY")
-            return hash
+            return _as_bytes(hash)
     
     def _sendErr(self, error, request, msg):
         out = "%s:%s" % (msg, error.getErrorMessage())
         loggervrfy.info(out)
         # update trust, routing
-        request.setResponseCode(http.UNAUTHORIZED, "Unauthorized: %s" % msg)
-        request.write(msg)
+        request.setResponseCode(twebhttp.UNAUTHORIZED,
+                _as_bytes("Unauthorized: %s" % msg))
+        _write(request, msg)
         request.finish()
 
 
@@ -907,11 +993,12 @@ class DeleteFile(object):
         try:
             required = ('Ku_e', 'Ku_n', 'port', 'metakey')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by DELETE" 
             loggerdele.log(logging.INFO, msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             host = getCanonicalIP(request.getClientIP())
             port = int(params['port'])
@@ -919,8 +1006,8 @@ class DeleteFile(object):
                     % (request.path, host, port))
 
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             nodeID = reqKu.id()
             metakey = params['metakey']
@@ -957,9 +1044,10 @@ class DeleteFile(object):
                     deleted = TarfileUtils.delete(tarball, [filekey, mfilekey])
                 if deleted:
                     loggerdele.info("DELETED %s (from %s)" % (deleted, tarball))
-                return ""
-            request.setResponseCode(http.NOT_FOUND, "Not found: %s" % filekey)
-            request.write("Not found: %s" % filekey)
+                return _as_bytes("")
+            request.setResponseCode(twebhttp.NOT_FOUND,
+                    _as_bytes("Not found: %s" % filekey))
+            _write(request, "Not found: %s" % filekey)
         else:
             f = BlockFile.open(fname,"rb+")
             nID = int(reqID, 16)
@@ -972,14 +1060,15 @@ class DeleteFile(object):
                     os.remove(fname)
             f.close()
             loggerdele.debug("returning DELETE response")
-            return ""
+            return _as_bytes("")
     
     def _sendErr(self, error, request, msg):
         out = msg+": "+error.getErrorMessage()
         loggerdele.log(logging.INFO, out )
         # update trust, routing
-        request.setResponseCode(http.UNAUTHORIZED, "Unauthorized: %s" % msg)
-        request.write(msg)
+        request.setResponseCode(twebhttp.UNAUTHORIZED,
+                _as_bytes("Unauthorized: %s" % msg))
+        _write(request, msg)
         request.finish()
 
 
@@ -1010,7 +1099,7 @@ class PROXY(ROOT):
     def render_GET(self, request):
         self.setHeaders(request)
         result = "NOT YET IMPLEMENTED"
-        return result
+        return _as_bytes(result)
     
 def authenticate(request, reqKu, host, port, client, config, callable, 
         *callargs):
@@ -1018,6 +1107,10 @@ def authenticate(request, reqKu, host, port, client, config, callable,
     # 2- send a challenge/groupchallenge to reqID (encrypt with reqKu)
     challengeResponse = request.getUser()
     groupResponse = request.getPassword()
+    if isinstance(challengeResponse, bytes):
+        challengeResponse = challengeResponse.decode("utf-8")
+    if isinstance(groupResponse, bytes):
+        groupResponse = groupResponse.decode("utf-8")
 
     if not challengeResponse or not groupResponse:
         loggerauth.info("returning challenge for request from %s:%d" \
@@ -1037,20 +1130,20 @@ def authenticate(request, reqKu, host, port, client, config, callable,
                 loggerauth.debug("Group Challenge received was %s" \
                         % groupResponse)
                 # XXX: update trust, routing
-                request.setResponseCode(http.FORBIDDEN, err);
-                return err
+                request.setResponseCode(twebhttp.FORBIDDEN, _as_bytes(err));
+                return _as_bytes(err)
         else:
             err = "Challenge Failed"
             loggerauth.info(err)
             loggerauth.debug("Challenge received was %s" % challengeResponse)
             # XXX: update trust, routing
-            request.setResponseCode(http.FORBIDDEN, err);
-            return err
+            request.setResponseCode(twebhttp.FORBIDDEN, _as_bytes(err));
+            return _as_bytes(err)
 
 
 def sendChallenge(request, reqKu, id):
     challenge = generateRandom(challengelength) 
-    while challenge[0] == '\x00':
+    while challenge[0] == 0:
         # make sure we have at least challengelength bytes
         challenge = generateRandom(challengelength)
     addChallenge(challenge)
@@ -1065,13 +1158,14 @@ def sendChallenge(request, reqKu, id):
     reactor.callLater(primitive_to*15, expireChallenge, challenge, True)
     resp = 'challenge = %s' % echallenge
     loggerauth.debug("resp = %s" % resp)
-    request.setResponseCode(http.UNAUTHORIZED, echallenge)
+    request.setResponseCode(twebhttp.UNAUTHORIZED, _as_bytes(echallenge))
     request.setHeader('Connection', 'close')
     request.setHeader('WWW-Authenticate', 'Basic realm="%s"' % 'default')
-    request.setHeader('Content-Length', str(len(resp)))
+    resp_bytes = _as_bytes(resp)
+    request.setHeader('Content-Length', str(len(resp_bytes)))
     request.setHeader('Content-Type', 'text/html')
     request.setHeader('Pragma','claimreserve=5555')  # XXX: this doesn't work
-    return resp
+    return resp_bytes
 
 outstandingChallenges = {}
 def addChallenge(challenge):
@@ -1083,7 +1177,7 @@ def expireChallenge(challenge, expired=False):
         challenge = fdecode(challenge)
     except:
         pass
-    if outstandingChallenges.has_key(challenge):
+    if challenge in outstandingChallenges:
         del outstandingChallenges[challenge]
         if expired:
             # XXX: should put these in an expired challenge list so that we
@@ -1099,7 +1193,7 @@ def getChallenge(challenge):
         challenge = fdecode(challenge)
     except:
         pass
-    if outstandingChallenges.has_key(challenge):
+    if challenge in outstandingChallenges:
         return outstandingChallenges[challenge]
     else:
         return None

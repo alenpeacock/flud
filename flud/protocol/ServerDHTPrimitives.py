@@ -5,19 +5,24 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Primitive server DHT protocol
 """
 
-import binascii, time, os, stat, httplib, gc, re, sys, logging, random, sets
+import binascii, time, os, stat, gc, re, sys, logging, random
 from twisted.web.resource import Resource
-from twisted.web import server, resource, http, client
+from twisted.web import server, resource, http as twebhttp, client
 from twisted.internet import reactor, defer
 from twisted.python import failure
 
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
 
-from ServerPrimitives import ROOT
-from FludCommUtil import *
+from .ServerPrimitives import ROOT
+from .FludCommUtil import *
 
 logger = logging.getLogger("flud.server.dht")
+
+def _as_bytes(data):
+    if isinstance(data, bytes):
+        return data
+    return str(data).encode("utf-8")
 
 # XXX: move kRouting.insertNode code out of FludConfig.  Add a 'addNode' method
 #      to FludProtocol module which calls config.addNode, calls
@@ -53,6 +58,8 @@ class NODES(ROOT):
     def render_GET(self, request):
         logger.debug("NODES get (findnode)")
         key = request.prepath[1]
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
         self.setHeaders(request)
         return kFindNode(self.node, self.config, request, key).deferred
 
@@ -63,19 +70,27 @@ class META(ROOT):
     def render_PUT(self, request):
         logger.debug("META put (storeval)")
         if len(request.prepath) != 3:
-            request.setResponseCode(http.BAD_REQUEST, "expected key/val")
-            return "expected key/val, got %s" % '/'.join(request.prepath)
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("expected key/val"))
+            return _as_bytes("expected key/val, got %s" % '/'.join(request.prepath))
         key = request.prepath[1]
         val = request.prepath[2]
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
+        if isinstance(val, bytes):
+            val = val.decode("utf-8")
         self.setHeaders(request)
         return kStoreVal(self.node, self.config, request, key, val).deferred
 
     def render_GET(self, request):
         logger.debug("META get (findval)")
         if len(request.prepath) != 2:
-            request.setResponseCode(http.BAD_REQUEST, "expected key")
-            return "expected key, got %s" % '/'.join(request.prepath)
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("expected key"))
+            return _as_bytes("expected key, got %s" % '/'.join(request.prepath))
         key = request.prepath[1]
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
         self.setHeaders(request)
         return kFindVal(self.node, self.config, request, key).deferred
 
@@ -93,21 +108,23 @@ class kFindNode(object):
         try:
             required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by kFINDNODE" 
             logger.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             logger.info("received kFINDNODE request from %s..."
                     % params['nodeID'][:10])
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             if reqKu.id() != params['nodeID']:
-                request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
-                return "requesting node's ID and public key do not match"
+                request.setResponseCode(twebhttp.BAD_REQUEST,
+                        _as_bytes("Bad Identity"))
+                return _as_bytes("requesting node's ID and public key do not match")
             host = getCanonicalIP(request.getClientIP())
             #return "{'id': '%s', 'k': %s}"\
             #       % (self.config.nodeID,\
@@ -122,7 +139,7 @@ class kFindNode(object):
             #logger.info("returning kFINDNODE response: %s" % kclosest)
             updateNode(self.node.client, self.config, host, 
                     int(params['port']), reqKu, params['nodeID'])
-            return "{'id': '%s', 'k': %s}" % (self.config.nodeID, kclosest)
+            return _as_bytes("{'id': '%s', 'k': %s}" % (self.config.nodeID, kclosest))
         
 class kSTORE_true(ROOT):
     # unrestricted kSTORE.  Will store any key/value pair, as in generic
@@ -133,21 +150,23 @@ class kSTORE_true(ROOT):
         try:
             required = ('nodeID', 'Ku_e', 'Ku_n', 'port', 'key', 'val')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by kSTORE_true" 
             logger.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             logger.info("received kSTORE_true request from %s..."
                     % params['nodeID'][:10])
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             if reqKu.id() != params['nodeID']:
-                request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
-                return "requesting node's ID and public key do not match"
+                request.setResponseCode(twebhttp.BAD_REQUEST,
+                        _as_bytes("Bad Identity"))
+                return _as_bytes("requesting node's ID and public key do not match")
             host = getCanonicalIP(request.getClientIP())
             updateNode(self.node.client, self.config, host,
                     int(params['port']), reqKu, params['nodeID'])
@@ -156,7 +175,7 @@ class kSTORE_true(ROOT):
             f = open(fname, "wb")
             f.write(params['val'])
             f.close()
-            return "" 
+            return _as_bytes("") 
 
 
 class kStoreVal(ROOT):
@@ -197,21 +216,23 @@ class kStoreVal(ROOT):
         try:
             required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by kSTORE" 
             logger.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             logger.info("received kSTORE request from %s..." 
                     % params['nodeID'][:10])
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             if reqKu.id() != params['nodeID']:
-                request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
-                return "requesting node's ID and public key do not match"
+                request.setResponseCode(twebhttp.BAD_REQUEST,
+                        _as_bytes("Bad Identity"))
+                return _as_bytes("requesting node's ID and public key do not match")
             host = getCanonicalIP(request.getClientIP())
             updateNode(self.node.client, self.config, host,
                     int(params['port']), reqKu, params['nodeID'])
@@ -220,8 +241,8 @@ class kStoreVal(ROOT):
             if not self.dataAllowed(key, md, params['nodeID']):
                 msg = "malformed store data"
                 logger.info("bad data was: %s" % md)
-                request.setResponseCode(http.BAD_REQUEST, msg)
-                return msg
+                request.setResponseCode(twebhttp.BAD_REQUEST, _as_bytes(msg))
+                return _as_bytes(msg)
             # XXX: see if there isn't already a 'val' for 'key' present
             #      - if so, compare to val.  Metadata can differ.  Blocks
             #        shouldn't.  However, if blocks do differ, just add the
@@ -234,18 +255,19 @@ class kStoreVal(ROOT):
                 f = open(fname, "rb")
                 edata = f.read()
                 f.close()
-                md = self.mergeMetadata(md, fdecode(edata))
+                if edata:
+                    md = self.mergeMetadata(md, fdecode(edata))
             f = open(fname, "wb")
-            f.write(fencode(md))
+            f.write(fencode(md).encode("utf-8"))
             f.close()
-            return ""  # XXX: return a VERIFY reverse request: segname, offset
+            return _as_bytes("")  # XXX: return a VERIFY reverse request: segname, offset
 
     def dataAllowed(self, key, data, nodeID):
         # ensures that 'data' is in [one of] the right format[s] (helps prevent
         # DHT abuse)
 
         def validValue(val):
-            if not isinstance(val, long) and not isinstance(val, int):
+            if not isinstance(val, int) and not isinstance(val, int):
                 return False  # not a valid key/nodeid
             if val > 2**256 or val < 0:  # XXX: magic 2**256, use fludkrouting
                 return False  # not a valid key/nodeid
@@ -299,7 +321,7 @@ class kStoreVal(ROOT):
             # returns true if the data fits the characteristics of a master
             # metadata CAS key, i.e., if key==nodeID and the data is the right
             # length.
-            nodeID = fencode(long(nodeID,16))
+            nodeID = fencode(int(nodeID,16))
             if key != nodeID:
                 return False  
             # XXX: need to do challange/response on nodeID (just as in the
@@ -336,7 +358,7 @@ class kStoreVal(ROOT):
         # first merge blocks ('b' sections)
         n = {}
         for i in m2:
-            if m1.has_key(i) and m2[i] != m1[i]:
+            if i in m1 and m2[i] != m1[i]:
                 if isinstance(m1[i], list) and len(m1[i]) == 1:
                     m1[i] = m1[i][0]  # collapse list of len 1
                 if isinstance(m2[i], list) and len(m2[i]) == 1:
@@ -358,7 +380,7 @@ class kStoreVal(ROOT):
             else:
                 n[i] = m2[i]
         for i in m1:
-            if not n.has_key(i):
+            if i not in n:
                 n[i] = m1[i]
         # now n contains the merged blocks.
         m1 = m2 = n
@@ -380,21 +402,23 @@ class kFindVal(object):
         try:
             required = ('nodeID', 'Ku_e', 'Ku_n', 'port')
             params = requireParams(request, required)
-        except Exception, inst:
+        except Exception as inst:
             msg = inst.args[0] + " in request received by kFINDVALUE" 
             logger.info(msg)
-            request.setResponseCode(http.BAD_REQUEST, "Bad Request")
-            return msg 
+            request.setResponseCode(twebhttp.BAD_REQUEST,
+                    _as_bytes("Bad Request"))
+            return _as_bytes(msg)
         else:
             logger.info("received kFINDVALUE request from %s..."
                     % params['nodeID'][:10])
             reqKu = {}
-            reqKu['e'] = long(params['Ku_e'])
-            reqKu['n'] = long(params['Ku_n'])
+            reqKu['e'] = int(params['Ku_e'])
+            reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
             if reqKu.id() != params['nodeID']:
-                request.setResponseCode(http.BAD_REQUEST, "Bad Identity")
-                return "requesting node's ID and public key do not match"
+                request.setResponseCode(twebhttp.BAD_REQUEST,
+                        _as_bytes("Bad Identity"))
+                return _as_bytes("requesting node's ID and public key do not match")
             host = getCanonicalIP(request.getClientIP())
             updateNode(self.node.client, self.config, host,
                     int(params['port']), reqKu, params['nodeID'])
@@ -404,8 +428,12 @@ class kFindVal(object):
                 logger.info("returning data from kFINDVAL") 
                 request.setHeader('nodeID',str(self.config.nodeID))
                 request.setHeader('Content-Type','application/x-flud-data')
-                d = fdecode(f.read())
-                if isinstance(d, dict) and d.has_key(params['nodeID']):
+                data = f.read()
+                if not data:
+                    f.close()
+                    return _as_bytes("")
+                d = fdecode(data)
+                if isinstance(d, dict) and params['nodeID'] in d:
                     #print d
                     resp = {'b': d['b'], params['nodeID']: d[params['nodeID']]}
                     #resp = {'b': d['b']}
@@ -413,14 +441,14 @@ class kFindVal(object):
                     #   resp[params['nodeID']] = d[params['nodeID']]
                 else:
                     resp = d
-                request.write(fencode(resp))
+                request.write(_as_bytes(fencode(resp)))
                 f.close()
-                return ""
+                return _as_bytes("")
             else:
                 # return the following if it isn't there.
                 logger.info("returning nodes from kFINDVAL for %s" % key)
                 request.setHeader('Content-Type','application/x-flud-nodes')
-                return "{'id': '%s', 'k': %s}"\
+                return _as_bytes("{'id': '%s', 'k': %s}"\
                         % (self.config.nodeID,\
-                        self.config.routing.findNode(fdecode(key)))
+                        self.config.routing.findNode(fdecode(key))))
         

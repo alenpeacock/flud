@@ -1,7 +1,18 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="$SCRIPT_DIR:$PATH"
+
 testhost=`hostname`
 tacfile=`tacpath-flud`
+if [ -z "$tacfile" ]; then
+    tacfile="$SCRIPT_DIR/tacpath-flud"
+    tacfile=$("$tacfile")
+fi
+if [ -z "$tacfile" ]; then
+    echo "could not determine FludNode.tac path" >&2
+    exit 1
+fi
 invoker="twistd -oy $tacfile"
 
 if [ -z ${FLUDSTART} ]; then
@@ -10,9 +21,7 @@ else
     i=${FLUDSTART}
 fi
 
-if [ -z $1 ]; then
-    1=0
-fi
+NODES=${1:-1}
 
 if [ -n $3 ]; then
     boothost=$2
@@ -36,7 +45,7 @@ fi
 pids[$i]=$!
 
 let seqstart=$i+1
-let seqend=$1+$i-1
+let seqend=$NODES+$i-1
 
 for i in `seq $seqstart $seqend`; do
     export FLUDHOME="${HOME}/.flud${i}"

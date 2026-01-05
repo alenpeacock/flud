@@ -27,14 +27,17 @@ VALIDOPS = list(LocalProtocol.commands.keys()) + ['AUTH', 'DIAG']
 
 class LocalClient(LineReceiver):
     MAX_LENGTH = 300000
+    delimiter = b"\r\n"
     auth=False
     
     def connectionMade(self):
         logger.debug("connection est.")
         self.auth=False
-        self.sendLine("AUTH?")
+        self.sendLine(b"AUTH?")
 
     def lineReceived(self, line):
+        if isinstance(line, bytes):
+            line = line.decode("utf-8")
         logger.debug("received line '%s'" % line)
         command = line[0:4]
         if not command in VALIDOPS:
@@ -50,7 +53,10 @@ class LocalClient(LineReceiver):
                 # got challenge, send response
                 logger.debug("got AUTH challenge, sending response")
                 echallenge = data
-                self.sendLine("AUTH:"+self.factory.answerChallenge(echallenge))
+                response = self.factory.answerChallenge(echallenge)
+                if isinstance(response, bytes):
+                    response = response.decode("utf-8")
+                self.sendLine(("AUTH:"+response).encode("utf-8"))
                 return
             elif command == "AUTH" and status == ':':
                 # response accepted, authenticated
@@ -180,7 +186,10 @@ class LocalClientFactory(ClientFactory):
     def _sendMessage(self, msg):
         if self.client:
             logger.debug("sending msg '%s'" % msg)
-            self.client.sendLine(msg)
+            if isinstance(msg, bytes):
+                self.client.sendLine(msg)
+            else:
+                self.client.sendLine(msg.encode("utf-8"))
         else:
             logger.debug("queueing msg '%s'" % msg)
             self.messageQueue.append(msg)
@@ -189,6 +198,8 @@ class LocalClientFactory(ClientFactory):
         logger.debug("answering challenge")
         echallenge = (fdecode(echallenge),)
         challenge = self.config.Kr.decrypt(echallenge)
+        if isinstance(challenge, bytes):
+            challenge = challenge.decode("utf-8")
         return challenge
 
     def expire(self, pending, key):
@@ -386,4 +397,3 @@ def listMeta(config):
     else:
         master = fdecode(master)
     return master
-

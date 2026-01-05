@@ -38,6 +38,7 @@ MAXCONCURRENT = 300
 
 class LocalProtocol(basic.LineReceiver):
     authenticated = False
+    delimiter = b"\r\n"
     commands = {'PUTF': [0, MAXCONCURRENT, []], 'GETF': [0, MAXCONCURRENT, []],
             'GETI': [0, MAXCONCURRENT, []], 'FNDN': [0, 1, []], 
             'STOR': [0, MAXCONCURRENT, []], 'RTRV': [0, MAXCONCURRENT, []], 
@@ -187,7 +188,7 @@ class LocalProtocol(basic.LineReceiver):
             w = "%s:%s %s:%s\r\n" % (prepend, command, fencode(resp), data)
         else:
             w = "%s:%s:%s\r\n" % (command, fencode(resp), data)
-        self.transport.write(w)
+        self._write(w)
         self.commands[command][CONCURR] -= 1
         try:
             self.serviceQueue(command)
@@ -203,12 +204,14 @@ class LocalProtocol(basic.LineReceiver):
         else:
             w = "%s!%s!%s\r\n" % (command, errmsg, data)
         logger.debug("sending %s" % w)
-        self.transport.write(w)
+        self._write(w)
         self.commands[command][CONCURR] -= 1
         self.serviceQueue(command)
         return err
 
     def lineReceived(self, line):
+        if isinstance(line, bytes):
+            line = line.decode("utf-8")
         logger.debug("lineReceived: '%s'" % line)
         # commands: AUTH, PUTF, GETF, VRFY
         # status: ? = request, : = successful response, ! = failed response
@@ -221,15 +224,15 @@ class LocalProtocol(basic.LineReceiver):
                 # asked for AUTH challenge to be sent.  send it
                 logger.debug("AUTH challenge requested, sending")
                 echallenge = self.factory.sendChallenge()
-                self.transport.write("AUTH?"+echallenge+"\r\n")
+                self._write("AUTH?"+echallenge+"\r\n")
             elif status == ':' and self.factory.challengeAnswered(data):
                 # sent AUTH response and it passed
                 logger.debug("AUTH challenge successful")
                 self.authenticated = True
-                self.transport.write("AUTH:\r\n")
+                self._write("AUTH:\r\n")
             elif status == ':':
                 logger.debug("AUTH challenge failed")
-                self.transport.write("AUTH!\r\n")
+                self._write("AUTH!\r\n")
         elif command == "DIAG":
             if data == "NODE":
                 logger.debug("DIAG NODE")
@@ -246,11 +249,11 @@ class LocalProtocol(basic.LineReceiver):
                     else:
                         node.append(0)
                     nodes.append(tuple(node))
-                self.transport.write("DIAG:NODE%s\r\n" % fencode(nodes))
+                self._write("DIAG:NODE%s\r\n" % fencode(nodes))
             elif data == "BKTS":
                 logger.debug("DIAG BKTS")
                 bucks = eval("%s" % self.factory.config.routing.kBuckets)
-                self.transport.write("DIAG:BKTS%s\r\n" % fencode(bucks))
+                self._write("DIAG:BKTS%s\r\n" % fencode(bucks))
             else:
                 dcommand = data[:4]
                 ddata = data[5:]
@@ -276,6 +279,12 @@ class LocalProtocol(basic.LineReceiver):
                 d = self.doOp(command, data)
                 d.addCallback(self.sendSuccess, command, data)
                 d.addErrback(self.sendFailure, command, data)
+
+    def _write(self, data):
+        if isinstance(data, bytes):
+            self.transport.write(data)
+        else:
+            self.transport.write(str(data).encode("utf-8"))
 
 class LocalFactory(protocol.ServerFactory):
     protocol = LocalProtocol

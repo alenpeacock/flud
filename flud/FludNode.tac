@@ -30,5 +30,14 @@ if gwhost and gwport:
 	node.connectViaGateway(gwhost, gwport)
 
 application = service.Application("flud.FludNode")
-service = node.start(twistd=True)
-#service.setServiceParent(application)
+
+class FludService(service.Service):
+	def startService(self):
+		service.Service.startService(self)
+		node.start(twistd=True)
+
+	def stopService(self):
+		node.stop()
+
+flud_service = FludService()
+flud_service.setServiceParent(application)

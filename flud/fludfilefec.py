@@ -109,9 +109,9 @@ def decode_from_files(outf, infiles, verbose=False):
             raise CorruptedShareFilesError("Share files were corrupted --"
                     " share file %r said that k was %s but another share file"
                     " previously said that k was %s" % (f.name, nk, k,))
+        k = nk
         if k > len(infiles):
             raise InsufficientShareFilesError(k, len(infiles))
-        k = nk
         if not (padlen is None or padlen == npadlen):
             raise CorruptedShareFilesError("Share files were corrupted --"
                     " share file %r said that pad length was %s but another"

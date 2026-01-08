@@ -44,8 +44,13 @@ else
 fi
 pids[$i]=$!
 
-let seqstart=$i+1
-let seqend=$NODES+$i-1
+if [[ "$NODES" =~ ^[0-9]+-[0-9]+$ ]]; then
+    seqstart=$(( ${NODES%-*} + 1 ))
+    seqend=${NODES#*-}
+else
+    let seqstart=$i+1
+    let seqend=$NODES+$i-1
+fi
 
 for i in `seq $seqstart $seqend`; do
     export FLUDHOME="${HOME}/.flud${i}"

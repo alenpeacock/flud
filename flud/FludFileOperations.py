@@ -5,9 +5,9 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Implements file storage and retrieval operations using flud primitives.
 """
 
-import os, stat, sys, logging, binascii, random, time
+import os, stat, sys, logging, binascii, random, time, shutil
 from zlib import crc32
-from io import StringIO
+from io import StringIO, BytesIO
 from twisted.internet import defer, threads
 from Cryptodome.Cipher import AES
 
@@ -48,6 +48,13 @@ class Ctx(object):
 
     def __repr__(self):
         return str(self.ctx)+": "+(self.formatstr % self.args)
+
+def _crc32_value(value):
+    if isinstance(value, bytes):
+        data = value
+    else:
+        data = str(value).encode("utf-8")
+    return crc32(data)
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -130,7 +137,7 @@ class StoreFile:
     def __init__(self, node, filename):
         self.node = node
         self.filename = filename
-        self.mkey = crc32(self.filename)
+        self.mkey = _crc32_value(self.filename)
         self.ctx = Ctx(self.mkey).msg
         self.config = node.config
         self.Ku = node.config.Ku
@@ -162,12 +169,21 @@ class StoreFile:
         # 2: create filesystem metadata locally.
         sbody = filemetadata(self.filename)
         sbody = fencode(sbody)
-        cryptSize = (self.Ku.size()+1) / 8
-        self.eNodeFileMetadata = ""
+        if isinstance(sbody, str):
+            sbody = sbody.encode("utf-8")
+        if hasattr(self.Ku, "size_in_bytes"):
+            cryptSize = self.Ku.size_in_bytes()
+        else:
+            cryptSize = (self.Ku.size() + 1) // 8
+        self.eNodeFileMetadata = b""
         for i in range(0, len(sbody), cryptSize):
             self.eNodeFileMetadata += self.Ku.encrypt(sbody[i:i+cryptSize])[0]
-        fsMetadata = fencode({'eeK' : fencode(self.eeK[0]), 
+        fsMetadata = fencode({'eeK' : fencode(self.eeK[0]),
                 'meta' : fencode(self.eNodeFileMetadata)})
+        if isinstance(fsMetadata, str):
+            fsMetadata_bytes = fsMetadata.encode("utf-8")
+        else:
+            fsMetadata_bytes = fsMetadata
 
         # erasure code the metadata
 
@@ -182,8 +198,8 @@ class StoreFile:
                 "%s already requested" % self.filename))
         # XXX: mfiles should be held in mem, as StringIOs (when coder supports
         # this)
-        self.mfiles = fludfilefec.encode_to_files(StringIO(fsMetadata), 
-                len(fsMetadata), self.encodedir, self.mfilename, 
+        self.mfiles = fludfilefec.encode_to_files(BytesIO(fsMetadata_bytes),
+                len(fsMetadata_bytes), self.encodedir, self.mfilename,
                 code_k, code_m)
 
         # XXX: piggybacking doesn't work with new metadata scheme, must fix it
@@ -424,9 +440,9 @@ class StoreFile:
         self.blockMetadata = storedMetadata
         dlist = []
         for i, sfile in enumerate(self.sfiles):
-            # XXX: metadata should be StringIO to begin with
-            f = open(self.mfiles[i], "r")
-            mfile = StringIO(f.read())
+            # XXX: metadata should be BytesIO to begin with
+            f = open(self.mfiles[i], "rb")
+            mfile = BytesIO(f.read())
             f.close()
             seg = os.path.basename(sfile)
             segl = fdecode(seg)
@@ -578,7 +594,10 @@ class StoreFile:
         # cache the metadata locally (optional)
         fname = os.path.join(self.metadir,key)
         m = open(fname, 'wb')
-        m.write(fencode(meta))
+        mdata = fencode(meta)
+        if isinstance(mdata, str):
+            mdata = mdata.encode("utf-8")
+        m.write(mdata)
         m.close()
 
         # clean up fs metadata file
@@ -640,7 +659,7 @@ class RetrieveFile:
         except Exception as inst:
             self.deferred = defer.fail(inst)
             return
-        self.ctx = Ctx(crc32(str(self.sK))).msg
+        self.ctx = Ctx(_crc32_value(self.sK)).msg
         self.config = node.config
         self.Ku = node.config.Ku
         self.Kr = node.config.Kr
@@ -694,8 +713,8 @@ class RetrieveFile:
             v = (k, self.config.reputations[node] \
                             if node in self.config.reputations \
                             else TrustDeltas.INITIAL_SCORE)
-            if node in self.config.throttled \
-                    and self.config.throttled[node] > curtime:
+            throttle_until = self.config.throttled.get(node)
+            if isinstance(throttle_until, int) and throttle_until > curtime:
                 v = (k, TrustDeltas.NEGATIVE_CAP)
             return v
 
@@ -717,8 +736,8 @@ class RetrieveFile:
             else:
                 r.append(score(k, node))
         logger.debug(self.ctx("done scoring, now sorting"))
-        r.sort(lambda x,y:cmp(x[1],y[1]))
-        return keys
+        r.sort(key=lambda item: item[1], reverse=True)
+        return [item[0] for item in r]
 
     def _getSomeBlocks(self, reqs=code_k):
         tries = 0
@@ -882,15 +901,15 @@ class RetrieveFile:
         else:
             logger.info(self.ctx("decoded=%s, mdecoded=%s" % (decoded, 
                 metadecoded)))
-            raise RuntimeError("decode error after retreiving "
-                    " %d blocks: decoded=%s, mdecoded=%" 
-                    % (self.numBlocksRetrieved, decoded, metadecoded))
+            raise RuntimeError("decode error after retreiving %d blocks: "
+                    "decoded=%s, mdecoded=%s" % (
+                        self.numBlocksRetrieved, decoded, metadecoded))
 
     def _decryptMeta(self):
         # XXX: decrypt the metadatafile with Kr to get all the nmeta stuff (eeK
         # etc.)
         #mfile = open(os.path.join(self.parentcodedir, fencode(self.sK)+".m"))
-        mfile = open(self.mfname, 'r')
+        mfile = open(self.mfname, 'rb')
         meta = mfile.read()
         mfile.close()
         logger.info(self.ctx("meta is %s" % str(meta)))
@@ -910,7 +929,10 @@ class RetrieveFile:
         eeK = fdecode(self.nmeta['eeK'])
         # d_eK business is to ensure that eK is zero-padded to 32 bytes
         d_eK = self.Kr.decrypt(eeK)
-        d_eK = '\x00'*(32%len(d_eK))+d_eK # XXX: magic 32, should be keyspace/8
+        if isinstance(d_eK, str):
+            d_eK = d_eK.encode("utf-8")
+        pad_len = (32 - (len(d_eK) % 32)) % 32
+        d_eK = (b'\x00' * pad_len) + d_eK  # XXX: magic 32, should be keyspace/8
         eK = binascii.hexlify(d_eK)
         iv = f1.read(16)
         eKey = AES.new(binascii.unhexlify(eK), AES.MODE_CBC, iv)
@@ -970,11 +992,17 @@ class RetrieveFile:
         #      the file data?
         #print "decoding nmeta meta"
         efmeta = fdecode(self.nmeta['meta'])
-        cryptSize = (self.Kr.size()+1) / 8
-        fmeta = ""
+        if hasattr(self.Kr, "size_in_bytes"):
+            cryptSize = self.Kr.size_in_bytes()
+        else:
+            cryptSize = (self.Kr.size() + 1) // 8
+        fmeta_bytes = b""
         for i in range(0, len(efmeta), cryptSize):
-            fmeta += self.Kr.decrypt(efmeta[i:i+cryptSize])
-        fmeta = fdecode(fmeta)
+            chunk = self.Kr.decrypt(efmeta[i:i+cryptSize])
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8")
+            fmeta_bytes += chunk
+        fmeta = fdecode(fmeta_bytes)
         
         result = [fmeta['path']]
         if os.path.exists(fmeta['path']):
@@ -993,10 +1021,25 @@ class RetrieveFile:
                         % fmeta['path']))
                 # XXX: should generate '.recovered' extension more carefully,
                 #      so as not to overwrite coincidentally named files.
-                fmeta['path'] = fmeta['path']+".recovered"
-                result.insert(0,fmeta['path'])
-                os.rename(os.path.join(self.parentcodedir,skey+".rec3"),
-                        fmeta['path'])
+                recovered_src = os.path.join(self.parentcodedir, skey + ".rec3")
+                recovered_dest = fmeta['path'] + ".recovered"
+                if os.path.exists(recovered_dest):
+                    stamp = int(time.time())
+                    recovered_dest = fmeta['path'] + ".recovered.%d" % stamp
+                try:
+                    shutil.move(recovered_src, recovered_dest)
+                except OSError:
+                    fallback = os.path.join(
+                        self.parentcodedir,
+                        os.path.basename(recovered_dest),
+                    )
+                    if os.path.exists(fallback):
+                        stamp = int(time.time())
+                        fallback = fallback + ".%d" % stamp
+                    shutil.move(recovered_src, fallback)
+                    recovered_dest = fallback
+                fmeta['path'] = recovered_dest
+                result.insert(0, recovered_dest)
             else:
                 logger.info(self.ctx('same version of file %s already present'
                         % fmeta['path']))
@@ -1023,7 +1066,10 @@ class RetrieveFile:
                     fmeta['path'])
 
         # XXX: chown not supported on Windows
-        os.chown(fmeta['path'], fmeta['uid'], fmeta['gid'])
+        try:
+            os.chown(fmeta['path'], fmeta['uid'], fmeta['gid'])
+        except PermissionError:
+            logger.warn(self.ctx("could not chown %s", fmeta['path']))
         os.utime(fmeta['path'], (fmeta['atim'], fmeta['mtim']))
         os.chmod(fmeta['path'], fmeta['mode'])
         logger.info(self.ctx("successfully restored file metadata"))
@@ -1055,8 +1101,8 @@ class RetrieveFilename:
                 # XXX: this should be calling a config.getAllFromMasterMeta()
                 for i in [x for x in list(self.config.master.keys()) 
                         if dirname == x[:len(dirname)]]:
-                    filekey = self.config.getFromMasterMeta[i]
-                    metakey = crc32(i)
+                    filekey = self.config.getFromMasterMeta(i)
+                    metakey = _crc32_value(i)
                     logger.debug("calling RetrieveFile %s" % filekey)
                     d = RetrieveFile(self.node, fencode(filekey),
                             metakey).deferred
@@ -1067,7 +1113,7 @@ class RetrieveFilename:
                 logger.debug("%s is file in master metadata", self.filename)
                 (filekey, backuptime) = self.config.getFromMasterMeta(
                         self.filename)
-                metakey = crc32(self.filename)
+                metakey = _crc32_value(self.filename)
                 if filekey != None and filekey != "":
                     logger.debug("calling RetrieveFile %s" % filekey)
                     d = RetrieveFile(self.node, fencode(filekey), 

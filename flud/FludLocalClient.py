@@ -167,7 +167,10 @@ class CmdClientFactory(LocalClientFactory):
     def queueError(self, r, l, msg):
         logger.debug("got error %s" % msg)
         if r:
-            l.append((r.getErrorMessage(), msg))
+            errmsg = r.getErrorMessage()
+            if not errmsg:
+                errmsg = str(r)
+            l.append((errmsg, msg))
         else:
             l.append((None, msg))
 

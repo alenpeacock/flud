@@ -117,12 +117,20 @@ def verifyHashes(tarball, ignoreExt=None):
         tar = tarfile.open(tarball, "r:gz")
     else:
         tar = tarfile.open(tarball, "r")
+    if ignoreExt and not isinstance(ignoreExt, str):
+        ignore_names = set(ignoreExt)
+    elif ignoreExt:
+        ignore_names = {ignoreExt}
+    else:
+        ignore_names = set()
     try:
         for member in tar.getmembers():
             if not member.isfile():
                 continue
             name = member.name
-            if ignoreExt and name.endswith(ignoreExt):
+            if name.endswith(".meta"):
+                continue
+            if name in ignore_names:
                 continue
             f = tar.extractfile(member)
             if f is None:

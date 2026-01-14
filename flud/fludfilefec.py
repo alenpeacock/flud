@@ -1,6 +1,7 @@
 import zfec
 import zfec.easyfec as easyfec
 import zfec.filefec as filefec
+from zfec.filefec import CorruptedShareFilesError, InsufficientShareFilesError
 from pyutil import fileutil
 from pyutil.mathutil import pad_size, log_ceil
 
@@ -124,6 +125,15 @@ def decode_from_files(outf, infiles, verbose=False):
 
         if len(infs) == k:
             break
+
+    uniq = {}
+    for shnum, inf in zip(shnums, infs):
+        if shnum not in uniq:
+            uniq[shnum] = inf
+    shnums = sorted(uniq.keys())
+    infs = [uniq[sh] for sh in shnums]
+    if len(shnums) < k:
+        raise InsufficientShareFilesError(k, len(shnums))
 
     dec = easyfec.Decoder(k, m)
 

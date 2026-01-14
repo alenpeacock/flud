@@ -5,7 +5,7 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Implements file storage and retrieval operations using flud primitives.
 """
 
-import os, stat, sys, logging, binascii, random, time, shutil
+import os, stat, sys, logging, binascii, random, time, shutil, threading
 from zlib import crc32
 from io import StringIO, BytesIO
 from twisted.internet import defer, threads
@@ -18,6 +18,7 @@ from flud.FludConfig import TrustDeltas
 from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
+_decode_lock = threading.Lock()
 
 # erasure coding constants
 code_k = 20             # data blocks
@@ -288,16 +289,16 @@ class StoreFile:
             storedMetadata = fdecode(storedMetadata)
             logger.info(self.ctx("metadata exists, verifying all data"))
             if not self._compareMetadata(storedMetadata, self.sfiles):
-                raise ValueError("stored and local metadata do not match")
-            else:
-                logger.info(self.ctx("stored and local metadata match."))
+                logger.warn(self.ctx("stored/local metadata mismatch; "
+                        "restoring fresh metadata"))
+                return self._storeBlocks(None)
+            logger.info(self.ctx("stored and local metadata match."))
             # XXX: need to check for diversity.  It could be that data stored
             # previously to a smaller network (<k+m nodes) and that we should
             # try to increase diversity and re-store the data.
             # XXX: also need to make sure we still trust all the nodes in the
             # metadata list.  If not, we should move those blocks elsewhere.
-            d = self._verifyAndStoreBlocks(storedMetadata)
-            return d
+            return self._verifyAndStoreBlocks(storedMetadata)
 
     def _storeBlocksSKIP(self, storedMetadata):
         # for testing -- skip stores so we can get to storeMeta
@@ -400,27 +401,30 @@ class StoreFile:
         # @return true if they match up perfectly, false otherwise
         logger.debug(self.ctx('# remote block names: %d', len(storedFiles)))
         logger.debug(self.ctx('# local blocks: %d', len(fileNames)))
-        result = True
-        k = storedFiles.pop('k')
-        n = storedFiles.pop('n')
-        for (i, f) in storedFiles:
-            fname = os.path.join(self.encodedir,fencode(f))
-            if not fname in fileNames:
-                logger.warn(self.ctx("%s not in sfiles", fencode(i)))
-                result = False
+        stored_keys = set()
+        for key in storedFiles:
+            if isinstance(key, tuple) and len(key) == 2:
+                stored_keys.add(key)
+
+        local_keys = set()
         for i, fname in enumerate(fileNames):
             hname = os.path.basename(fname)
-            if (i, fdecode(hname)) not in storedFiles:
-                logger.warn(self.ctx("%s not in storedMetadata", hname))
-                result = False
-        if result == False:
-            for i in storedFiles:
-                logger.debug(self.ctx("storedBlock = %s", fencode(i)))
-            for i in fileNames:
-                logger.debug(self.ctx("localBlock  = %s", os.path.basename(i)))
-        storedFiles['k'] = k
-        storedFiles['n'] = n
-        return result
+            try:
+                hval = fdecode(hname)
+            except Exception:
+                logger.warn(self.ctx("could not decode local block %s", hname))
+                return False
+            local_keys.add((i, hval))
+
+        if stored_keys != local_keys:
+            logger.warn(self.ctx("stored/local metadata mismatch"))
+            if stored_keys:
+                for key in list(stored_keys)[:5]:
+                    logger.debug(self.ctx("storedBlock = %s", fencode(key)))
+            for key in list(local_keys)[:5]:
+                logger.debug(self.ctx("localBlock  = %s", fencode(key)))
+            return False
+        return True
 
     def _piggybackStoreMetadata(self, piggybackMeta):
         # piggybackMeta is a (nodeID, {blockID: storingNodeID, })
@@ -604,6 +608,9 @@ class StoreFile:
         #os.remove(self.mfilename)
 
         #return fencode(self.sK)
+        if self.eK not in self.currentOps:
+            logger.warn(self.ctx("no %s in currentOps for StoreFile", self.eK))
+            return (key, meta)
         (d, counter) = self.currentOps[self.eK]
         counter = counter - 1
         if counter == 0:
@@ -872,11 +879,18 @@ class RetrieveFile:
         logger.info(self.ctx("decoding %s to %s" % (datafnames, outfname)))
         outf = open(outfname, 'wb')
         data = []
+        seen = set()
         for fname in datafnames:
             if datadir:
                 fname = os.path.join(datadir, fname)
+            if fname in seen:
+                continue
+            seen.add(fname)
+            if len(data) >= code_m:
+                break
             data.append(open(fname, 'rb'))
-        result = fludfilefec.decode_from_files(outf, data)
+        with _decode_lock:
+            result = fludfilefec.decode_from_files(outf, data)
         outf.close()
         for f in data:
             f.close()
@@ -888,6 +902,17 @@ class RetrieveFile:
         return result
 
     def _decodeError(self, err):
+        if err.check(fludfilefec.InsufficientShareFilesError):
+            if len(self.meta) > 0:
+                logger.warn(self.ctx("decode failed (insufficient shares); "
+                        "requesting more blocks"))
+                return self._getSomeBlocks(min(3, len(self.meta)))
+            logger.warn(self.ctx("decode failed (insufficient shares); "
+                    "rerunning full retrieve"))
+            self.blocks = {}
+            self.fsmetas = {}
+            self.numBlocksRetrieved = 0
+            return self._getSomeBlocks(code_k)
         logger.warn(self.ctx("could not decode: %s", str(err)))
         logger.debug(self.ctx("%s", (err.getTraceback(),)))
         return err

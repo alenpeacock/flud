@@ -7,7 +7,8 @@ under the terms of the GNU General Public License (the GPL), version 3.
 System tests for FludFileOperations
 """
 
-import sys, os, time, logging, tempfile, shutil
+import sys, os, time, logging, tempfile, shutil, faulthandler, signal
+from zlib import crc32
 from twisted.internet import reactor
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -32,6 +33,24 @@ def verifySuccess(r, desc):
     print("%s succeeded" % desc)
 
 def checkRetrieveFile(res, node, fname):
+    retrieved = res
+    if isinstance(res, (list, tuple)) and res:
+        retrieved = res[0]
+    if isinstance(retrieved, str) and os.path.exists(retrieved):
+        with open(fname, "rb") as f:
+            orig_crc = 0
+            for chunk in iter(lambda: f.read(65536), b""):
+                orig_crc = crc32(chunk, orig_crc)
+        with open(retrieved, "rb") as f:
+            retrieved_crc = 0
+            for chunk in iter(lambda: f.read(65536), b""):
+                retrieved_crc = crc32(chunk, retrieved_crc)
+        orig_crc &= 0xFFFFFFFF
+        retrieved_crc &= 0xFFFFFFFF
+        if orig_crc != retrieved_crc:
+            return defer.fail(failure.DefaultException(
+                "crc mismatch for %s (expected %08x, got %08x)" % (
+                    retrieved, orig_crc, retrieved_crc)))
     print("retrieve of %s succeeded" % fname)
     return res  # <- *VITAL* for concurrent dup ops to succeed.
 
@@ -114,8 +133,8 @@ def cleanup(_, node, filenamelist):
 
 def generateTestFile(minSize):
     fname = tempfile.mktemp()
-    f = open(fname, 'w')
-    data = generateRandom(minSize/50)
+    f = open(fname, 'wb')
+    data = generateRandom(minSize//50)
     for i in range(0, 51+random.randrange(50)):
         f.write(data)
     f.close()
@@ -144,6 +163,8 @@ def runTests(host, port, listenport=None):
     node.join()
 
 if __name__ == '__main__':
+    faulthandler.enable()
+    faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
     localhost = socket.getfqdn()
     if len(sys.argv) == 3: 
         runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]

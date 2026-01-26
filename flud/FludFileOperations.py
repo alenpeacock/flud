@@ -8,8 +8,9 @@ Implements file storage and retrieval operations using flud primitives.
 import os, stat, sys, logging, binascii, random, time, shutil, threading
 from zlib import crc32
 from io import StringIO, BytesIO
-from twisted.internet import defer, threads
+from twisted.internet import defer, threads, reactor
 from Cryptodome.Cipher import AES
+import zfec.filefec as zfec_filefec
 
 from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
@@ -44,11 +45,14 @@ class Ctx(object):
     def msg(self, formatstr, *args):
         self.formatstr = formatstr
         self.args = args
-        s = self.formatstr % self.args
         return self
 
     def __repr__(self):
-        return str(self.ctx)+": "+(self.formatstr % self.args)
+        if self.args:
+            text = self.formatstr % self.args
+        else:
+            text = self.formatstr
+        return str(self.ctx)+": "+text
 
 def _crc32_value(value):
     if isinstance(value, bytes):
@@ -56,6 +60,17 @@ def _crc32_value(value):
     else:
         data = str(value).encode("utf-8")
     return crc32(data)
+
+def _add_timeout(deferred, seconds):
+    if hasattr(deferred, "addTimeout"):
+        return deferred.addTimeout(seconds, reactor)
+    timeout_call = reactor.callLater(seconds, deferred.cancel)
+    def _cancel_timeout(result):
+        if timeout_call.active():
+            timeout_call.cancel()
+        return result
+    deferred.addBoth(_cancel_timeout)
+    return deferred
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -290,8 +305,8 @@ class StoreFile:
             logger.info(self.ctx("metadata exists, verifying all data"))
             if not self._compareMetadata(storedMetadata, self.sfiles):
                 logger.warn(self.ctx("stored/local metadata mismatch; "
-                        "restoring fresh metadata"))
-                return self._storeBlocks(None)
+                        "attaching metadata to existing blocks"))
+                return self._attachMetadata(storedMetadata)
             logger.info(self.ctx("stored and local metadata match."))
             # XXX: need to check for diversity.  It could be that data stored
             # previously to a smaller network (<k+m nodes) and that we should
@@ -471,6 +486,60 @@ class StoreFile:
         # XXX XXX XXX: don't _updateMaster unless we succeed!!
         dl.addCallback(self._updateMaster, storedMetadata)
         return dl
+
+    def _attachMetadata(self, storedMetadata):
+        """
+        Attach per-file metadata to already-stored blocks when the DHT
+        metadata exists but the locally-encoded blocks differ (e.g. duplicate
+        stores where encryption is non-deterministic).
+        """
+        self.blockMetadata = storedMetadata
+        dlist = []
+        for key in storedMetadata:
+            if not isinstance(key, tuple) or len(key) != 2:
+                continue
+            i, segl = key
+            nID = storedMetadata[key]
+            if isinstance(nID, list):
+                nID = random.choice(nID)
+            try:
+                with open(self.mfiles[i], "rb") as f:
+                    mfile = BytesIO(f.read())
+            except Exception as exc:
+                logger.warn(self.ctx("failed to read metadata share %s: %s",
+                        i, str(exc)))
+                continue
+            deferred = self.node.client.kFindNode(nID)
+            deferred.addCallback(self._sendMetadataVerify, segl, mfile, nID)
+            deferred.addErrback(self._attachMetadataErr, nID, segl)
+            dlist.append(deferred)
+        dl = defer.DeferredList(dlist)
+        dl.addCallback(self._updateMaster, storedMetadata)
+        return dl
+
+    def _sendMetadataVerify(self, kdata, segl, mfile, nID):
+        node = None
+        for candidate in kdata.get('k', []):
+            if candidate[2] == nID:
+                node = candidate
+                break
+        if node is None and kdata.get('k'):
+            node = kdata['k'][0]
+        if node is None:
+            raise ValueError("couldn't find node %s" % ('%x' % nID))
+        host, port, id = node[0], node[1], node[2]
+        nKu = FludRSA.importPublicKey(node[3])
+        logger.info(self.ctx("attaching metadata for %s on %s:%d",
+                fencode(segl), host, port))
+        deferred = self.node.client.sendVerify(fencode(segl), 0, 0,
+                host, port, nKu, (self.mkey, mfile))
+        return deferred
+
+    def _attachMetadataErr(self, failure, nID, segl):
+        logger.warn(self.ctx("couldn't attach metadata to %s: %s",
+                fencode(segl), failure.getErrorMessage()))
+        self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
+        return failure
 
     # 5c -- verify all blocks, store any that fail verify.
     def _verifyBlock(self, kdata, i, sfile, mfile, seg, segl, nID, noopVerify):
@@ -676,6 +745,12 @@ class RetrieveFile:
         self.numBlocksRetrieved = 0
         self.blocks = {}
         self.fsmetas = {}
+        self.block_indices = set()
+        self.requested_indices = set()
+        self.bad_nodes = set()
+        self.retry_count = 0
+        self.max_retries = 5
+        self.retry_base_delay = 1
 
         self.deferred = self._retrieveFile()
         
@@ -683,6 +758,7 @@ class RetrieveFile:
         # 1: Query DHT for sK
         logger.debug(self.ctx("querying DHT for %s", self.sK))
         d = self.node.client.kFindValue(self.sK)
+        _add_timeout(d, 10)
         d.addCallback(self._retrieveFileBlocks)
         d.addErrback(self._findFileErr, "file retrieve failed")
         return d
@@ -707,9 +783,47 @@ class RetrieveFile:
             raise LookupError("couldn't recover metadata for %s" % self.sK)
         k = self.meta.pop('k')
         n = self.meta.pop('n')
+        logger.debug(self.ctx("metadata entries (post k/n): %d", len(self.meta)))
+        if len(self.meta) < code_k:
+            logger.warn(self.ctx(
+                "metadata has %d blocks; need %d, retrying",
+                len(self.meta), code_k))
+            return self._schedule_retry(
+                "insufficient metadata blocks (%d < %d)"
+                % (len(self.meta), code_k))
         if k != code_k or n != code_n:
             # XXX: 
             raise ValueError("unsupported coding scheme %d/%d" % (k, n))
+        if self.bad_nodes:
+            removed = 0
+            for key in list(self.meta.keys()):
+                val = self.meta[key]
+                if isinstance(val, list):
+                    val = [node for node in val if node not in self.bad_nodes]
+                    if val:
+                        self.meta[key] = val
+                    else:
+                        self.meta.pop(key, None)
+                        removed += 1
+                elif val in self.bad_nodes:
+                    self.meta.pop(key, None)
+                    removed += 1
+            if removed:
+                logger.debug(self.ctx("pruned %d block entries", removed))
+        if logger.isEnabledFor(logging.DEBUG):
+            indices = [key[0] for key in self.meta.keys()
+                       if isinstance(key, tuple) and key]
+            if indices:
+                dupes = sorted({idx for idx in indices if indices.count(idx) > 1})
+                if dupes:
+                    logger.debug(self.ctx(
+                        "metadata share index dupes: %s",
+                        dupes[:10]))
+        if logger.isEnabledFor(logging.DEBUG):
+            keys = list(self.meta.keys())
+            preview = keys[:min(10, len(keys))]
+            logger.debug(self.ctx("metadata key preview (%d total): %s",
+                    len(keys), preview))
         logger.info(self.ctx("got metadata %s" % self.meta))
         self.decoded = False
         return self._getSomeBlocks(code_k)
@@ -748,17 +862,41 @@ class RetrieveFile:
 
     def _getSomeBlocks(self, reqs=code_k):
         tries = 0
+        total = len(self.meta)
         if reqs > len(self.meta):
             reqs = len(self.meta)
+        logger.info(self.ctx("requesting %d blocks from %d available",
+                reqs, total))
         dlist = []
         logger.debug(self.ctx("about to order nodes"))
         keys = self._orderNodes(self.meta)
+        unique_keys = []
+        seen_indices = set()
+        for key in keys:
+            idx = key[0]
+            if idx in self.block_indices or idx in self.requested_indices:
+                continue
+            if idx in seen_indices:
+                continue
+            seen_indices.add(idx)
+            unique_keys.append(key)
+        if len(unique_keys) < reqs:
+            logger.debug(self.ctx(
+                "only %d unique share indices available for request",
+                len(unique_keys)))
+            reqs = len(unique_keys)
+        keys = unique_keys
         logger.debug(self.ctx("keys are now: %s" % str(keys)))
         for i in range(reqs):
             #c = random.choice(self.meta.keys())
             choice = keys.pop(0)
+            idx = choice[0]
             logger.info(self.ctx("choice is %s" % str(choice)))
             block = fencode(choice[1])
+            if block in self.blocks:
+                logger.debug(self.ctx("skipping duplicate block %s", block))
+                self.meta.pop(choice)
+                continue
             id = self.meta[choice]
             if isinstance(id, list):
                 logger.info(self.ctx(
@@ -777,11 +915,13 @@ class RetrieveFile:
                 pass
             logger.info(self.ctx("retrieving %s from %s" % (block, id)))
             # look up nodes by id, then do a retrieve.
-            deferred = self.node.client.kFindNode(id) 
-            deferred.addCallback(self._retrieveBlock, block, id)
+            deferred = self.node.client.kFindNode(id)
+            _add_timeout(deferred, 10)
+            self.requested_indices.add(idx)
+            deferred.addCallback(self._retrieveBlock, block, id, idx)
             deferred.addErrback(self._findNodeErr, 
                     "couldn't find node %s for block %s" % (fencode(id), block),
-                    id)
+                    id, idx)
             dlist.append(deferred)
             self.meta.pop(choice)
             tries = tries + 1
@@ -791,57 +931,78 @@ class RetrieveFile:
         dl.addCallback(self._retrievedAll)
         return dl
 
-    def _findNodeErr(self, failure, msg, id):
-        logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+    def _findNodeErr(self, failure, msg, id, idx=None):
+        logger.info(self.ctx("%s: %s" % (msg, failure.getErrorMessage())))
         self.config.modifyReputation(id, TrustDeltas.FNDN_FAIL)
+        if idx is not None:
+            self.requested_indices.discard(idx)
+        self.bad_nodes.add(id)
 
-    def _retrieveBlock(self, kdata, block, id):
+    def _retrieveBlock(self, kdata, block, id, idx):
         #print type(kdata)
         #print kdata
         #if len(kdata['k']) > 1:
-        if kdata['k'][0][2] != id:
-            print("%s != %s" % (kdata['k'][0], id))
-            raise ValueError("couldn't find node %s" % fencode(id))
-            #raise ValueError("this shouldn't really be a ValueError..."
-            #       " should be a GotMoreKnodesThanIBargainedForError: k=%s"
-            #       % kdata['k'])
+        node = None
+        for candidate in kdata['k']:
+            if candidate[2] == id:
+                node = candidate
+                break
+        if node is None:
+            self.bad_nodes.add(id)
+            logger.info(self.ctx(
+                "node %s not in kFindNode response; using closest match",
+                fencode(id)))
+            node = kdata['k'][0]
         #else:
         #   print kdata['k']
-        node = kdata['k'][0]
         host = node[0]
         port = node[1]
         id = node[2]
         nKu = FludRSA.importPublicKey(node[3])
         if not self.decoded:
             d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
-            d.addCallback(self._retrievedBlock, id, block, self.mkey)
+            _add_timeout(d, 20)
+            d.addCallback(self._retrievedBlock, id, block, self.mkey, idx)
             d.addErrback(self._retrieveBlockErr, id,
                     "couldn't get block %s from %s" % (block, fencode(id)),
-                    host, port, id)
+                    host, port, id, idx)
             return d
     
-    def _retrievedBlock(self, msg, nID, block, mkey):
+    def _retrievedBlock(self, msg, nID, block, mkey, idx):
         logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
         self.config.modifyReputation(nID, TrustDeltas.GET_SUCCEED)
+        self.requested_indices.discard(idx)
+        if idx in self.block_indices:
+            logger.debug(self.ctx("duplicate share index %d already retrieved",
+                    idx))
+            return True
         blockname = [f for f in msg if f[-len(block):] == block][0]
         expectedmeta = "%s.%s.meta" % (block, mkey)
         metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
         if not metanames:
             raise failure.DefaultException("expected metadata was missing")
+        if block in self.blocks:
+            logger.debug(self.ctx("duplicate block %s already retrieved", block))
+            return True
         self.blocks[block] = blockname
         self.fsmetas[block] = metanames[0]
+        self.block_indices.add(idx)
         self.numBlocksRetrieved += 1
         return True
 
-    def _retrieveBlockErr(self, failure, nID, message, host, port, id):
+    def _retrieveBlockErr(self, failure, nID, message, host, port, id, idx):
         logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
         self.config.modifyReputation(nID, TrustDeltas.GET_FAIL)
+        self.requested_indices.discard(idx)
+        self.bad_nodes.add(id)
         # don't propogate the error -- one block doesn't cause the file
         # retrieve to fail.
 
     def _retrievedAll(self, success):
         logger.info(self.ctx("tried retreiving %d blocks %s" 
             % (len(success), success)))
+        logger.info(self.ctx("retrieved %d/%d blocks so far",
+                self.numBlocksRetrieved, code_k))
         if self.numBlocksRetrieved >= code_k:
             # XXX: need to make this try again with other blocks if decode
             # fails
@@ -853,9 +1014,9 @@ class RetrieveFile:
         else:
             logger.info(self.ctx("couldn't decode file after retreiving"
                     " all %d available blocks" % self.numBlocksRetrieved))
-            #return False
-            raise RuntimeError("couldn't decode file after retreiving all"
-                    " %d available blocks" % self.numBlocksRetrieved)
+            return self._schedule_retry(
+                "couldn't decode file after retreiving all %d available blocks"
+                % self.numBlocksRetrieved)
 
     def _decodeData(self):
         logger.debug(self.ctx("_decodeData"))
@@ -877,23 +1038,82 @@ class RetrieveFile:
 
     def decodeData(self, outfname, datafnames, datadir=None):
         logger.info(self.ctx("decoding %s to %s" % (datafnames, outfname)))
-        outf = open(outfname, 'wb')
+        outf = None
         data = []
         seen = set()
-        for fname in datafnames:
-            if datadir:
-                fname = os.path.join(datadir, fname)
-            if fname in seen:
-                continue
-            seen.add(fname)
-            if len(data) >= code_m:
-                break
-            data.append(open(fname, 'rb'))
-        with _decode_lock:
-            result = fludfilefec.decode_from_files(outf, data)
-        outf.close()
-        for f in data:
-            f.close()
+        result = None
+        is_meta = any(os.path.basename(n).endswith(".meta") for n in datafnames)
+        try:
+            outf = open(outfname, 'wb')
+            header_info = []
+            header_errors = []
+            unique_by_shnum = {}
+            kset = set()
+            mset = set()
+            for fname in datafnames:
+                if datadir:
+                    fname = os.path.join(datadir, fname)
+                if fname in seen:
+                    continue
+                try:
+                    with open(fname, "rb") as hf:
+                        nm, nk, npadlen, shnum = zfec_filefec._parse_header(hf)
+                    header_info.append((fname, shnum, nk, nm))
+                    kset.add(nk)
+                    mset.add(nm)
+                    if shnum not in unique_by_shnum:
+                        unique_by_shnum[shnum] = fname
+                except Exception as exc:
+                    header_errors.append((fname, str(exc)))
+            if header_errors:
+                logger.warn(self.ctx("share header parse errors: %s",
+                        header_errors[:5]))
+            if header_info and logger.isEnabledFor(logging.DEBUG):
+                shnums = [info[1] for info in header_info]
+                uniq = sorted(set(shnums))
+                dupes = sorted({s for s in shnums if shnums.count(s) > 1})
+                logger.debug(self.ctx(
+                    "share header summary: m=%s k=%s unique=%d/%d dupes=%s",
+                    sorted(mset), sorted(kset), len(uniq), len(shnums),
+                    dupes[:10]))
+                if len(kset) > 1 or len(mset) > 1:
+                    logger.debug(self.ctx(
+                        "share header mixed params: k=%s m=%s",
+                        sorted(kset), sorted(mset)))
+                if dupes:
+                    dupemap = {}
+                    for fname, shnum, _nk, _nm in header_info:
+                        if shnum in dupes:
+                            dupemap.setdefault(shnum, []).append(
+                                os.path.basename(fname))
+                    sample = {k: v[:3] for k, v in sorted(dupemap.items())[:10]}
+                    logger.debug(self.ctx(
+                        "share header dupes (%s): %s",
+                        "meta" if is_meta else "data", sample))
+                if is_meta:
+                    sample = [(info[1], os.path.basename(info[0]))
+                              for info in header_info[:10]]
+                    logger.debug(self.ctx("share header map (meta): %s",
+                            sample))
+            if kset and len(unique_by_shnum) < min(kset):
+                raise fludfilefec.InsufficientShareFilesError(
+                    min(kset), len(unique_by_shnum))
+            for fname in unique_by_shnum.values():
+                if datadir:
+                    fname = os.path.join(datadir, fname)
+                if fname in seen:
+                    continue
+                seen.add(fname)
+                if len(data) >= code_m:
+                    break
+                data.append(open(fname, 'rb'))
+            with _decode_lock:
+                result = fludfilefec.decode_from_files(outf, data)
+        finally:
+            if outf is not None:
+                outf.close()
+            for f in data:
+                f.close()
         if result: 
             for fname in datafnames:
                 if datadir:
@@ -909,13 +1129,31 @@ class RetrieveFile:
                 return self._getSomeBlocks(min(3, len(self.meta)))
             logger.warn(self.ctx("decode failed (insufficient shares); "
                     "rerunning full retrieve"))
-            self.blocks = {}
-            self.fsmetas = {}
-            self.numBlocksRetrieved = 0
-            return self._getSomeBlocks(code_k)
+            return self._schedule_retry("decode failed (insufficient shares)")
         logger.warn(self.ctx("could not decode: %s", str(err)))
         logger.debug(self.ctx("%s", (err.getTraceback(),)))
         return err
+
+    def _reset_retrieve_state(self):
+        self.blocks = {}
+        self.fsmetas = {}
+        self.block_indices = set()
+        self.requested_indices = set()
+        self.numBlocksRetrieved = 0
+        self.bad_nodes = set()
+
+    def _schedule_retry(self, reason):
+        if self.retry_count >= self.max_retries:
+            raise RuntimeError("%s (retries exhausted)" % reason)
+        self.retry_count += 1
+        delay = min(30, self.retry_base_delay * (2 ** (self.retry_count - 1)))
+        logger.warn(self.ctx("retry %d/%d in %ds: %s",
+                self.retry_count, self.max_retries, delay, reason))
+        self._reset_retrieve_state()
+        d = defer.Deferred()
+        reactor.callLater(delay, d.callback, None)
+        d.addCallback(lambda _: self._retrieveFile())
+        return d
 
     def _decodeDone(self, decoded, metadecoded):
         if not self.decoded and decoded and metadecoded:
@@ -938,7 +1176,15 @@ class RetrieveFile:
         meta = mfile.read()
         mfile.close()
         logger.info(self.ctx("meta is %s" % str(meta)))
-        self.nmeta = fdecode(meta)
+        try:
+            self.nmeta = fdecode(meta)
+        except Exception as exc:
+            logger.warn(self.ctx("failed to decode metadata: %s", str(exc)))
+            try:
+                os.remove(self.mfname)
+            except Exception:
+                pass
+            return self._schedule_retry("metadata decode failed")
         os.remove(self.mfname)
         return self._decryptFile()
     
@@ -959,6 +1205,8 @@ class RetrieveFile:
         pad_len = (32 - (len(d_eK) % 32)) % 32
         d_eK = (b'\x00' * pad_len) + d_eK  # XXX: magic 32, should be keyspace/8
         eK = binascii.hexlify(d_eK)
+        if isinstance(eK, bytes):
+            eK = eK.decode("ascii")
         iv = f1.read(16)
         eKey = AES.new(binascii.unhexlify(eK), AES.MODE_CBC, iv)
         # XXX: bad blocking stuff, move into thread
@@ -1037,9 +1285,12 @@ class RetrieveFile:
             # just 'do the right thing' (use the latest version by timestamp,
             # or always use the backup, or always use the local copy, or 
             # define some other behavior for doing the right thing).
-            logger.info(self.ctx("hash rec=%s" % hashfile(fmeta['path'])))
+            if isinstance(eK, bytes):
+                eK = eK.decode("ascii")
+            hash_rec = hashfile(fmeta['path'])
+            logger.info(self.ctx("hash rec=%s" % hash_rec))
             logger.info(self.ctx("hash org=%s" % eK))
-            if hashfile(fmeta['path']) != eK:
+            if hash_rec != eK:
                 # XXX: do something better than log it -- see above comment
                 logger.info(self.ctx(
                     'different version of file %s already present' 
@@ -1097,8 +1348,9 @@ class RetrieveFile:
             logger.warn(self.ctx("could not chown %s", fmeta['path']))
         os.utime(fmeta['path'], (fmeta['atim'], fmeta['mtim']))
         os.chmod(fmeta['path'], fmeta['mode'])
-        logger.info(self.ctx("successfully restored file metadata"))
+        logger.info(self.ctx(f"successfully restored file metadata, {self.fname} complete"))
         return tuple(result)
+
 
 class RetrieveFilename:
     """

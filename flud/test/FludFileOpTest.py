@@ -22,6 +22,10 @@ import flud.FludDefer as FludDefer
 from flud.protocol.LocalClient import listMeta
 
 logger = logging.getLogger('flud')
+#logging.basicConfig(level=logging.DEBUG)
+#logger.setLevel(logging.DEBUG)
+#logging.getLogger('flud.fileops').setLevel(logging.DEBUG)
+
 
 def testError(failure, message, node):
     print("testError message: %s" % message)
@@ -103,6 +107,7 @@ def testStoreFile(node, fname):
     d.addCallback(checkStoreFile, node, fname)
     d.addErrback(testError, fname, node)
     return d
+
 
 def doTests(node, smallfnames, largefnames, dupsmall, duplarge):
     d = testStoreFile(node, smallfnames[0])

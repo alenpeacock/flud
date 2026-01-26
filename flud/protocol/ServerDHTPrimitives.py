@@ -355,6 +355,24 @@ class kStoreVal(ROOT):
         {'b': {1: (1, 'a', 8), 2: [(2, 'b', 8), (7, 'r', 8), (3, 'B', 80), (4, 'bb', 80)], 10: (10, 't', 80), 5: (1, 'a', 8)}}
         """
 
+        def _share_index(key):
+            if isinstance(key, tuple) and key and isinstance(key[0], int):
+                return key[0]
+            return None
+
+        # If newer metadata carries a share index already in m1, drop older
+        # entries for that index to avoid mixing versions in retrieval.
+        m2_indices = set()
+        for key in m2:
+            idx = _share_index(key)
+            if idx is not None:
+                m2_indices.add(idx)
+        if m2_indices:
+            for key in list(m1.keys()):
+                idx = _share_index(key)
+                if idx is not None and idx in m2_indices and key not in m2:
+                    m1.pop(key, None)
+
         # first merge blocks ('b' sections)
         n = {}
         for i in m2:
@@ -368,11 +386,11 @@ class kStoreVal(ROOT):
                     n[i] = m2[i]
                     n[i].extend(m1[i]) 
                 elif isinstance(m2[i], list):
-                    n[i] = m2[i]
-                    n[i] = n[i].append(m1[i])
+                    n[i] = list(m2[i])
+                    n[i].append(m1[i])
                 elif isinstance(m1[i], list):
-                    n[i] = m1[i]
-                    n[i] = n[i].append(m2[i])
+                    n[i] = list(m1[i])
+                    n[i].append(m2[i])
                 elif m1[i] == m2[i]:
                     n[i] = m1[i]
                 else:

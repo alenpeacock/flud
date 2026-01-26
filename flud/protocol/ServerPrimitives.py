@@ -379,7 +379,8 @@ class StoreFile(object):
         loggerstor.debug("writing store data to tmpfile")
         tmpfile = tempfile.mktemp(dir=self.config.storedir)
 
-        tarball = os.path.join(self.config.storedir,reqKu.id()+".tar")
+        tarball_base = os.path.join(self.config.storedir, reqKu.id()) + ".tar"
+        tarball = tarball_base
 
         # rename and/or prepend the data appropriately
         tmpTarMode = None
@@ -396,8 +397,8 @@ class StoreFile(object):
         # XXX: if the server supports both .tar and tar.gz, this is wrong; we'd
         # need to check *both* for already existing dudes instead of just
         # choosing one
-        if os.path.exists(tarball+'.gz'):
-            tarball = (tarball+'.gz', 'r:gz')
+        if os.path.exists(tarball + '.gz'):
+            tarball = (tarball + '.gz', 'r:gz')
         elif os.path.exists(tarball):
             tarball = (tarball, 'r')
         else:
@@ -494,20 +495,41 @@ class StoreFile(object):
                     f.close()
                 os.remove(tmpfile)
             else:
-                if os.path.exists(nodeID+".tar"):
-                    # XXX: need to do something with metadata!
-                    print("XXX: need to do something with metadata for tar!")
-                    tarball = tarfile.open(tarname, 'r')
-                    if fname in tarball.getnames():
-                        loggerstor.debug("%s already stored in tarball" % fname)
-                        # if the file is already in the corresponding tarball,
-                        # update its timestamp and return success.
-                        loggerstor.debug("%s already stored" % filekey)
-                        # XXX: update timestamp for filekey in tarball
-                        return _as_bytes("Successful STORE")
-                    else:
-                        loggerstor.debug("tarball for %s, but %s not in tarball"
-                                % (nodeID,fname))
+                tarname = tarball_base
+                tarball_paths = []
+                if os.path.exists(tarname + ".gz"):
+                    tarball_paths.append((tarname + ".gz", 'r:gz'))
+                if os.path.exists(tarname):
+                    tarball_paths.append((tarname, 'r'))
+                for tarpath, openmode in tarball_paths:
+                    tar = tarfile.open(tarpath, openmode)
+                    try:
+                        if filekey in tar.getnames():
+                            loggerstor.debug("%s already stored in tarball" 
+                                    % filekey)
+                            if meta and metakey is not None:
+                                mfname = "%s.%s.meta" % (filekey, metakey)
+                                if mfname in tar.getnames():
+                                    tar.close()
+                                else:
+                                    tar.close()
+                                    if openmode == 'r:gz':
+                                        tarpath = TarfileUtils.gunzipTarball(
+                                                tarpath)
+                                    tar = tarfile.open(tarpath, 'a')
+                                    metaio = BytesIO(meta)
+                                    tinfo = tarfile.TarInfo(mfname)
+                                    tinfo.size = len(meta)
+                                    tar.addfile(tinfo, metaio)
+                                    tar.close()
+                                    if openmode == 'r:gz':
+                                        TarfileUtils.gzipTarball(tarpath)
+                            return _as_bytes("Successful STORE")
+                    finally:
+                        try:
+                            tar.close()
+                        except Exception:
+                            pass
                 if len(data) < 8192 and fname != tarname: #XXX: magic # (blk sz)
                     # If the file is small, move it into the appropriate
                     # tarball.  Note that this code is unlikely to ever be
@@ -520,6 +542,10 @@ class StoreFile(object):
                     # storage.
                     loggerstor.debug("moving small file '%s' into tarball" 
                             % fname)
+                    gzipped = False
+                    if os.path.exists(tarname + ".gz"):
+                        tarname = TarfileUtils.gunzipTarball(tarname + ".gz")
+                        gzipped = True
                     if not os.path.exists(tarname):
                         tarball = tarfile.open(tarname, 'w')
                     else:
@@ -536,6 +562,8 @@ class StoreFile(object):
                         tinfo.size = len(meta)
                         tarball.addfile(tinfo, metaio)
                     tarball.close()
+                    if gzipped:
+                        TarfileUtils.gzipTarball(tarname)
                     os.remove(tmpfile)
                 else:
                     # store the file 
@@ -586,22 +614,56 @@ class RetrieveFile(object):
             reqKu['e'] = int(params['Ku_e'])
             reqKu['n'] = int(params['Ku_n'])
             reqKu = FludRSA.importPublicKey(reqKu)
+            metakey = None
             metakey_args = _arg_list(request, 'metakey')
             if metakey_args:
-                returnMeta = metakey_args[0]
-                if isinstance(returnMeta, bytes):
-                    returnMeta = returnMeta.decode("utf-8")
-                if returnMeta == 'True':
-                    returnMeta = True
-            else:
-                returnMeta = True
-
+                metakey = metakey_args[0]
+                if isinstance(metakey, bytes):
+                    metakey = metakey.decode("utf-8")
+                if metakey == 'True':
+                    metakey = None
+            returnMeta = True
+            req_node_id = _arg_list(request, 'nodeID')
+            if req_node_id:
+                req_node_id = req_node_id[0]
+                if isinstance(req_node_id, bytes):
+                    req_node_id = req_node_id.decode("utf-8")
             return authenticate(request, reqKu, host, int(params['port']), 
                     self.node.client, self.config,
-                    self._sendFile, request, filekey, reqKu, returnMeta)
+                    self._sendFile, request, filekey, reqKu, returnMeta,
+                    metakey, req_node_id)
             
 
-    def _sendFile(self, request, filekey, reqKu, returnMeta):
+    def _sendFile(self, request, filekey, reqKu, returnMeta, metakey, req_node_id):
+        def _stream_segments(segments, on_done, on_abort):
+            if not segments:
+                on_done()
+                return
+            kind, payload = segments[0]
+            if kind == "bytes":
+                _write(request, payload)
+                segments.pop(0)
+                reactor.callLater(0, _stream_segments, segments, on_done,
+                        on_abort)
+                return
+            f = payload
+            try:
+                buf = f.read(16384)
+            except Exception as exc:
+                on_abort(exc)
+                return
+            if buf:
+                _write(request, buf)
+                reactor.callLater(0, _stream_segments, segments, on_done,
+                        on_abort)
+                return
+            try:
+                f.close()
+            except Exception:
+                pass
+            segments.pop(0)
+            reactor.callLater(0, _stream_segments, segments, on_done, on_abort)
+
         fname = os.path.join(self.config.storedir,filekey)
         loggerretr.debug("reading file data from %s" % fname)
         # XXX: make sure requestor owns the file? 
@@ -646,12 +708,16 @@ class RetrieveFile(object):
                         else:
                             raise
                     returnedMeta = False
+                    segments = []
                     if returnMeta:
                         loggerretr.debug("tar returnMeta %s" % filekey)
                         try:
                             metas = [f for f in tar.getnames()
                                         if f[:len(filekey)] == filekey 
                                         and f[-4:] == 'meta']
+                            if metakey is not None:
+                                metas = [f for f in metas
+                                        if f == ("%s.%s.meta" % (filekey, metakey))]
                             loggerretr.debug("tar returnMetas=%s" % metas)
                             for m in metas:
                                 minfo = tar.getmember(m)
@@ -663,19 +729,13 @@ class RetrieveFile(object):
                                 H.append("Content-Length: %d" % minfo.size)
                                 H.append("")
                                 H = '\r\n'.join(H)
-                                _write(request, H)
-                                _write(request, '\r\n')
                                 tarm = tar.extractfile(minfo)
                                 loggerretr.debug("successful metadata"
                                     " RETRIEVE (from %s)" % tarball)
-                                # XXX: bad blocking stuff
-                                while 1:
-                                    buf = tarm.read()
-                                    if not buf:
-                                        break
-                                    _write(request, buf)
-                                    _write(request, '\r\n')
-                                tarm.close()
+                                segments.append(("bytes", H))
+                                segments.append(("bytes", "\r\n"))
+                                segments.append(("file", tarm))
+                                segments.append(("bytes", "\r\n"))
 
                             H = []
                             H.append("--%s" % rand_bound)
@@ -684,35 +744,39 @@ class RetrieveFile(object):
                             H.append("Content-Length: %d" % tinfo.size)
                             H.append("")
                             H = '\r\n'.join(H)
-                            _write(request, H)
-                            _write(request, '\r\n')
+                            segments.append(("bytes", H))
+                            segments.append(("bytes", "\r\n"))
                             returnedMeta = True
                         except:
                             # couldn't find any metadata, just return normal
                             # file
                             loggerretr.debug("no metadata found")
                             pass
-                    # XXX: bad blocking stuff
                     tarf = tar.extractfile(tinfo)
                     # XXX: update timestamp on tarf in tarball
                     loggerretr.debug("successful RETRIEVE (from %s)" 
                             % tarball)
-                    # XXX: bad blocking stuff
-                    while 1:
-                        buf = tarf.read()
-                        if not buf:
-                            break
-                        _write(request, buf)
-                    tarf.close()
-                    tar.close()
+                    segments.append(("file", tarf))
                     if returnedMeta:
                         T = []
                         T.append("")
                         T.append("--%s--" % rand_bound)
                         T.append("")
                         T = '\r\n'.join(T)
-                        _write(request, T)
-                    return _as_bytes("")
+                        segments.append(("bytes", T))
+                    aborted = [False]
+                    request.notifyFinish().addErrback(
+                            lambda _: aborted.__setitem__(0, True))
+                    def _finish_ok():
+                        if not aborted[0]:
+                            tar.close()
+                            request.finish()
+                    def _finish_abort(_):
+                        tar.close()
+                        if not aborted[0]:
+                            request.finish()
+                    _stream_segments(segments, _finish_ok, _finish_abort)
+                    return server.NOT_DONE_YET
                 except:
                     tar.close()
             request.setResponseCode(twebhttp.NOT_FOUND,
@@ -721,11 +785,17 @@ class RetrieveFile(object):
         else:
             f = BlockFile.open(fname,"rb")
             loggerretr.log(logging.INFO, "successful RETRIEVE for %s" % filekey)
-            meta = f.meta(int(reqKu.id(),16))
+            req_meta_id = reqKu.id()
+            if req_node_id:
+                req_meta_id = req_node_id
+            meta = f.meta(int(req_meta_id, 16))
+            if metakey is not None and meta:
+                meta = {metakey: meta.get(metakey)} if metakey in meta else None
             if returnMeta and meta:
                 loggerretr.debug("returnMeta %s" % filekey)
                 loggerretr.debug("returnMetas=%s" % meta)
                 meta = {k: _as_bytes(v) for k, v in meta.items()}
+                segments = []
                 for m in meta:
                     H = []
                     H.append("--%s" % rand_bound)
@@ -734,10 +804,10 @@ class RetrieveFile(object):
                     H.append("Content-Length: %d" % len(meta[m]))
                     H.append("")
                     H = '\r\n'.join(H)
-                    _write(request, H)
-                    _write(request, '\r\n')
-                    _write(request, _as_bytes(meta[m]))
-                    _write(request, '\r\n')
+                    segments.append(("bytes", H))
+                    segments.append(("bytes", "\r\n"))
+                    segments.append(("bytes", _as_bytes(meta[m])))
+                    segments.append(("bytes", "\r\n"))
 
                 H = []
                 H.append("--%s" % rand_bound)
@@ -746,22 +816,32 @@ class RetrieveFile(object):
                 H.append("Content-Length: %d" % f.size())
                 H.append("")
                 H = '\r\n'.join(H)
-                _write(request, H)
-                _write(request, '\r\n')
-            # XXX: bad blocking stuff
-            while 1:
-                buf = f.read()
-                if not buf:
-                    break
-                _write(request, buf)
-            f.close()
+                segments.append(("bytes", H))
+                segments.append(("bytes", "\r\n"))
+                segments.append(("file", f))
+            else:
+                segments = [("file", f)]
             if returnMeta and meta:
                 T = []
                 T.append("")
                 T.append("--%s--" % rand_bound)
                 T.append("")
-                _write(request, '\r\n'.join(T))
-            return _as_bytes("")
+                segments.append(("bytes", '\r\n'.join(T)))
+            aborted = [False]
+            request.notifyFinish().addErrback(
+                    lambda _: aborted.__setitem__(0, True))
+            def _finish_ok():
+                if not aborted[0]:
+                    request.finish()
+            def _finish_abort(_):
+                try:
+                    f.close()
+                except Exception:
+                    pass
+                if not aborted[0]:
+                    request.finish()
+            _stream_segments(segments, _finish_ok, _finish_abort)
+            return server.NOT_DONE_YET
     
     def _sendErr(self, error, request, msg):
         out = msg+": "+error.getErrorMessage()

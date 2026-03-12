@@ -11,6 +11,8 @@ these are popped off when a spot becomes available.
 """
 
 import logging
+import threading
+from twisted.python import failure as twfailure
 
 MAXOPS = 80      # maximum number of concurrent connections to maintain 
 pending = 0      # number of current connections
@@ -20,6 +22,7 @@ waiting = []     # queue of waiting connections to make.  This queue contains
                  # arguments.
 
 logger = logging.getLogger("flud.client.connq")
+_state_lock = threading.Lock()
 
 def checkWaiting(resp, finishedOne=True):
     """
@@ -29,22 +32,44 @@ def checkWaiting(resp, finishedOne=True):
     'resp' object passed in will be returned (so that this function can sit
     transparently in the errback/callback chain).
     """
-    numwaiting = len(waiting)
-    logger.debug("in checkWaiting, len(waiting) = %d" % numwaiting)
     #print "resp = %s..." % fencode(long(resp,16))[:8]
     #print "resp = %s..." % str(resp)
     global pending
-    if finishedOne:
-        pending = pending - 1
-        logger.debug("decremented pending to %s" % pending)
-    if numwaiting > 0 and pending < MAXOPS:
+    with _state_lock:
+        if finishedOne:
+            if pending > 0:
+                pending -= 1
+                logger.debug("decremented pending to %s" % pending)
+            else:
+                logger.debug("pending already 0 at completion boundary")
+        numwaiting = len(waiting)
+        logger.debug("in checkWaiting, len(waiting) = %d" % numwaiting)
+        if numwaiting == 0 or pending >= MAXOPS:
+            return resp
         saved = waiting.pop(0)
-        Req = saved[0]
-        args = saved[1:]
-        logger.debug("w: %d, p: %d, restoring Request %s(%s)" % (numwaiting, 
-                pending, Req.__class__.__name__, str(args)))
-        Req.startRequest(*args)
         pending += 1
+        current_pending = pending
+        remaining_waiting = len(waiting)
+
+    Req = saved[0]
+    args = saved[1:]
+    logger.debug("w: %d, p: %d, restoring Request %s(%s)"
+            % (remaining_waiting, current_pending, Req.__class__.__name__,
+                str(args)))
+    try:
+        Req.startRequest(*args)
+    except Exception as exc:
+        with _state_lock:
+            if pending > 0:
+                pending -= 1
+        logger.warn("startRequest failed for %s: %s",
+                Req.__class__.__name__, str(exc))
+        if hasattr(Req, "deferred"):
+            try:
+                if not Req.deferred.called:
+                    Req.deferred.errback(twfailure.Failure(exc))
+            except Exception:
+                pass
     return resp
 
 def enqueue(requestTuple):
@@ -54,6 +79,7 @@ def enqueue(requestTuple):
     This startRequest() function will be called with those arguments when it
     comes off the queue (via checkWaiting).
     """
-    waiting.append(requestTuple)
+    with _state_lock:
+        waiting.append(requestTuple)
     logger.debug("trying to do %s now..." % requestTuple[0].__class__.__name__)
     checkWaiting(None, finishedOne=False)

@@ -7,7 +7,14 @@ This is the application file used by twistd to daemonize FludNode.
 """
 
 import os
+import sys
 from twisted.application import service, internet
+
+# When this TAC is executed directly by twistd, sys.path[0] points at
+# ".../flud/flud". Add the project root so "import flud" resolves.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+	sys.path.insert(0, project_root)
 
 import flud.FludNode
 from flud.protocol.FludCommUtil import getCanonicalIP

@@ -207,7 +207,9 @@ class LocalProtocol(basic.LineReceiver):
         self._write(w)
         self.commands[command][CONCURR] -= 1
         self.serviceQueue(command)
-        return err
+        # Error is already reported to the local client; consume it so it
+        # doesn't surface as an unhandled Deferred failure in reactor logs.
+        return None
 
     def lineReceived(self, line):
         if isinstance(line, bytes):

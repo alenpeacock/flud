@@ -106,9 +106,9 @@ def testVERIFY(res, nKu, host, port, num=CONCURRENT):
 def checkRETRIEVE(res, nKu, host, port, num=CONCURRENT):
     logger.info("  checking RETRIEVE results...")
     for i in range(num):
-        f1 = open(files[i])
+        f1 = open(files[i], "rb")
         filekey = os.path.basename(files[i])
-        f2 = open(node.config.clientdir+"/"+filekey)
+        f2 = open(node.config.clientdir+"/"+filekey, "rb")
         if (f1.read() != f2.read()):
             f1.close()
             f2.close()

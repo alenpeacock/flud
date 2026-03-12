@@ -54,7 +54,8 @@ def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
 def testDELETEBadKey(nKu, node, host, port):
     print("starting testDELETEBadKey")
     path = os.path.join("somedir", largefilekey)
-    deferred = node.client.sendDelete(path, crc32(path), host, port, nKu)
+    deferred = node.client.sendDelete(path, crc32(path.encode("utf-8")), host,
+            port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "DELETE with bad key succeeded",
             node)
     deferred.addErrback(testDELETEBadKeyFailed, 
@@ -192,7 +193,8 @@ def testSTORELargeFailed(failure, msg, node, nKu, host, port):
 def testSTOREBadKeyLarge(nKu, node, host, port):
     print("starting testSTOREBadKeyLarge")
     deferred = node.client.sendStore(largefilenamebad, 
-            (crc32(largefilenamebad), StringIO(metadata)), host, port, nKu)
+            (crc32(largefilenamebad.encode("utf-8")), StringIO(metadata)),
+            host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "large file, bad key succeeded",
             node)
     deferred.addErrback(testSTORELargeFailed, 
@@ -213,7 +215,8 @@ def testSTORESmallFailed(failure, msg, node, nKu, host, port):
 def testSTOREBadKeySmall(nKu, node, host, port):
     print("starting testSTOREBadKeySmall")
     deferred = node.client.sendStore(smallfilenamebad, 
-            (crc32(smallfilenamebad), StringIO(metadata)), host, port, nKu)
+            (crc32(smallfilenamebad.encode("utf-8")), StringIO(metadata)),
+            host, port, nKu)
     deferred.addCallback(testUnexpectedSuccess, "small file, bad key succeeded",
             node)
     deferred.addErrback(testSTORESmallFailed, 
@@ -229,7 +232,8 @@ def testSTORE(nKu, node, host, port):
     # store a file successfully for later failure tests (VERIFY, etc)
     print("starting testSTORE")
     deferred = node.client.sendStore(smallfilename, 
-            (crc32(smallfilename), StringIO(metadata)), host, port, nKu)
+            (crc32(smallfilename.encode("utf-8")), StringIO(metadata)),
+            host, port, nKu)
     deferred.addCallback(testSTORESuccess, nKu, node, host, port)
     deferred.addErrback(testerror, "failed at testSTORE", node)
     return deferred
@@ -261,8 +265,8 @@ def cleanup(err, node):
 def generateTestData():
     def generateFiles(minsize):
         fname = tempfile.mktemp()
-        f = open(fname, 'w')
-        f.write('\0'*minsize)
+        f = open(fname, 'wb')
+        f.write(b'\0' * minsize)
         f.write(generateRandom(random.randrange(256)+1))
         f.close()
         filekey = hashfile(fname)

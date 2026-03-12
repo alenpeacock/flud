@@ -114,14 +114,18 @@ class FludNode(object):
                     pass
                     #print "passed on bucket %x-%s" % (bucket.begin, bucket.end)
                 else:
-                    refreshID = random.randrange(bucket.begin, bucket.end)
+                    begin = int(bucket.begin)
+                    end = int(bucket.end)
+                    if end <= begin:
+                        continue
+                    refreshID = random.randrange(begin, end)
                     #print "refreshing bucket %x-%x by finding %x" \
                     #       % (bucket.begin, bucket.end, refreshID)
                     self.logger.info("refreshing bucket %x-%x by finding %x"
                             % (bucket.begin, bucket.end, refreshID))
                     deferred = self.client.kFindNode(refreshID)
                     dlist.append(deferred) 
-            dl = defer.DeferredList(dlist)
+            dl = defer.DeferredList(dlist, consumeErrors=True)
             dl.addCallback(refreshDone)
             # XXX: do we need to ping newly discovered known nodes?  If not,
             #      we could be vulnerable to a poisoning attack (at first
@@ -129,18 +133,43 @@ class FludNode(object):
             # XXX: need to call refresh about every 60 minutes.  Add a 
             #      reactor.callLater here to do it.
             
-        def badGW(error):
-            self.logger.warn(error)
-            self.logger.warn("Couldn't connect to gateway at %s:%s" % 
-                    (sys.argv[1], sys.argv[2]))
+        max_attempts = int(os.environ.get("FLUDGWRETRIES", "20"))
+        initial_delay = float(os.environ.get("FLUDGWRETRY_DELAY", "0.5"))
+        max_delay = float(os.environ.get("FLUDGWRETRY_MAX_DELAY", "10.0"))
+        request_timeout = float(os.environ.get("FLUDGWCONNECT_TIMEOUT", "5.0"))
+        state = {"attempt": 0, "delay": initial_delay}
 
-        self.logger.debug("connectViaGateway %s%d" % (host, port))
-        deferred = self.client.sendkFindNode(host, port, 
-                self.config.routing.node[2])
-        deferred.addCallback(refresh)
-        deferred.addErrback(badGW)
+        def badGW(error):
+            state["attempt"] += 1
+            self.logger.warning("gateway connect attempt %d/%d to %s:%s failed: %s"
+                    % (state["attempt"], max_attempts, host, port, str(error)))
+            if state["attempt"] >= max_attempts:
+                self.logger.error("giving up gateway connection to %s:%s after %d attempts"
+                        % (host, port, max_attempts))
+                return error
+            delay = min(state["delay"], max_delay)
+            self.logger.info("retrying gateway connection to %s:%s in %.1fs"
+                    % (host, port, delay))
+            state["delay"] = min(max_delay, state["delay"] * 2)
+            reactor.callLater(delay, connect)
+            return None
+
+        def connect():
+            self.logger.debug("connectViaGateway %s:%d" % (host, port))
+            deferred = self.client.sendkFindNode(host, port,
+                    self.config.routing.node[2])
+            # Async client calls can hang on connect/DNS; bound each attempt so
+            # gateway bootstrap can progress via retries.
+            if request_timeout > 0:
+                try:
+                    deferred.addTimeout(request_timeout, reactor)
+                except Exception:
+                    pass
+            deferred.addCallback(refresh)
+            deferred.addErrback(badGW)
+
+        connect()
 
 def getPath():
     # this is a hack to be able to get the location of FludNode.tac
     return os.path.dirname(os.path.abspath(__file__))
-

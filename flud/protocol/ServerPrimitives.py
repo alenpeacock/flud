@@ -406,7 +406,17 @@ class StoreFile(object):
         loggerstor.debug("tarball is %s" % str(tarball))
 
         data_args = _arg_list(request, 'filename')
+        if not data_args:
+            msg = "Bad request: missing file payload in STORE"
+            request.setResponseCode(twebhttp.BAD_REQUEST, _as_bytes(msg))
+            return _as_bytes(msg)
         data = data_args[0]  # XXX: file in mem! need web2.
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        if tmpTarMode and not data:
+            msg = "Bad request: empty tar payload in STORE"
+            request.setResponseCode(twebhttp.BAD_REQUEST, _as_bytes(msg))
+            return _as_bytes(msg)
         # XXX: bad blocking stuff here
         f = open(tmpfile, 'wb')
         f.write(data)
@@ -502,7 +512,16 @@ class StoreFile(object):
                 if os.path.exists(tarname):
                     tarball_paths.append((tarname, 'r'))
                 for tarpath, openmode in tarball_paths:
-                    tar = tarfile.open(tarpath, openmode)
+                    try:
+                        tar = tarfile.open(tarpath, openmode)
+                    except (tarfile.ReadError, EOFError) as exc:
+                        loggerstor.warning("ignoring corrupt tarball %s: %s",
+                                tarpath, str(exc))
+                        try:
+                            os.remove(tarpath)
+                        except Exception:
+                            pass
+                        continue
                     try:
                         if filekey in tar.getnames():
                             loggerstor.debug("%s already stored in tarball" 
@@ -549,7 +568,16 @@ class StoreFile(object):
                     if not os.path.exists(tarname):
                         tarball = tarfile.open(tarname, 'w')
                     else:
-                        tarball = tarfile.open(tarname, 'a')
+                        try:
+                            tarball = tarfile.open(tarname, 'a')
+                        except (tarfile.ReadError, EOFError) as exc:
+                            loggerstor.warning("replacing corrupt tarball %s: %s",
+                                    tarname, str(exc))
+                            try:
+                                os.remove(tarname)
+                            except Exception:
+                                pass
+                            tarball = tarfile.open(tarname, 'w')
                     # XXX: more bad blocking stuff
                     tarball.add(tmpfile, os.path.basename(fname))
                     if meta:
@@ -686,7 +714,12 @@ class RetrieveFile(object):
             # XXX: does this work? does it close both tarballs if both got
             # opened?
             for tarball, openmode in tarballs:
-                tar = tarfile.open(tarball, openmode)
+                try:
+                    tar = tarfile.open(tarball, openmode)
+                except (tarfile.ReadError, EOFError) as exc:
+                    loggerretr.warning("ignoring corrupt tarball %s: %s",
+                            tarball, str(exc))
+                    continue
                 try:
                     try:
                         tinfo = tar.getmember(filekey)
@@ -951,7 +984,12 @@ class VerifyFile(object):
             loggervrfy.debug("tarballs is %s" % tarballs)
             for tarball, openmode in tarballs:
                 loggervrfy.debug("looking in tarball %s..." % tarball)
-                tar = tarfile.open(tarball, openmode)
+                try:
+                    tar = tarfile.open(tarball, openmode)
+                except (tarfile.ReadError, EOFError) as exc:
+                    loggervrfy.warning("ignoring corrupt tarball %s: %s",
+                            tarball, str(exc))
+                    continue
                 try:
                     tarf = tar.extractfile(filekey)
                     tari = tar.getmember(filekey)
@@ -1114,7 +1152,12 @@ class DeleteFile(object):
                 ftype = os.popen('file %s' % tarball)
                 loggerdele.debug("ftype of %s is %s" % (tarball, ftype.read()))
                 ftype.close()
-                tar = tarfile.open(tarball, openmode)
+                try:
+                    tar = tarfile.open(tarball, openmode)
+                except (tarfile.ReadError, EOFError) as exc:
+                    loggerdele.warning("ignoring corrupt tarball %s: %s",
+                            tarball, str(exc))
+                    continue
                 mnames = [n for n in tar.getnames() 
                         if n[:len(filekey)] == filekey]
                 tar.close()

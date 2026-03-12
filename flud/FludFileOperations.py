@@ -340,7 +340,7 @@ class StoreFile:
             deferred = self._storeBlock(i, hash, sfile, self.mfiles[i])
             dlist.append(deferred)
         logger.debug(self.ctx("_storeBlocksAll"))
-        dl = defer.DeferredList(dlist)
+        dl = defer.DeferredList(dlist, consumeErrors=True)
         dl.addCallback(self._storeMetadata)
         return dl
 
@@ -481,7 +481,7 @@ class StoreFile:
                     "couldn't find node %s... for VERIFY" % ('%x' % nID)[:8],
                     self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL))
             dlist.append(deferred)
-        dl = defer.DeferredList(dlist)
+        dl = defer.DeferredList(dlist, consumeErrors=True)
         #dl.addCallback(self._storeMetadata)
         # XXX XXX XXX: don't _updateMaster unless we succeed!!
         dl.addCallback(self._updateMaster, storedMetadata)
@@ -513,7 +513,7 @@ class StoreFile:
             deferred.addCallback(self._sendMetadataVerify, segl, mfile, nID)
             deferred.addErrback(self._attachMetadataErr, nID, segl)
             dlist.append(deferred)
-        dl = defer.DeferredList(dlist)
+        dl = defer.DeferredList(dlist, consumeErrors=True)
         dl.addCallback(self._updateMaster, storedMetadata)
         return dl
 
@@ -927,7 +927,7 @@ class RetrieveFile:
             tries = tries + 1
             if tries >= reqs:
                 break;
-        dl = defer.DeferredList(dlist)
+        dl = defer.DeferredList(dlist, consumeErrors=True)
         dl.addCallback(self._retrievedAll)
         return dl
 
@@ -1384,7 +1384,7 @@ class RetrieveFilename:
                     d = RetrieveFile(self.node, fencode(filekey),
                             metakey).deferred
                     dlist.append(d)
-                dl = defer.DeferredList(dlist)
+                dl = defer.DeferredList(dlist, consumeErrors=True)
                 return dl
             else:
                 logger.debug("%s is file in master metadata", self.filename)

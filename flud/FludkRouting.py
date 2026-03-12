@@ -50,7 +50,7 @@ class NodeCache:
         returns a node from the cache, or None
         """
         if nodeID in self.cache:
-            return self.cache[node]
+            return self.cache[nodeID]
         return None
     
     def removeNode(self, node):
@@ -59,7 +59,10 @@ class NodeCache:
         """
         if node[2] in self.cache:
             self.cache.pop(node[2])
-            self.cacheOrder.pop(node[2])
+            try:
+                self.cacheOrder.remove(node[2])
+            except ValueError:
+                pass
 
     def nodes(self):
         return [self.cache[i] for i in self.cache]
@@ -288,7 +291,8 @@ class kRouting:
         node is a member of the bucket.  When this occurs, the bucket should
         be split into two new buckets.
         """
-        halfpoint = (bucket.end - bucket.begin) / 2
+        # Keep bucket bounds as ints under Python 3 ("/" yields float).
+        halfpoint = (bucket.end - bucket.begin) // 2
         newbucket = kBucket(bucket.end - halfpoint + 1, bucket.end, self.k)
         self.kBuckets.insert(self.kBuckets.index(bucket.begin) + 1, newbucket)
         bucket.end -= halfpoint

@@ -11,6 +11,7 @@ import os, stat, http.client, sys, logging
 
 from .ClientPrimitives import *
 from .ClientDHTPrimitives import *
+from .ClientPrimitives import _use_async_http
 from . import FludCommUtil
 
 logger = logging.getLogger('flud.client')
@@ -36,8 +37,8 @@ class FludClient(object):
             return f
 
     def sendGetID(self, host, port):
-        #return SENDGETID(self.node, host, port).deferred
-        d = SENDGETID(self.node, host, port).deferred
+        sender = SENDGETID_ASYNC if _use_async_http() else SENDGETID
+        d = sender(self.node, host, port).deferred
         #d.addErrback(self.redoTO, self.node, host, port)
         return d
 
@@ -61,7 +62,8 @@ class FludClient(object):
             return self.currentStorOps[key]
 
         def sendStoreWithnKu(nKu, host, port, filename, metadata):
-            return SENDSTORE(nKu, self.node, host, port, filename, 
+            sender = SENDSTORE_ASYNC if _use_async_http() else SENDSTORE
+            return sender(nKu, self.node, host, port, filename,
                     metadata).deferred
 
         def removeKey(r, key):
@@ -90,7 +92,8 @@ class FludClient(object):
                     metadata).deferred
         else:
             logger.debug("SENDSTORE")
-            d = SENDSTORE(nKu, self.node, host, port, filename, 
+            sender = SENDSTORE_ASYNC if _use_async_http() else SENDSTORE
+            d = sender(nKu, self.node, host, port, filename,
                     metadata).deferred
         self.currentStorOps[key] = d
         d.addBoth(removeKey, key)
@@ -99,7 +102,8 @@ class FludClient(object):
     # XXX: need a version that takes a metakey, too
     def sendRetrieve(self, filekey, host, port, nKu=None, metakey=True):
         def sendRetrieveWithNKu(nKu, host, port, filekey, metakey=True):
-            return SENDRETRIEVE(nKu, self.node, host, port, filekey, 
+            sender = SENDRETRIEVE_ASYNC if _use_async_http() else SENDRETRIEVE
+            return sender(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
         if not nKu:
@@ -107,14 +111,16 @@ class FludClient(object):
             d.addCallback(sendRetrieveWithNKu, host, port, filekey, metakey)
             return d
         else:
-            return SENDRETRIEVE(nKu, self.node, host, port, filekey,
+            sender = SENDRETRIEVE_ASYNC if _use_async_http() else SENDRETRIEVE
+            return sender(nKu, self.node, host, port, filekey,
                     metakey).deferred
     
     def sendVerify(self, filekey, offset, length, host, port, nKu=None, 
             meta=None):
         def sendVerifyWithNKu(nKu, host, port, filekey, offset, length, 
                 meta=True):
-            return SENDVERIFY(nKu, self.node, host, port, filekey, offset, 
+            sender = SENDVERIFY_ASYNC if _use_async_http() else SENDVERIFY
+            return sender(nKu, self.node, host, port, filekey, offset,
                     length, meta).deferred
 
         if not nKu:
@@ -123,13 +129,15 @@ class FludClient(object):
                     length, meta)
             return d
         else:
-            s = SENDVERIFY(nKu, self.node, host, port, filekey, offset, length,
+            sender = SENDVERIFY_ASYNC if _use_async_http() else SENDVERIFY
+            s = sender(nKu, self.node, host, port, filekey, offset, length,
                     meta)
             return s.deferred
     
     def sendDelete(self, filekey, metakey, host, port, nKu=None):
         def sendDeleteWithNKu(nKu, host, port, filekey, metakey):
-            return SENDDELETE(nKu, self.node, host, port, filekey,
+            sender = SENDDELETE_ASYNC if _use_async_http() else SENDDELETE
+            return sender(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
         if not nKu:
@@ -137,7 +145,8 @@ class FludClient(object):
             d.addCallback(sendDeleteWithNKu, host, port, filekey, metakey)
             return d
         else:
-            return SENDDELETE(nKu, self.node, host, port, filekey,
+            sender = SENDDELETE_ASYNC if _use_async_http() else SENDDELETE
+            return sender(nKu, self.node, host, port, filekey,
                     metakey).deferred
     
     """
@@ -147,13 +156,16 @@ class FludClient(object):
     recursive primitives for doing DHT ops.
     """
     def sendkFindNode(self, host, port, key):
-        return SENDkFINDNODE(self.node, host, port, key).deferred
+        sender = SENDkFINDNODE_ASYNC if _use_async_http() else SENDkFINDNODE
+        return sender(self.node, host, port, key).deferred
 
     def sendkStore(self, host, port, key, val):
-        return SENDkSTORE(self.node, host, port, key, val).deferred
+        sender = SENDkSTORE_ASYNC if _use_async_http() else SENDkSTORE
+        return sender(self.node, host, port, key, val).deferred
 
     def sendkFindValue(self, host, port, key):
-        return SENDkFINDVALUE(self.node, host, port, key).deferred
+        sender = SENDkFINDVALUE_ASYNC if _use_async_http() else SENDkFINDVALUE
+        return sender(self.node, host, port, key).deferred
     
     """
     DHT recursive primitives (recursive calls to muliple peers)

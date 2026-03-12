@@ -30,8 +30,8 @@ def du(dir):
 # XXX: too much manual layout.  should convert to a managed layout to allow for
 # resizing, etc.
 SGAUGEWIDTH = 230  # storage gauge
-DGAUGEWIDTH = 100  # dht gauge
-GAUGEHEIGHT = 20
+DGAUGEWIDTH = 130  # dht gauge
+GAUGEHEIGHT = 30
 ROWHEIGHT = 30
 SEP = 5
 LABELWIDTH = 20
@@ -90,7 +90,7 @@ class FludTestGauges(wx.Frame):
             self.gauges[i].idlabel = wx.StaticText(self, -1, "%s" % conf.nodeID,
                     (curCol*COLWIDTH+POWERWIDTH+LABELWIDTH, curRow+20))
             font = self.gauges[i].idlabel.GetFont()
-            font.SetPointSize(6)
+            font.SetPointSize(9)
             self.gauges[i].idlabel.SetFont(font)
             self.gauges[i].dhtgauge = wx.Gauge(self, -1, 100,
                     (curCol*COLWIDTH+LABELWIDTH+POWERWIDTH+SGAUGEWIDTH+SEP, 

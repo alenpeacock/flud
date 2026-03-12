@@ -12,6 +12,7 @@ import threading, signal, sys, time, os, random, logging
 
 from flud.FludConfig import FludConfig
 from flud.protocol.FludServer import FludServer
+from flud.protocol.AiohttpServer import FludAiohttpServer
 from flud.protocol.FludClient import FludClient
 from flud.protocol.FludCommUtil import getCanonicalIP
 
@@ -32,6 +33,24 @@ class FludNode(object):
         self.config.load(serverport=port)
         self.client = FludClient(self)
         self.DHTtstamp = time.time()+10
+        self._use_async_server = os.environ.get("FLUD_ASYNCIO_SERVER") == "1"
+        self._reactor_thread = None
+        self._owns_reactor = False
+
+    def _start_reactor_background(self):
+        if reactor.running:
+            return
+        self._owns_reactor = True
+        self._reactor_thread = threading.Thread(
+                target=reactor.run,
+                kwargs={"installSignalHandlers": 0},
+                daemon=True,
+        )
+        self._reactor_thread.start()
+        # Give reactor a moment to enter running state for Deferred scheduling.
+        deadline = time.time() + 5.0
+        while not reactor.running and time.time() < deadline:
+            time.sleep(0.01)
 
     def _initLogger(self):
         logger = logging.getLogger('flud')
@@ -69,8 +88,15 @@ class FludNode(object):
 
     def start(self, twistd=False):
         """ starts the reactor in this thread """
-        self.webserver = FludServer(self, self.config.port)
-        self.logger.log(logging.INFO, "FludServer starting")
+        if self._use_async_server:
+            self.webserver = FludAiohttpServer(self, self.config.port)
+            self.logger.log(logging.INFO,
+                    "FludAiohttpServer starting on %d (local protocol via Twisted)"
+                    % self.config.port)
+            self.webserver.start()
+        else:
+            self.webserver = FludServer(self, self.config.port)
+            self.logger.log(logging.INFO, "FludServer starting")
         reactor.callLater(1, self.pingRandom, time.time())
         reactor.callLater(random.randrange(10), self.syncConfig)
         if not twistd: 
@@ -81,7 +107,11 @@ class FludNode(object):
         #signal.signal(signal.SIGINT, self.sighandler)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        self.webserver = FludServer(self, self.config.port)
+        if self._use_async_server:
+            self._start_reactor_background()
+            self.webserver = FludAiohttpServer(self, self.config.port)
+        else:
+            self.webserver = FludServer(self, self.config.port)
         self.webserver.start()
         # XXX: need to do save out current config every X seconds
         # XXX: need to seperate known_nodes from config, and then update this
@@ -90,9 +120,13 @@ class FludNode(object):
     def stop(self):
         self.logger.log(logging.INFO, "shutting down FludNode")
         self.webserver.stop()
+        if self._owns_reactor and reactor.running:
+            reactor.callFromThread(reactor.stop)
 
     def join(self):
         self.webserver.join()
+        if self._reactor_thread is not None:
+            self._reactor_thread.join()
 
     def sighandler(self, sig, frame):
         self.logger.log(logging.INFO, "handling signal %s" % sig)

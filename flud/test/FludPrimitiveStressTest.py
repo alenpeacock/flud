@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 
+import asyncio
 import time, os, stat, random, sys, logging, socket
-from twisted.python import failure
-from twisted.internet import defer
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 import flud.FludCrypto
 from flud.FludNode import FludNode
-from flud.protocol.FludClient import FludClient
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
-from flud.FludDefer import ErrDeferredList
+from flud.async_runtime import maybe_await
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -20,6 +18,7 @@ of ROOT and REQUEST in FludProtocol.
 
 CONCURRENT=300
 CONCREPORT=50
+OP_TIMEOUT=60
 
 node = None
 files = None
@@ -31,6 +30,23 @@ formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s:'
 screenhandler.setFormatter(formatter)
 logger.addHandler(screenhandler)
 logger.setLevel(logging.DEBUG)
+
+
+def gather_deferreds(node, deferred_factory, count, return_one=False,
+        timeout=OP_TIMEOUT):
+    async def _gather():
+        deferreds = [deferred_factory(i) for i in range(count)]
+        results = await asyncio.gather(
+            *(asyncio.wait_for(maybe_await(d), timeout) for d in deferreds),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+        if return_one:
+            return results[0] if results else None
+        return results
+    return node.async_runtime.deferred_from_coro(_gather())
 
 
 def suitesuccess(results):
@@ -59,26 +75,24 @@ def itersuccess(res, i, message):
 
 def itererror(failure, message):
     logger.info("itererror message: %s" % message)
-    #logger.info("DEBUG: %s" % failure)
-    #logger.info("DEBUG: %s" % dir(failure)
-    failure.printTraceback()
+    logger.info("DEBUG: %s" % failure)
     return failure
 
 def checkVERIFY(results, nKu, host, port, hashes, num=CONCURRENT):
     logger.info("  checking VERIFY results...")
     for i in range(num):
         hash = hashes[i]
-        res = results[i][1]
+        res = results[i]
         if int(hash, 16) != int(res, 16):
-            raise failure.DefaultException("verify didn't match: %s != %s"
+            raise RuntimeError("verify didn't match: %s != %s"
                     % (hash, res))
     logger.info("  ...VERIFY results good.")
     return results #True
 
 def testVERIFY(res, nKu, host, port, num=CONCURRENT):
     logger.info("testVERIFY started...")
-    dlist = []
     hashes = []
+    verify_args = []
     for i in range(num):
         #if i == 4:
         #   port = 21
@@ -91,13 +105,18 @@ def testVERIFY(res, nKu, host, port, num=CONCURRENT):
         os.close(fd)
         hashes.append(flud.FludCrypto.hashstring(data))
         filekey = os.path.basename(files[i])
-        deferred = node.client.sendVerify(filekey, offset, length, host, 
+        verify_args.append((filekey, offset, length))
+
+    def make_deferred(i):
+        filekey, offset, length = verify_args[i]
+        deferred = node.client.sendVerify(filekey, offset, length, host,
                 port, nKu)
         deferred.addCallback(itersuccess, i, "succeeded at testVERIFY %d" % i)
-        deferred.addErrback(itererror, "failed at testVERIFY %d: %s" 
+        deferred.addErrback(itererror, "failed at testVERIFY %d: %s"
                 % (i, filekey))
-        dlist.append(deferred)
-    d = ErrDeferredList(dlist)
+        return deferred
+
+    d = gather_deferreds(node, make_deferred, num)
     d.addCallback(stagesuccess, "testVERIFY")
     d.addErrback(stageerror, 'failed at testVERIFY')
     d.addCallback(checkVERIFY, nKu, host, port, hashes, num)
@@ -112,7 +131,7 @@ def checkRETRIEVE(res, nKu, host, port, num=CONCURRENT):
         if (f1.read() != f2.read()):
             f1.close()
             f2.close()
-            raise failure.DefaultException("upload/download files don't match")
+            raise RuntimeError("upload/download files don't match")
         f2.close()
         f1.close()
     logger.info("  ...RETRIEVE results good.")
@@ -120,17 +139,15 @@ def checkRETRIEVE(res, nKu, host, port, num=CONCURRENT):
 
 def testRETRIEVE(res, nKu, host, port, num=CONCURRENT):
     logger.info("testRETRIEVE started...")
-    dlist = []
-    for i in range(num):
-        #if i == 4:
-        #   port = 21
+    def make_deferred(i):
         filekey = os.path.basename(files[i])
         deferred = node.client.sendRetrieve(filekey, host, port, nKu)
         deferred.addCallback(itersuccess, i, "succeeded at testRETRIEVE %d" % i)
-        deferred.addErrback(itererror, "failed at testRETRIEVE %d: %s" 
+        deferred.addErrback(itererror, "failed at testRETRIEVE %d: %s"
                 % (i, filekey))
-        dlist.append(deferred)
-    d = ErrDeferredList(dlist)
+        return deferred
+
+    d = gather_deferreds(node, make_deferred, num)
     d.addCallback(stagesuccess, "testRETRIEVE")
     d.addErrback(stageerror, 'failed at testRETRIEVE')
     d.addCallback(checkRETRIEVE, nKu, host, port, num)
@@ -138,15 +155,13 @@ def testRETRIEVE(res, nKu, host, port, num=CONCURRENT):
 
 def testSTORE(nKu, host, port, num=CONCURRENT):
     logger.info("testSTORE started...")
-    dlist = []
-    for i in range(num):
-        #if i == 4:
-        #   port = 21
+    def make_deferred(i):
         deferred = node.client.sendStore(files[i], None, host, port, nKu)
         deferred.addCallback(itersuccess, i, "succeeded at testSTORE %d" % i)
         deferred.addErrback(itererror, "failed at testSTORE %d" % i)
-        dlist.append(deferred)
-    d = ErrDeferredList(dlist)
+        return deferred
+
+    d = gather_deferreds(node, make_deferred, num)
     d.addCallback(stagesuccess, "testSTORE")
     d.addErrback(stageerror, 'failed at testSTORE')
     d.addCallback(testRETRIEVE, nKu, host, port, num)
@@ -155,15 +170,13 @@ def testSTORE(nKu, host, port, num=CONCURRENT):
 
 def testID(host, port, num=CONCURRENT):
     logger.info("testID started...")
-    dlist = []
-    for i in range(num):
-        #if i == 4:
-        #   port = 21
+    def make_deferred(i):
         deferred = node.client.sendGetID(host, port)
         deferred.debug = True
         deferred.addErrback(itererror, "failed at testID %d" % i)
-        dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+        return deferred
+
+    d = gather_deferreds(node, make_deferred, num, return_one=True)
     d.addCallback(stagesuccess, "testID")
     d.addErrback(stageerror, 'testID')
     d.addCallback(testSTORE, host, port, num)
@@ -220,7 +233,7 @@ def cleanup(dummy=None):
     logger.info("cleaning up files and shutting down in 1 seconds...")
     time.sleep(1)
     deleteFakeData(files)
-    reactor.callLater(1, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(node.stop)
     logger.info("done cleaning up")
 
 """

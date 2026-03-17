@@ -13,7 +13,6 @@ import inspect, pdb
 from flud.FludCrypto import FludRSA
 import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode, fdecode
-import flud.FludDefer as FludDefer
 from flud.async_runtime import maybe_await
 
 from . import ConnectionQueue
@@ -66,6 +65,13 @@ def serviceWaiting(res, key, pending, waiting):
     
 pendingkFindNodes = {}
 waitingkFindNodes = {}
+
+
+def _raise_on_deferred_failures(results):
+    for success, result in results:
+        if not success:
+            raise failure.DefaultException(results)
+    return results
 
 
 async def _async_send_kfindnode(node, host, port, key, command_name="nodes"):
@@ -504,7 +510,8 @@ class kStore(kFindNode):
                     self.val).deferred
             deferred.addErrback(self._kStoreErr, host, port)
             dlist.append(deferred)
-        dl = FludDefer.ErrDeferredList(dlist)
+        dl = defer.DeferredList(dlist, consumeErrors=True)
+        dl.addCallback(_raise_on_deferred_failures)
         dl.addCallback(self._kStoreFinished)
         dl.addErrback(self._kStoreErr, None, 0)
         return dl

@@ -3,12 +3,10 @@
 import time, os, stat, random, sys, logging, socket, shutil, tempfile
 from binascii import crc32
 from io import StringIO
-from twisted.python import failure
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-from flud.protocol.FludClient import FludClient
 from flud.FludCrypto import generateRandom, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode
@@ -260,7 +258,7 @@ def cleanup(err, node):
     os.remove(smallfilenamebad)
     os.remove(largefilename)
     os.remove(largefilenamebad)
-    reactor.callLater(1, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(node.stop)
 
 def generateTestData():
     def generateFiles(minsize):

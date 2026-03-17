@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
+import asyncio
 import time, os, stat, random, sys, logging, socket
-from twisted.python import failure
-from twisted.internet import defer
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-from flud.protocol.FludClient import FludClient
 from flud.protocol.FludCommUtil import *
 from flud.fencode import *
-from flud.FludDefer import ErrDeferredList
+from flud.async_runtime import maybe_await
 
 """
 Test code for kprimitive operations.  These ops include all of the descendents
@@ -53,6 +51,21 @@ screenhandler.setFormatter(formatter)
 logger.addHandler(screenhandler)
 logger.setLevel(logging.DEBUG)
 
+
+def gather_deferreds(node, deferreds, return_one=False):
+    async def _gather():
+        results = await asyncio.gather(
+            *(maybe_await(d) for d in deferreds),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+        if return_one:
+            return results[0]
+        return results
+    return node.async_runtime.deferred_from_coro(_gather())
+
 def suitesuccess(results):
     logger.info("all tests in suite passed")
     #print results
@@ -79,9 +92,7 @@ def itersuccess(res, i, message):
 
 def itererror(failure, message):
     logger.info("itererror message: %s" % message)
-    #logger.info("DEBUG: %s" % failure)
-    #logger.info("DEBUG: %s" % dir(failure)
-    failure.printTraceback()
+    logger.info("DEBUG: %s" % failure)
     return failure
 
 def endtests(res, nKu, node, host, port):
@@ -91,7 +102,7 @@ def endtests(res, nKu, node, host, port):
     except ValueError:
         pass
     if res != testval:
-        return failure.DefaultException("retrieved value does not match" 
+        return RuntimeError("retrieved value does not match" 
                 " stored value: '%s' != '%s'" % (res, testval))
     
     logger.log(logging.INFO,"testkFindVal PASSED: %s\n" % str(res))
@@ -108,7 +119,7 @@ def testkFindVal(res, nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.kFindValue(key)
         deferred.addErrback(itererror, "kFindValue")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "kFindValue")
     d.addErrback(stageerror, 'kFindValue')
     d.addCallback(endtests, nKu, node, host, port)
@@ -123,7 +134,7 @@ def testSendkFindVal(res, nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.sendkFindValue(host, port, key)
         deferred.addErrback(itererror, "sendkFindValue")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "sendkFindValue")
     d.addErrback(stageerror, 'sendkFindValue')
     d.addCallback(testkFindVal, nKu, node, host, port, num)
@@ -138,7 +149,7 @@ def testkStore(res, nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.kStore(key, testval)
         deferred.addErrback(itererror, "kStore")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "kStore")
     d.addErrback(stageerror, 'kStore')
     d.addCallback(testSendkFindVal, nKu, node, host, port, num)
@@ -153,7 +164,7 @@ def testSendkStore(res, nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.sendkStore(host, port, key, testval)
         deferred.addErrback(itererror, "sendkStore")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "sendkStore")
     d.addErrback(stageerror, 'sendkStore')
     d.addCallback(testkStore, nKu, node, host, port, num)
@@ -168,7 +179,7 @@ def testkFindNode(res, nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.kFindNode(key)
         deferred.addErrback(itererror, "kFindNode")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "kFindNode")
     d.addErrback(stageerror, 'kFindNode')
     d.addCallback(testSendkStore, nKu, node, host, port, num)
@@ -183,7 +194,7 @@ def testSendkFindNode(nKu, node, host, port, num=CONCURRENT):
         deferred = node.client.sendkFindNode(host, port, key)
         deferred.addErrback(itererror, "sendkFindNode")
         dlist.append(deferred)
-    d = ErrDeferredList(dlist, returnOne=True)
+    d = gather_deferreds(node, dlist, return_one=True)
     d.addCallback(stagesuccess, "sendkFindNode")
     d.addErrback(stageerror, 'sendkFindNode')
     d.addCallback(testkFindNode, nKu, node, host, port, num)
@@ -217,7 +228,7 @@ def runTests(host, port=None, listenport=None):
 def cleanup(_, node):
     logger.info("shutting down in 1 seconds...")
     time.sleep(1)
-    reactor.callLater(1, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(node.stop)
     logger.info("done cleaning up")
 
 """

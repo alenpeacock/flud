@@ -7,19 +7,43 @@ under the terms of the GNU General Public License (the GPL), version 3.
 System tests for FludFileOperations
 """
 
+import asyncio
 import sys, os, time, logging, tempfile, shutil, faulthandler, signal
 from zlib import crc32
-from twisted.internet import reactor
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
-from flud.FludConfig import FludConfig
 from flud.FludNode import FludNode
-from flud.fencode import fencode, fdecode
+from flud.fencode import fdecode
 from flud.FludCrypto import generateRandom
 from flud.FludFileOperations import *
-import flud.FludDefer as FludDefer
-from flud.protocol.LocalClient import listMeta
+
+
+def listMeta(config):
+    with open(os.path.join(config.metadir, config.metamaster), 'r') as fmaster:
+        master = fmaster.read()
+    if master == "":
+        return {}
+    return fdecode(master)
+
+
+def gather_deferreds(node, deferreds):
+    async def _gather():
+        results = await asyncio.gather(
+            *(maybe_await(d) for d in deferreds),
+            return_exceptions=True,
+        )
+        normalized = []
+        for result in results:
+            if isinstance(result, Exception):
+                normalized.append((False, result))
+            else:
+                normalized.append((True, result))
+        for success, result in normalized:
+            if not success:
+                raise result
+        return normalized
+    return node.async_runtime.deferred_from_coro(_gather())
 
 logger = logging.getLogger('flud')
 #logging.basicConfig(level=logging.DEBUG)
@@ -89,7 +113,7 @@ def storeConcurrent(r, node, files, desc):
     for file in files:
         d = testStoreFile(node, file)
         dlist.append(d)
-    dl = FludDefer.ErrDeferredList(dlist)
+    dl = gather_deferreds(node, dlist)
     dl.addCallback(storeSuccess, desc)
     dl.addErrback(testError)
     return dl
@@ -134,10 +158,7 @@ def cleanup(_, node, filenamelist):
             os.remove(f)
         except:
             print("couldn't remove %s" % f)
-    if getattr(node, "_use_async_server", False):
-        node.async_runtime.loop.call_soon_threadsafe(node.stop)
-    else:
-        reactor.callLater(1, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(node.stop)
 
 def generateTestFile(minSize):
     fname = tempfile.mktemp()

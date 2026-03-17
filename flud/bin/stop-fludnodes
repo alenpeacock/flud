@@ -23,7 +23,7 @@ fi
 
 for i in `seq $seqstart $seqend`; do
     export FLUDHOME="${HOME}/.flud${i}"
-    pidfile="$FLUDHOME/twistd.pid"
+    pidfile="$FLUDHOME/fludnode.pid"
     if [ -f "$pidfile" ]; then
         pids="$pids $(cat "$pidfile")"
     fi

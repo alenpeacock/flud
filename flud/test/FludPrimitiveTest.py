@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
+import asyncio
 import time, os, stat, random, sys, logging, socket, tempfile
-from twisted.python import failure
 from io import StringIO
 from zlib import crc32
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-from flud.protocol.FludClient import FludClient
 import flud.FludCrypto as FludCrypto
 from flud.fencode import fencode, fdecode
 from flud.protocol.FludCommUtil import *
-from flud.FludDefer import ErrDeferredList
+from flud.async_runtime import maybe_await
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -23,6 +22,21 @@ of ROOT and REQUEST in FludProtocol.
 metadatablock = fencode((1,20,40,'adfdsfdffffffddddddddddddddd'))
 metadatablock_bytes = metadatablock.encode("utf-8")
 fake_mkey_offset = 111111
+
+
+def gather_deferreds(node, deferreds, return_one=False):
+    async def _gather():
+        results = await asyncio.gather(
+            *(maybe_await(d) for d in deferreds),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+        if return_one:
+            return results[0]
+        return results
+    return node.async_runtime.deferred_from_coro(_gather())
 
 def testerror(failure, message, node):
     """
@@ -65,7 +79,7 @@ def testDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
 def checkVERIFY(res, nKu, fname, fkey, mkey, node, host, port, hash, newmeta):
     """ executes after testVERIFY """
     if int(hash, 16) != int(res, 16):
-        raise failure.DefaultException("verify didn't match: %s != %s"
+        raise RuntimeError("verify didn't match: %s != %s"
                 % (hash, res))
     print("checkVERIFY (%s) %s success" % (newmeta, fname))
     if newmeta:
@@ -108,7 +122,7 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
     if (f1.read() != f2.read()):
         f1.close()
         f2.close()
-        raise failure.DefaultException(
+        raise RuntimeError(
                 "upload/download (%s, %s) files don't match" % (fname, 
                     os.path.join(node.config.clientdir, fkey)))
     #print "%s (%d) and %s (%d) match" % (fname, os.stat(fname)[stat.ST_SIZE],
@@ -119,11 +133,11 @@ def checkRETRIEVE(res, nKu, fname, fkey, mkey, node, host, port, nextCallable):
         expectedmeta = "%s.%s.meta" % (fkey, mkey)
         metanames = [f for f in res if f[-len(expectedmeta):] == expectedmeta]
         if not metanames:
-            raise failure.DefaultException("expected metadata was missing")
+            raise RuntimeError("expected metadata was missing")
         f3 = open(metanames[0], "rb")
         md = f3.read()
         if md != metadatablock_bytes:
-            raise failure.DefaultException("upload/download metadata doesn't"
+            raise RuntimeError("upload/download metadata doesn't"
                     " match (%s != %s)" % (md, metadatablock))
     return nextCallable()
 
@@ -183,7 +197,7 @@ def testAggSTORE(nKu, aggFiles, node, host, port):
                     port, False): testVERIFY(*args))
         deferred.addErrback(testerror, "failed at testAggSTORE", node)
         dlist.append(deferred)
-    dl = ErrDeferredList(dlist)
+    dl = gather_deferreds(node, dlist)
     dl.addCallback(allGood, nKu)
     dl.addErrback(testerror, "failed at testAggSTORE", node)
     return dl
@@ -195,7 +209,7 @@ def cleanup(_, node, filenamelist):
             os.remove(f)
         except:
             print("couldn't remove %s" % f)
-    reactor.callLater(1, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(node.stop)
 
 def generateTestData(minSize):
     fname = tempfile.mktemp()

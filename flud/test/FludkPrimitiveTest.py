@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
 import time, os, stat, random, sys, logging, socket
-from twisted.python import failure
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-from flud.protocol.FludClient import FludClient
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 
@@ -49,7 +47,9 @@ logger.setLevel(logging.INFO)
 
 def cleanup(_, node):
     logger.info("waiting %ds to shutdown..." % stay_alive)
-    reactor.callLater(stay_alive, node.stop)
+    node.async_runtime.loop.call_soon_threadsafe(
+        lambda: node.async_runtime.loop.call_later(stay_alive, node.stop)
+    )
 
 def testerror(failure, message, node):
     """

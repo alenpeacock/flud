@@ -18,16 +18,13 @@ setup(name="flud",
 			'flud.bin': 'flud/bin',
 			'flud.test': 'flud/test'},
 		package_data={'flud': 
-				['images/*.png', 'FludNode.tac', 'fludrules.init']},
+				['images/*.png', 'fludrules.init']},
 		scripts = ['flud/bin/fludnode',
-			'flud/bin/tacpath-flud',
 			'flud/bin/fludscheduler', 
-			'flud/bin/fludclient', 
 			'flud/bin/fludlocalclient',
 			'flud/bin/flud-mastermetadataViewer',
 			'flud/bin/flud-metadataViewer',
 			'flud/bin/start-fludnodes', 
-			'flud/bin/stop-fludnodes', 
-			'flud/bin/gauges-fludnodes',
+			'flud/bin/stop-fludnodes',
 			'flud/bin/clean-fludnodes']
 )

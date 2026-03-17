@@ -2,45 +2,11 @@
 
 doctest is the preferred unit-testing strategy in flud, and unit tests should be written before code implementation where possible. However, much of the network code cannot be tested in this way, so custom testing utilities have been written to make correctness and load-testing easier.
 
-flud.test contains more tests than are currently documented here. These tests are usually installed to /usr/lib/python2.4/site-packages/flud/test/
+flud.test contains more tests than are currently documented here.
 
-## FludPrimitiveTest.py
-
-FludPrimitiveTest.py performs one test on each of the storage primitives: ID, STORE, VERIFY, RETRIEVE, and DELETE. The test is completely self-contained. A succesful run looks like the following:
-
- ```sh
- $ python FludPrimitiveTest.py
- starting testID
- starting testSTORE
- starting testRETRIEVE
- starting testVERIFY
- starting testDELETE
- all tests PASSED
- $
- ```
-
-## FludkPrimitiveTest.py
-
-FludkPrimitiveTest.py tests all of the DHT (metadata layer) primitives: ID, SendkFindNode/kFindNode, SendkStore/kStore, and SendkFindValue/kFindValue. It is completely self-contained. A typical invocation should look like this:
-
-```sh
-$ python FludkPrimitiveTest.py
-16:28:04 test INFO: testing against localhost:8080, localport=None
-16:28:04 test INFO: testkGetID PASSED
-16:28:04 test INFO: attempting sendkFindNode
-16:28:04 test INFO: testSendkFindNode PASSED
-16:28:04 test INFO: attempting kFindNode
-16:28:04 test INFO: testkFindNode PASSED
-16:28:04 test INFO: attempting testSendkStore
-16:28:04 test INFO: testSendkStore PASSED
-16:28:04 test INFO: attempting testkStore
-16:28:04 test INFO: testkStore PASSED
-16:28:04 test INFO: attempting testSendkFindValue
-16:28:04 test INFO: testSendkFindVal PASSED
-16:28:04 test INFO: attempting testkFindValue
-16:28:04 test INFO: testkFindVal PASSED
-16:28:04 test INFO: all tests PASSED
-```
+The maintained end-to-end test path is `FludFileOpTest.py` running against the
+asyncio node/runtime. The older Twisted-era primitive/unit tests have been
+removed.
 
 ## Emulated flud Networks
 
@@ -86,14 +52,6 @@ To start an emulated flud network of N nodes, do:
 $ start-fludnodes N
 ```
 
-To view storage consumed by flud nodes in an emulated flud network, do:
-
-```sh
-$ gauges-fludnodes ~/.flud 1-N
-```
-
-(note that you can stop and start nodes interactively with the gauges panel)
-
 To stop the emulated flud network of N nodes, do:
 
 ```sh
@@ -137,7 +95,7 @@ The same syntax can be used with stop-fludnodes to stop nodes in any range.
 ### Method 2: start 50 nodes on one host, 25 on another
 Start nodes as above, but split the nodes between two machines. The start-fludnodes invocation on the second machine should give one of the nodes on the first machine as the gateway, so that the two pools can see each other.
 
-Of course, the start-fludnodes and stop-fludnodes scripts are just a convenience. You can examine them to see how they start and stop nodes if you'd rather do this manually. For now, note that the pid for each instance is stored in ~/.fludX/twistd.pid, and the twistd log is similarly stored ast twistd.log.
+Of course, the start-fludnodes and stop-fludnodes scripts are just a convenience. You can examine them to see how they start and stop nodes if you'd rather do this manually. For now, note that the pid for each instance is stored in ~/.fludX/fludnode.pid, and the node log is similarly stored as fludnode.log.
 
 ## Testing for Single Catastrophic Failure (of my node)
 Suppose we lose our own node (the hard drive crashes, or the computer gets destroyed or stolen). This test case emulates such a failure and its recovery.

@@ -2,8 +2,6 @@
 
 testhost=`hostname`
 testport=8080
-#testscript=./FludPrimitiveTest.py
-#testscript=./FludkPrimitiveTest.py
 testscript="./$2"
 
 echo "hi" | nc localhost $testport

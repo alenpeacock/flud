@@ -4,15 +4,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="$SCRIPT_DIR:$PATH"
 
 testhost="${FLUDTESTHOST:-127.0.0.1}"
-tacfile=`tacpath-flud`
-if [ -z "$tacfile" ]; then
-    tacfile="$SCRIPT_DIR/tacpath-flud"
-    tacfile=$("$tacfile")
-fi
-if [ -z "$tacfile" ]; then
-    echo "could not determine FludNode.tac path" >&2
-    exit 1
-fi
 startup_timeout=${FLUDSTARTUPTIMEOUT:-30}
 
 wait_for_node() {
@@ -82,8 +73,8 @@ if [ ! -d $FLUDHOME ]; then
     mkdir $FLUDHOME;
 fi
 let listenport=8080+$i
-pidfile="$FLUDHOME/twistd.pid"
-logfile="$FLUDHOME/twistd.log"
+pidfile="$FLUDHOME/fludnode.pid"
+logfile="$FLUDHOME/fludnode.log"
 start_node "$listenport" "$pidfile" "$logfile" "$boothost" "$bootport"
 if ! wait_for_node "${pids[$i]}" "$listenport" "$logfile"; then
     exit 1
@@ -104,8 +95,8 @@ for i in `seq $seqstart $seqend`; do
     fi
     testport=$listenport
     let listenport=8080+$i
-    pidfile="$FLUDHOME/twistd.pid"
-    logfile="$FLUDHOME/twistd.log"
+    pidfile="$FLUDHOME/fludnode.pid"
+    logfile="$FLUDHOME/fludnode.log"
     start_node "$listenport" "$pidfile" "$logfile" "$testhost" "$testport"
     if ! wait_for_node "${pids[$i]}" "$listenport" "$logfile"; then
         exit 1

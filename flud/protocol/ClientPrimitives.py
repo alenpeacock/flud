@@ -737,12 +737,11 @@ class AggregateStore:
             handle = aggTimeoutMap.get(tarball)
             if handle is not None:
                 handle.cancel()
-            size_ok = os.path.exists(tarball) and \
+            should_delay = os.path.exists(tarball) and \
                     os.stat(tarball)[stat.ST_SIZE] < MINSTORSIZE
-            if not size_ok:
-                return
+            delay = TARFILE_TO if should_delay else 0
             aggTimeoutMap[tarball] = runtime.loop.call_later(
-                    TARFILE_TO,
+                    delay,
                     lambda: runtime.submit(
                         self._sendTarAsync(tarball, nKu, node, host, port)))
 

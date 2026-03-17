@@ -22,7 +22,6 @@ Other processes:
 
 ```sh
 fludscheduler      # start the scheduler
-fludclient         # start the graphical interface
 fludlocalclient    # start a command-line client
 ```
 

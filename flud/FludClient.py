@@ -7,17 +7,17 @@ the terms of the GNU General Public License (the GPL), version 3.
 FludClient provides a GUI Client for interacting with FludNode.
 """
 
-#from twisted.internet import wxreactor
-#wxreactor.install()
-
+import concurrent.futures
 import sys, os, string, time, glob
 import wx
 import wx.lib.mixins.listctrl as listmix
 import wx.lib.editor.editor
 
-from flud.protocol.LocalClient import *
+from flud.protocol.AsyncLocalClient import AsyncLocalClient
 from flud.FludConfig import FludConfig
 from flud.CheckboxState import CheckboxState
+from flud.async_runtime import AsyncRuntime
+from flud.fencode import fdecode
 
 FLUSHCHECKTIME = 5*60  # s to wait to flush fludfile.conf
 
@@ -25,6 +25,59 @@ datadir = os.path.dirname(os.path.abspath(__file__))
 imgdir = os.path.join(datadir,'images')
 
 mimeMgr = wx.MimeTypesManager()
+
+
+def listMeta(config):
+    with open(os.path.join(config.metadir, config.metamaster), 'r') as fmaster:
+        master = fmaster.read()
+    if master == "":
+        return {}
+    return fdecode(master)
+
+
+class AsyncGUIRequest:
+    def __init__(self, future):
+        self._future = future
+
+    def addCallback(self, callback, *args):
+        def _done(done_future):
+            try:
+                result = done_future.result()
+            except Exception:
+                return
+            wx.CallAfter(callback, result, *args)
+        self._future.add_done_callback(_done)
+        return self
+
+    def addErrback(self, callback, *args):
+        def _done(done_future):
+            try:
+                done_future.result()
+            except Exception as exc:
+                wx.CallAfter(callback, exc, *args)
+        self._future.add_done_callback(_done)
+        return self
+
+
+class AsyncLocalGUIClient:
+    def __init__(self, config):
+        self.config = config
+        self.runtime = AsyncRuntime(name="flud-gui-runtime")
+        self.runtime.start()
+        self.client = AsyncLocalClient(config)
+
+    def close(self):
+        try:
+            self.runtime.submit(self.client.close()).result(timeout=5.0)
+        except Exception:
+            pass
+        self.runtime.stop()
+
+    def _submit(self, coro):
+        return AsyncGUIRequest(self.runtime.submit(coro))
+
+    def sendGETF(self, path):
+        return self._submit(self.client.sendGETF(path))
 
 def getFileIcon(file, il, checkboxes, icondict):
     ft = mimeMgr.GetFileTypeFromExtension(file[file.rfind('.')+1:])
@@ -195,7 +248,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
 
         self.stateChangeTime = time.time() 
         self.flushTime = time.time()
-        reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
+        self.flushTimer = wx.CallLater(FLUSHCHECKTIME * 1000, self.checkFlush)
 
     def expandHome(self, dir):
         home = os.environ['HOME']
@@ -223,7 +276,7 @@ class DirCheckboxCtrl(wx.TreeCtrl):
             self.flushTime = time.time()
             print("flushing")
             self.parent.flushFileConfig()
-        reactor.callLater(FLUSHCHECKTIME, self.checkFlush)
+        self.flushTimer = wx.CallLater(FLUSHCHECKTIME * 1000, self.checkFlush)
         
     def expandDir(self, parentID, hideHidden=False, busycursor=True):
         def isDriveAvailable(path):         
@@ -1438,9 +1491,8 @@ class FludNotebook(wx.Notebook):
         self.parent = parent
         self.config = parent.config
 
-        self.factory = LocalClientFactory(self.config)
+        self.factory = AsyncLocalGUIClient(self.config)
         print("connecting to localhost:%d" % self.config.clientport)
-        reactor.connectTCP('localhost', self.config.clientport, self.factory)
 
         wx.Notebook.__init__(self, parent, id, pos, style=style)
         self.filePanel = FilePanel(self, 
@@ -1457,6 +1509,7 @@ class FludNotebook(wx.Notebook):
 
     def shutdown(self, event):
         self.filePanel.shutdown(event)
+        self.factory.close()
 
     def changedPage(self, event):
         page = event.GetSelection()
@@ -1603,4 +1656,3 @@ class FludFrame(wx.Frame):
 #   from twisted.internet import reactor
 #   reactor.registerWxApp(app)
 #   reactor.run()
-

@@ -84,7 +84,8 @@ Deliverables:
 Status:
 - in progress
 - asyncio is now the default runtime path for node startup and local/system tests
-- remaining work is deleting legacy Twisted-only modules and packaging/runtime references
+- obsolete `twistd`/`.tac` packaging and runtime references have been removed
+- remaining work is deleting legacy Twisted-only modules and then dropping the package dependency once no shipped code imports it
 
 ## Risks / Deficiencies to Track
 

@@ -8,15 +8,11 @@ FludNode is the process that runs to talk with other nodes in the flud backup ne
 """
 
 import sys
+import os
 from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import getCanonicalIP
 
 if __name__ == '__main__':
-    from twisted.python import failure
-    #import gc
-    #gc.set_debug(gc.DEBUG_LEAK)
-    #gc.enable()
-
     if len(sys.argv) == 2:
         # usage was: FludNode.py <listenport>
         node = FludNode(eval(sys.argv[1]))
@@ -34,8 +30,8 @@ if __name__ == '__main__':
     else:
         print("flud node listening on port %d" % node.config.port)
 
-    node.start()
-
-    #node.run()
-    #node.join()
-
+    if os.environ.get("FLUD_ASYNCIO_SERVER") == "1":
+        node.run()
+        node.join()
+    else:
+        node.start()

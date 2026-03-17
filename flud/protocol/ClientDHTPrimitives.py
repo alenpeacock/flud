@@ -495,19 +495,26 @@ class SENDkFINDNODE_ASYNC(REQUEST):
         d.addErrback(self.deferred.errback)
 
     def _sendRequest(self, node, host, port, key, url):
-        deferred = threads.deferToThread(self._async_request, node, host, port,
-                key, url)
+        deferred = self._run_async_request(
+                self._async_request(node, host, port, key, url))
         deferred.addErrback(self._errSendk, node, host, port, key, url)
         return deferred
 
-    def _async_request(self, node, host, port, key, url):
-        async def _run():
+    async def _async_request(self, node, host, port, key, url):
+        if aiohttp is None:
+            raise failure.DefaultException(
+                    "aiohttp not available for async DHT request")
+        try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url,
-                        headers=_normalize_headers(self.headers)) as resp:
-                    status = resp.status
-                    body = await resp.text()
+            resp = await self._request(
+                    "GET", url,
+                    headers=_normalize_headers(self.headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
             if status != twebhttp.OK:
                 raise failure.DefaultException(self.commandName+" FAILED from "
                         +host+":"+str(port)+": received status "
@@ -517,12 +524,6 @@ class SENDkFINDNODE_ASYNC(REQUEST):
             updateNode(node.client, node.config, host, port, None, nID)
             updateNodes(node.client, node.config, response['k'])
             return response
-
-        if aiohttp is None:
-            raise failure.DefaultException(
-                    "aiohttp not available for async DHT request")
-        try:
-            return asyncio.run(_run())
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 
@@ -622,29 +623,31 @@ class SENDkSTORE_ASYNC(REQUEST):
         d.addErrback(self.deferred.errback)
 
     def _sendRequest(self, host, port, url):
-        deferred = threads.deferToThread(self._async_request, host, port, url)
+        deferred = self._run_async_request(
+                self._async_request(host, port, url))
         deferred.addErrback(self._storeErr, host, port, url)
         return deferred
 
-    def _async_request(self, host, port, url):
-        async def _run():
+    async def _async_request(self, host, port, url):
+        if aiohttp is None:
+            raise failure.DefaultException("aiohttp not available for async kSTORE")
+        try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.put(url,
-                        headers=_normalize_headers(self.headers)) as resp:
-                    status = resp.status
-                    body = await resp.text()
+            resp = await self._request(
+                    "PUT", url,
+                    headers=_normalize_headers(self.headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
             if status != twebhttp.OK:
                 raise failure.DefaultException(
                         "kSTORE FAILED from %s:%d status=%s body=%s"
                         % (host, port, status, body))
             logger.info("kSTORE to %s:%d finished" % (host, port))
             return body
-
-        if aiohttp is None:
-            raise failure.DefaultException("aiohttp not available for async kSTORE")
-        try:
-            return asyncio.run(_run())
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 
@@ -702,16 +705,23 @@ class SENDkFINDVALUE_ASYNC(SENDkFINDNODE_ASYNC):
     def __init__(self, node, host, port, key):
         SENDkFINDNODE_ASYNC.__init__(self, node, host, port, key, "meta")
 
-    def _async_request(self, node, host, port, key, url):
-        async def _run():
+    async def _async_request(self, node, host, port, key, url):
+        if aiohttp is None:
+            raise failure.DefaultException(
+                    "aiohttp not available for async DHT request")
+        try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url,
-                        headers=_normalize_headers(self.headers)) as resp:
-                    status = resp.status
-                    body = await resp.text()
-                    content_type = resp.headers.get("Content-Type", "")
-                    node_id = resp.headers.get("nodeID")
+            resp = await self._request(
+                    "GET", url,
+                    headers=_normalize_headers(self.headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+                content_type = resp.headers.get("Content-Type", "")
+                node_id = resp.headers.get("nodeID")
+            finally:
+                resp.release()
             if status != twebhttp.OK:
                 raise failure.DefaultException(self.commandName+" FAILED from "
                         +host+":"+str(port)+": received status "
@@ -729,11 +739,5 @@ class SENDkFINDVALUE_ASYNC(SENDkFINDNODE_ASYNC):
             logger.debug("received SENDkFINDVALUE nodes: %s" % response)
             updateNodes(node.client, node.config, response['k'])
             return response
-
-        if aiohttp is None:
-            raise failure.DefaultException(
-                    "aiohttp not available for async DHT request")
-        try:
-            return asyncio.run(_run())
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))

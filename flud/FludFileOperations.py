@@ -5,6 +5,7 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Implements file storage and retrieval operations using flud primitives.
 """
 
+import asyncio
 import os, stat, sys, logging, binascii, random, time, shutil, threading
 from zlib import crc32
 from io import StringIO, BytesIO
@@ -16,6 +17,7 @@ from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
+from flud.async_runtime import maybe_await
 from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
@@ -29,6 +31,10 @@ code_m = code_k+code_n  # total blocks
 # temp filenaming defaults
 appendEncrypt = ".crypt"
 appendFsMeta = ".nmeta"
+
+
+def _diag_enabled():
+    return os.environ.get("FLUD_ASYNC_DIAG") == "1"
 
 # XXX: could remove trailing '=' from all stored sha256s (dht keys, storage
 #      keys, etc) and add them back implicitly
@@ -71,6 +77,20 @@ def _add_timeout(deferred, seconds):
         return result
     deferred.addBoth(_cancel_timeout)
     return deferred
+
+
+def _failure_message(err):
+    getter = getattr(err, "getErrorMessage", None)
+    if callable(getter):
+        return getter()
+    return str(err)
+
+
+def _failure_traceback(err):
+    getter = getattr(err, "getTraceback", None)
+    if callable(getter):
+        return getter()
+    return repr(err)
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -165,6 +185,8 @@ class StoreFile:
         self.nodeChoices = self.config.getPreferredNodes(code_m+10)
         self.usedNodes = {}
 
+        if _diag_enabled():
+            logger.warning(self.ctx("StoreFile init %s", filename))
         self.deferred = self._storeFile()
 
     def _storeFile(self):
@@ -285,6 +307,8 @@ class StoreFile:
             self.mfiles[i] = destfile+".m"
 
         # 4a: query DHT for metadata.
+        if _diag_enabled():
+            logger.warning(self.ctx("StoreFile dispatch kFindValue %s", fencode(self.sK)))
         d = self.node.client.kFindValue(self.sK)
         d.addCallback(self._checkForExistingFileMetadata)
         d.addErrback(self._storeFileErr, "DHT query for metadata failed")
@@ -332,17 +356,52 @@ class StoreFile:
 
     # 5a -- store all blocks
     def _storeBlocks(self, storedMetadata):
-        dlist = []
+        return self.node.async_runtime.deferred_from_coro(
+            self._storeBlocksAsync(storedMetadata)
+        )
+
+    async def _storeBlocksAsync(self, storedMetadata):
         self.blockMetadata = {'k': code_k, 'n': code_n}
+        coros = []
         for i in range(len(self.segHashesLocal)):
-            hash = self.segHashesLocal[i]
+            blockhash = self.segHashesLocal[i]
             sfile = self.sfiles[i]
-            deferred = self._storeBlock(i, hash, sfile, self.mfiles[i])
-            dlist.append(deferred)
+            coros.append(
+                self._storeBlockAsync(i, blockhash, sfile, self.mfiles[i])
+            )
         logger.debug(self.ctx("_storeBlocksAll"))
-        dl = defer.DeferredList(dlist, consumeErrors=True)
-        dl.addCallback(self._storeMetadata)
-        return dl
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+        dlistresults = [(True, result) for result in results]
+        return await self._storeMetadataAsync(dlistresults)
+
+    async def _storeBlockAsync(self, i, hash, sfile, mfile, retry=2):
+        if not self.nodeChoices:
+            self.nodeChoices = self.config.getPreferredNodes(
+                code_k, list(self.usedNodes.keys()))
+            logger.warn(self.ctx("asked for more nodes, %d nodes found",
+                len(self.nodeChoices)))
+        if not self.nodeChoices:
+            raise failure.DefaultException("cannot store blocks to 0 nodes")
+        node = random.choice(self.nodeChoices)
+        self.nodeChoices.remove(node)
+        host = node[0]
+        port = node[1]
+        nID = node[2]
+        nKu = FludRSA.importPublicKey(node[3])
+        location = int(nKu.id(), 16)
+        logger.info(self.ctx("STOREing under %s on %s:%d", fencode(hash),
+            host, port))
+        logger.debug(self.ctx("mfile is %s", mfile))
+        try:
+            result = await self.node.client.async_sendStore(
+                sfile, (self.mkey, mfile), host, port, nKu)
+        except Exception as exc:
+            return await self._retryStoreBlockAsync(
+                exc, i, hash, location, sfile, mfile, nID, host, port, retry)
+        return self._blockStored(result, nID, i, hash, location)
 
     def _storeBlock(self, i, hash, sfile, mfile, retry=2):
         if not self.nodeChoices:
@@ -399,6 +458,27 @@ class StoreFile:
                         TrustDeltas.PUT_FAIL))
             d.errback()
             return d
+
+    async def _retryStoreBlockAsync(self, error, i, hash, location, sfile,
+            mfile, nID, host, port, retry=None):
+        retry = retry - 1
+        if retry > 0:
+            logger.warn(self.ctx("STORE to %s (%s:%d) failed, trying again",
+                nID, host, port))
+            try:
+                return await self._storeBlockAsync(i, hash, sfile, mfile, retry)
+            except Exception as exc:
+                self._storeFileErr(exc, "couldn't store block %s"
+                        % fencode(hash), functor=lambda: self.config.modifyReputation(
+                            nID, TrustDeltas.PUT_FAIL))
+                raise
+        self.usedNodes[nID] = True
+        logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up",
+            nID, host, port))
+        self._storeFileErr(error, "couldn't store block %s" % fencode(hash),
+                functor=lambda: self.config.modifyReputation(nID,
+                    TrustDeltas.PUT_FAIL))
+        raise error
 
     def _blockStored(self, result, nID, i, blockhash, location):
         self.usedNodes[nID] = True
@@ -457,12 +537,15 @@ class StoreFile:
     # 5b -- findnode on all stored blocks. 
     def _verifyAndStoreBlocks(self, storedMetadata, noopVerify=False):
         self.blockMetadata = storedMetadata
-        dlist = []
+        return self.node.async_runtime.deferred_from_coro(
+            self._verifyAndStoreBlocksAsync(storedMetadata, noopVerify)
+        )
+
+    async def _verifyAndStoreBlocksAsync(self, storedMetadata, noopVerify=False):
+        coros = []
         for i, sfile in enumerate(self.sfiles):
-            # XXX: metadata should be BytesIO to begin with
-            f = open(self.mfiles[i], "rb")
-            mfile = BytesIO(f.read())
-            f.close()
+            with open(self.mfiles[i], "rb") as f:
+                mfile = BytesIO(f.read())
             seg = os.path.basename(sfile)
             segl = fdecode(seg)
             nID = self.blockMetadata[(i, segl)]
@@ -470,22 +553,24 @@ class StoreFile:
                 logger.info(self.ctx(
                     "multiple location choices, choosing one randomly."))
                 nID = random.choice(nID)
-                # XXX: for now, this just picks one of the alternatives at
-                #      random.  If the chosen one fails, should try each of the
-                #      others until it works
             logger.info(self.ctx("looking up %s...", ('%x' % nID)[:8]))
-            deferred = self.node.client.kFindNode(nID)
-            deferred.addCallback(self._verifyBlock, i, sfile, mfile, 
-                    seg, segl, nID, noopVerify)
-            deferred.addErrback(self._storeFileErr, 
-                    "couldn't find node %s... for VERIFY" % ('%x' % nID)[:8],
-                    self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL))
-            dlist.append(deferred)
-        dl = defer.DeferredList(dlist, consumeErrors=True)
-        #dl.addCallback(self._storeMetadata)
-        # XXX XXX XXX: don't _updateMaster unless we succeed!!
-        dl.addCallback(self._updateMaster, storedMetadata)
-        return dl
+            coros.append(
+                self._verifyBlockChain(i, sfile, mfile, seg, segl, nID, noopVerify)
+            )
+        await asyncio.gather(*coros, return_exceptions=True)
+        return self._updateMaster(None, storedMetadata)
+
+    async def _verifyBlockChain(self, i, sfile, mfile, seg, segl, nID, noopVerify):
+        try:
+            kdata = await self.node.client.async_kFindNode(nID)
+        except Exception as exc:
+            self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
+            self._storeFileErr(exc, "couldn't find node %s... for VERIFY"
+                    % ('%x' % nID)[:8], False)
+            return None
+        return await self._verifyBlockAsync(
+            kdata, i, sfile, mfile, seg, segl, nID, noopVerify
+        )
 
     def _attachMetadata(self, storedMetadata):
         """
@@ -494,7 +579,12 @@ class StoreFile:
         stores where encryption is non-deterministic).
         """
         self.blockMetadata = storedMetadata
-        dlist = []
+        return self.node.async_runtime.deferred_from_coro(
+            self._attachMetadataAsync(storedMetadata)
+        )
+
+    async def _attachMetadataAsync(self, storedMetadata):
+        coros = []
         for key in storedMetadata:
             if not isinstance(key, tuple) or len(key) != 2:
                 continue
@@ -509,13 +599,17 @@ class StoreFile:
                 logger.warn(self.ctx("failed to read metadata share %s: %s",
                         i, str(exc)))
                 continue
-            deferred = self.node.client.kFindNode(nID)
-            deferred.addCallback(self._sendMetadataVerify, segl, mfile, nID)
-            deferred.addErrback(self._attachMetadataErr, nID, segl)
-            dlist.append(deferred)
-        dl = defer.DeferredList(dlist, consumeErrors=True)
-        dl.addCallback(self._updateMaster, storedMetadata)
-        return dl
+            coros.append(self._attachMetadataChain(nID, segl, mfile))
+        await asyncio.gather(*coros, return_exceptions=True)
+        return self._updateMaster(None, storedMetadata)
+
+    async def _attachMetadataChain(self, nID, segl, mfile):
+        try:
+            kdata = await self.node.client.async_kFindNode(nID)
+            return await self._sendMetadataVerifyAsync(kdata, segl, mfile, nID)
+        except Exception as exc:
+            self._attachMetadataErr(exc, nID, segl)
+            return None
 
     def _sendMetadataVerify(self, kdata, segl, mfile, nID):
         node = None
@@ -535,9 +629,26 @@ class StoreFile:
                 host, port, nKu, (self.mkey, mfile))
         return deferred
 
+    async def _sendMetadataVerifyAsync(self, kdata, segl, mfile, nID):
+        node = None
+        for candidate in kdata.get('k', []):
+            if candidate[2] == nID:
+                node = candidate
+                break
+        if node is None and kdata.get('k'):
+            node = kdata['k'][0]
+        if node is None:
+            raise ValueError("couldn't find node %s" % ('%x' % nID))
+        host, port, _id = node[0], node[1], node[2]
+        nKu = FludRSA.importPublicKey(node[3])
+        logger.info(self.ctx("attaching metadata for %s on %s:%d",
+                fencode(segl), host, port))
+        return await self.node.client.async_sendVerify(
+            fencode(segl), 0, 0, host, port, nKu, (self.mkey, mfile))
+
     def _attachMetadataErr(self, failure, nID, segl):
         logger.warn(self.ctx("couldn't attach metadata to %s: %s",
-                fencode(segl), failure.getErrorMessage()))
+                fencode(segl), _failure_message(failure)))
         self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
         return failure
 
@@ -593,6 +704,62 @@ class StoreFile:
                 verhash)
         return deferred
 
+    async def _verifyBlockAsync(self, kdata, i, sfile, mfile, seg, segl, nID,
+            noopVerify):
+        node = kdata['k'][0]
+        host = node[0]
+        port = node[1]
+        id = node[2]
+        if id != nID:
+            logger.debug(self.ctx("couldn't find node %s", ('%x' % nID)))
+            raise ValueError("couldn't find node %s" % ('%x' % nID))
+        nKu = FludRSA.importPublicKey(node[3])
+
+        logger.info(self.ctx("verifying %s on %s:%d", seg, host, port))
+        if noopVerify:
+            offset = length = 0
+            verhash = int(hashstring(''), 16)
+            self.sfiles = []
+        else:
+            fd = os.open(sfile, os.O_RDONLY)
+            fsize = os.fstat(fd)[stat.ST_SIZE]
+            if fsize > 20:
+                length = 20
+                offset = random.randrange(fsize-length)
+            else:
+                length = fsize
+                offset = 0
+            os.lseek(fd, offset, 0)
+            data = os.read(fd, length)
+            os.close(fd)
+            verhash = int(hashstring(data), 16)
+
+        try:
+            result = await self.node.client.async_sendVerify(
+                seg, offset, length, host, port, nKu, (self.mkey, mfile))
+        except Exception as exc:
+            return await self._checkVerifyErrAsync(
+                exc, nID, i, segl, sfile, mfile, verhash)
+        return await self._checkVerifyAsync(
+            result, nKu, host, port, i, segl, sfile, mfile, verhash)
+
+    async def _checkVerifyAsync(self, result, nKu, host, port, i, seg, sfile,
+            mfile, hash):
+        if hash != int(result, 16):
+            logger.info(self.ctx(
+                "VERIFY hash didn't match for %s, performing STORE",
+                fencode(seg)))
+            return await self._storeBlockAsync(i, seg, sfile, mfile)
+        return fencode(seg)
+
+    async def _checkVerifyErrAsync(self, failure, nID, i, seg, sfile, mfile,
+            hash):
+        self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
+        logger.debug(self.ctx("Couldn't VERIFY: %s", _failure_message(failure)))
+        logger.info(self.ctx("Couldn't VERIFY %s, performing STORE",
+            fencode(seg)))
+        return await self._storeBlockAsync(i, seg, sfile, mfile)
+
     def _checkVerify(self, result, nKu, host, port, i, seg, sfile, mfile, hash):
         if hash != int(result, 16):
             logger.info(self.ctx(
@@ -606,8 +773,8 @@ class StoreFile:
             return fencode(seg)
 
     def _checkVerifyErr(self, failure, nID, i, seg, sfile, mfile, hash):
-        self.config.modifyReputations(nID, TrustDeltas.VRFY_FAIL)
-        logger.debug(self.ctx("Couldn't VERIFY: %s", failure.getErrorMessage()))
+        self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
+        logger.debug(self.ctx("Couldn't VERIFY: %s", _failure_message(failure)))
         logger.info(self.ctx("Couldn't VERIFY %s, performing STORE", 
             fencode(seg)))
         d = self._storeBlock(i, seg, sfile, mfile)
@@ -620,7 +787,7 @@ class StoreFile:
         # XXX: for any "False" in dlistresults, need to invoke _storeBlocks
         #      again on corresponding entries in sfiles.
         for i in dlistresults:
-            if i[1] == None:
+            if not i[0] or i[1] == None or isinstance(i[1], Exception):
                 logger.info(self.ctx("failed store/verify"))
                 return False
 
@@ -635,6 +802,18 @@ class StoreFile:
         d.addCallback(self._updateMaster, self.blockMetadata)
         d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
         return d
+
+    async def _storeMetadataAsync(self, dlistresults):
+        logger.debug(self.ctx("dlist=%s", str(dlistresults)))
+        for i in dlistresults:
+            if not i[0] or i[1] == None or isinstance(i[1], Exception):
+                logger.info(self.ctx("failed store/verify"))
+                return False
+
+        logger.debug(self.ctx("storing metadata at %s", fencode(self.sK)))
+        logger.debug(self.ctx("len(segMetadata) = %d", len(self.blockMetadata)))
+        result = await self.node.client.async_kStore(self.sK, self.blockMetadata)
+        return self._updateMaster(result, self.blockMetadata)
 
     # 7 - update local master file record (store it to the network later).
     def _updateMaster(self, res, meta):
@@ -707,8 +886,8 @@ class StoreFile:
             logger.debug(self.ctx("err setting counter = %d for %s", counter, 
                 self.eK))
             self.currentOps[self.eK] = (d, counter)
-        logger.error(self.ctx("%s: %s", message, failure.getErrorMessage()))
-        logger.debug(self.ctx("%s", failure.getTraceback()))
+        logger.error(self.ctx("%s: %s", message, _failure_message(failure)))
+        logger.debug(self.ctx("%s", _failure_traceback(failure)))
         if raiseException:
             raise failure
 
@@ -755,17 +934,21 @@ class RetrieveFile:
         self.deferred = self._retrieveFile()
         
     def _retrieveFile(self):
-        # 1: Query DHT for sK
+        return self.node.async_runtime.deferred_from_coro(
+            self._retrieveFileAsync()
+        )
+
+    async def _retrieveFileAsync(self):
         logger.debug(self.ctx("querying DHT for %s", self.sK))
-        d = self.node.client.kFindValue(self.sK)
-        _add_timeout(d, 10)
-        d.addCallback(self._retrieveFileBlocks)
-        d.addErrback(self._findFileErr, "file retrieve failed")
-        return d
+        try:
+            meta = await self.node.client.async_kFindValue(self.sK)
+        except Exception as exc:
+            return self._findFileErr(exc, "file retrieve failed")
+        return await maybe_await(self._retrieveFileBlocks(meta))
 
     def _findFileErr(self, failure, message, raiseException=True):
-        logger.error(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
-        logger.debug(self.ctx("%s" % (failure.getTraceback(),)))
+        logger.error(self.ctx("%s: %s" % (message, _failure_message(failure))))
+        logger.debug(self.ctx("%s" % (_failure_traceback(failure),)))
         if raiseException:
             return failure
 
@@ -861,13 +1044,18 @@ class RetrieveFile:
         return [item[0] for item in r]
 
     def _getSomeBlocks(self, reqs=code_k):
+        return self.node.async_runtime.deferred_from_coro(
+            self._getSomeBlocksAsync(reqs)
+        )
+
+    async def _getSomeBlocksAsync(self, reqs=code_k):
         tries = 0
         total = len(self.meta)
         if reqs > len(self.meta):
             reqs = len(self.meta)
         logger.info(self.ctx("requesting %d blocks from %d available",
                 reqs, total))
-        dlist = []
+        coros = []
         logger.debug(self.ctx("about to order nodes"))
         keys = self._orderNodes(self.meta)
         unique_keys = []
@@ -915,24 +1103,33 @@ class RetrieveFile:
                 pass
             logger.info(self.ctx("retrieving %s from %s" % (block, id)))
             # look up nodes by id, then do a retrieve.
-            deferred = self.node.client.kFindNode(id)
-            _add_timeout(deferred, 10)
             self.requested_indices.add(idx)
-            deferred.addCallback(self._retrieveBlock, block, id, idx)
-            deferred.addErrback(self._findNodeErr, 
-                    "couldn't find node %s for block %s" % (fencode(id), block),
-                    id, idx)
-            dlist.append(deferred)
+            coros.append(self._retrieveBlockChain(block, id, idx))
             self.meta.pop(choice)
             tries = tries + 1
             if tries >= reqs:
                 break;
-        dl = defer.DeferredList(dlist, consumeErrors=True)
-        dl.addCallback(self._retrievedAll)
-        return dl
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        normalized = []
+        for result in results:
+            if isinstance(result, Exception):
+                normalized.append((False, result))
+            else:
+                normalized.append((True, result))
+        return await maybe_await(self._retrievedAll(normalized))
+
+    async def _retrieveBlockChain(self, block, id, idx):
+        try:
+            kdata = await self.node.client.async_kFindNode(id)
+        except Exception as exc:
+            self._findNodeErr(exc,
+                    "couldn't find node %s for block %s" % (fencode(id), block),
+                    id, idx)
+            return None
+        return await self._retrieveBlockAsync(kdata, block, id, idx)
 
     def _findNodeErr(self, failure, msg, id, idx=None):
-        logger.info(self.ctx("%s: %s" % (msg, failure.getErrorMessage())))
+        logger.info(self.ctx("%s: %s" % (msg, _failure_message(failure))))
         self.config.modifyReputation(id, TrustDeltas.FNDN_FAIL)
         if idx is not None:
             self.requested_indices.discard(idx)
@@ -967,6 +1164,32 @@ class RetrieveFile:
                     "couldn't get block %s from %s" % (block, fencode(id)),
                     host, port, id, idx)
             return d
+
+    async def _retrieveBlockAsync(self, kdata, block, id, idx):
+        node = None
+        for candidate in kdata['k']:
+            if candidate[2] == id:
+                node = candidate
+                break
+        if node is None:
+            self.bad_nodes.add(id)
+            logger.info(self.ctx(
+                "node %s not in kFindNode response; using closest match",
+                fencode(id)))
+            node = kdata['k'][0]
+        host = node[0]
+        port = node[1]
+        id = node[2]
+        nKu = FludRSA.importPublicKey(node[3])
+        if not self.decoded:
+            try:
+                msg = await self.node.client.async_sendRetrieve(
+                    block, host, port, nKu, self.mkey)
+            except Exception as exc:
+                return self._retrieveBlockErr(
+                    exc, id, "couldn't get block %s from %s" % (
+                        block, fencode(id)), host, port, id, idx)
+            return self._retrievedBlock(msg, id, block, self.mkey, idx)
     
     def _retrievedBlock(self, msg, nID, block, mkey, idx):
         logger.debug(self.ctx("retrieved block=%s, msg=%s" % (block, msg)))
@@ -991,7 +1214,7 @@ class RetrieveFile:
         return True
 
     def _retrieveBlockErr(self, failure, nID, message, host, port, id, idx):
-        logger.info(self.ctx("%s: %s" % (message, failure.getErrorMessage())))
+        logger.info(self.ctx("%s: %s" % (message, _failure_message(failure))))
         self.config.modifyReputation(nID, TrustDeltas.GET_FAIL)
         self.requested_indices.discard(idx)
         self.bad_nodes.add(id)
@@ -1020,21 +1243,29 @@ class RetrieveFile:
 
     def _decodeData(self):
         logger.debug(self.ctx("_decodeData"))
+        return self.node.async_runtime.deferred_from_coro(self._decodeDataAsync())
+
+    async def _decodeDataAsync(self):
         self.fname = os.path.join(self.parentcodedir,fencode(self.sK))+".rec1"
-        d = threads.deferToThread(self.decodeData, self.fname, 
-                list(self.blocks.values()), self.config.clientdir)
-        d.addCallback(self._decodeFsMetadata, self.blocks)
-        d.addErrback(self._decodeError)
-        return d
+        decoded = await asyncio.to_thread(
+            self.decodeData, self.fname, list(self.blocks.values()),
+            self.config.clientdir
+        )
+        return await maybe_await(self._decodeFsMetadata(decoded, self.blocks))
 
     def _decodeFsMetadata(self, decoded, blockname):
         logger.debug(self.ctx("_decodeFsMetadata"))
+        return self.node.async_runtime.deferred_from_coro(
+            self._decodeFsMetadataAsync(decoded, blockname)
+        )
+
+    async def _decodeFsMetadataAsync(self, decoded, blockname):
         self.mfname = os.path.join(self.parentcodedir,fencode(self.sK))+".m"
-        d = threads.deferToThread(self.decodeData, self.mfname, 
-                list(self.fsmetas.values()), self.config.clientdir)
-        d.addCallback(self._decodeDone, decoded)
-        d.addErrback(self._decodeError)
-        return d
+        metadecoded = await asyncio.to_thread(
+            self.decodeData, self.mfname, list(self.fsmetas.values()),
+            self.config.clientdir
+        )
+        return await maybe_await(self._decodeDone(decoded, metadecoded))
 
     def decodeData(self, outfname, datafnames, datadir=None):
         logger.info(self.ctx("decoding %s to %s" % (datafnames, outfname)))
@@ -1131,7 +1362,7 @@ class RetrieveFile:
                     "rerunning full retrieve"))
             return self._schedule_retry("decode failed (insufficient shares)")
         logger.warn(self.ctx("could not decode: %s", str(err)))
-        logger.debug(self.ctx("%s", (err.getTraceback(),)))
+        logger.debug(self.ctx("%s", (_failure_traceback(err),)))
         return err
 
     def _reset_retrieve_state(self):
@@ -1143,6 +1374,11 @@ class RetrieveFile:
         self.bad_nodes = set()
 
     def _schedule_retry(self, reason):
+        return self.node.async_runtime.deferred_from_coro(
+            self._schedule_retry_async(reason)
+        )
+
+    async def _schedule_retry_async(self, reason):
         if self.retry_count >= self.max_retries:
             raise RuntimeError("%s (retries exhausted)" % reason)
         self.retry_count += 1
@@ -1150,10 +1386,8 @@ class RetrieveFile:
         logger.warn(self.ctx("retry %d/%d in %ds: %s",
                 self.retry_count, self.max_retries, delay, reason))
         self._reset_retrieve_state()
-        d = defer.Deferred()
-        reactor.callLater(delay, d.callback, None)
-        d.addCallback(lambda _: self._retrieveFile())
-        return d
+        await asyncio.sleep(delay)
+        return await self._retrieveFileAsync()
 
     def _decodeDone(self, decoded, metadecoded):
         if not self.decoded and decoded and metadecoded:
@@ -1384,8 +1618,9 @@ class RetrieveFilename:
                     d = RetrieveFile(self.node, fencode(filekey),
                             metakey).deferred
                     dlist.append(d)
-                dl = defer.DeferredList(dlist, consumeErrors=True)
-                return dl
+                return self.node.async_runtime.deferred_from_coro(
+                    self._gatherRecoveries(dlist)
+                )
             else:
                 logger.debug("%s is file in master metadata", self.filename)
                 (filekey, backuptime) = self.config.getFromMasterMeta(
@@ -1399,6 +1634,19 @@ class RetrieveFilename:
                 return defer.fail(LookupError("bad filekey %s for %s" 
                         % (filekey, self.filename)))
         return defer.fail(LookupError("no record of %s" % self.filename))
+
+    async def _gatherRecoveries(self, dlist):
+        results = await asyncio.gather(
+            *(maybe_await(d) for d in dlist),
+            return_exceptions=True,
+        )
+        gathered = []
+        for result in results:
+            if isinstance(result, Exception):
+                gathered.append((False, result))
+            else:
+                gathered.append((True, result))
+        return gathered
 
 
 class VerifyFile:

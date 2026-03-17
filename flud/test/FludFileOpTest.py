@@ -134,7 +134,10 @@ def cleanup(_, node, filenamelist):
             os.remove(f)
         except:
             print("couldn't remove %s" % f)
-    reactor.callLater(1, node.stop)
+    if getattr(node, "_use_async_server", False):
+        node.async_runtime.loop.call_soon_threadsafe(node.stop)
+    else:
+        reactor.callLater(1, node.stop)
 
 def generateTestFile(minSize):
     fname = tempfile.mktemp()

@@ -10,9 +10,11 @@ from twisted.internet import reactor, threads, defer, error
 from twisted.python import failure
 import time, os, stat, sys, logging, tarfile, gzip, asyncio, socket
 from io import StringIO, BytesIO
+import threading
 
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
+from flud.async_runtime import maybe_await
 
 from . import ConnectionQueue
 from .FludCommUtil import *
@@ -30,6 +32,10 @@ loggerrtrv = logging.getLogger("flud.client.op.rtrv")
 loggerdele = logging.getLogger("flud.client.op.dele")
 loggervrfy = logging.getLogger("flud.client.op.vrfy")
 loggerauth = logging.getLogger("flud.client.op.auth")
+
+
+def _async_diag_enabled():
+    return os.environ.get("FLUD_ASYNC_DIAG") == "1"
 
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
 TARFILE_TO = 2        # timeout for checking aggregated tar files
@@ -153,6 +159,12 @@ class REQUEST(object):
         self.headers = {'Fludprotocol': PROTOCOL_VERSION,
                 'User-Agent': 'FludClient'}
 
+    def _run_async_request(self, coro):
+        return self.node.async_runtime.deferred_from_coro(coro)
+
+    async def _request(self, method, url, **kwargs):
+        return await self.node.async_http.request(method, url, **kwargs)
+
 
 class SENDGETID(REQUEST):
 
@@ -250,19 +262,25 @@ class SENDGETID_ASYNC(REQUEST):
         d.addErrback(self._errID, node, host, port, url)
 
     def _sendRequest(self, node, host, port, url):
-        deferred = threads.deferToThread(self._async_request, node, host, port,
-                url)
+        deferred = self._run_async_request(
+                self._async_request(node, host, port, url))
         deferred.addErrback(self._errID, node, host, port, url)
         return deferred
 
-    def _async_request(self, node, host, port, url):
-        async def _run():
+    async def _async_request(self, node, host, port, url):
+        if aiohttp is None:
+            raise failure.DefaultException("aiohttp not available for async ID")
+        try:
             timeout = aiohttp.ClientTimeout(total=primitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url,
-                        headers=_normalize_headers(self.headers)) as resp:
-                    status = resp.status
-                    body = await resp.text()
+            resp = await self._request(
+                    "GET", url,
+                    headers=_normalize_headers(self.headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
             if status != twebhttp.OK:
                 raise failure.DefaultException(
                         "SENDGETID FAILED to %s: server sent status %s, '%s'"
@@ -276,11 +294,6 @@ class SENDGETID_ASYNC(REQUEST):
             loggerid.info("SENDGETID PASSED to %s" % self.dest)
             updateNode(self.node.client, self.config, host, port, nKu)
             return nKu
-
-        if aiohttp is None:
-            raise failure.DefaultException("aiohttp not available for async ID")
-        try:
-            return asyncio.run(_run())
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 
@@ -467,20 +480,21 @@ class SENDSTORE_ASYNC(REQUEST):
         if aiohttp is None:
             return defer.fail(failure.DefaultException(
                 "aiohttp not available for async STORE"))
-        deferred = threads.deferToThread(
-                self._async_request, headers, nKu, host, port, filekey,
-                datafile, metadata, params, skipfile)
+        deferred = self._run_async_request(
+                self._async_request(headers, nKu, host, port, filekey,
+                datafile, metadata, params, skipfile))
         deferred.addErrback(self._errSendStore,
                 "Couldn't upload file %s to %s:%d" % (datafile, host, port),
                 headers, nKu, host, port, filekey, datafile, metadata, params,
                 skipfile)
         return deferred
 
-    def _async_request(self, headers, nKu, host, port, filekey,
+    async def _async_request(self, headers, nKu, host, port, filekey,
             datafile, metadata, params, skipfile):
         async def _do_request(hdrs, skip):
             url = "http://%s:%d/file/%s" % (host, port, filekey)
-            loggerstor.debug("SENDSTORE async POST %s", url)
+            if _async_diag_enabled():
+                loggerstor.warning("SENDSTORE async POST %s skip=%s", url, skip)
             norm_headers = {}
             for k, v in hdrs.items():
                 if isinstance(v, bytes):
@@ -522,24 +536,27 @@ class SENDSTORE_ASYNC(REQUEST):
                 data.add_field(element, file_bytes,
                         filename=os.path.basename(file),
                         content_type="application/octet-stream")
-
             timeout = aiohttp.ClientTimeout(total=primitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, data=data,
-                        headers=norm_headers) as resp:
-                    status = resp.status
-                    reason = resp.reason
-                    body = await resp.read()
+            resp = await self._request("POST", url, data=data,
+                    headers=norm_headers, timeout=timeout)
+            try:
+                status = resp.status
+                reason = resp.reason
+                body = await resp.read()
+            finally:
+                resp.release()
             return status, reason, body
 
         async def _run():
             auth_retries = 0
             hdrs = dict(headers)
             skip = skipfile
+            url = "http://%s:%d/file/%s" % (host, port, filekey)
             while True:
                 status, reason, body = await _do_request(hdrs, skip)
-                loggerstor.debug("SENDSTORE async response %s %s",
-                        status, reason)
+                if _async_diag_enabled():
+                    loggerstor.warning("SENDSTORE async response %s %s %s",
+                            status, reason, url)
                 if status == twebhttp.UNAUTHORIZED:
                     if auth_retries >= MAXAUTHRETRY:
                         raise failure.DefaultException(
@@ -552,6 +569,8 @@ class SENDSTORE_ASYNC(REQUEST):
                             challenge = None
                     if not challenge:
                         challenge = reason
+                    if _async_diag_enabled():
+                        loggerstor.warning("SENDSTORE async retry auth %s", url)
                     hdrs = answerChallenge(challenge, self.node.config.Kr,
                             self.node.config.groupIDu, nKu.id(), hdrs)
                     auth_retries += 1
@@ -569,7 +588,7 @@ class SENDSTORE_ASYNC(REQUEST):
                 return body
 
         try:
-            return asyncio.run(_run())
+            return await _run()
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             loggerstor.warn("SENDSTORE async client error: %s", str(exc))
             raise socket.error(str(exc))
@@ -611,6 +630,7 @@ aggDeferredMap = {}  # a map of maps, containing a list of deferreds.  The
                      # aggDeferredMap['y']['x']
 aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
+aggStateLock = threading.Lock()
 class AggregateStore:
 
     # XXX: if multiple guys store the same file, we're going to get into bad
@@ -624,19 +644,18 @@ class AggregateStore:
         tarfilename = os.path.join(node.config.clientdir,nKu.id())\
                 +'-'+host+'-'+str(port)+".tar"
         loggerstoragg.debug("tarfile name is %s" % tarfilename)
-        if not os.path.exists(tarfilename) \
-                or tarfilename not in aggDeferredMap:
-            loggerstoragg.debug("creating tarfile %s to append %s" 
-                    % (tarfilename, datafile))
-            tar = tarfile.open(tarfilename, "w")
-            tarfileTimeout = reactor.callLater(TARFILE_TO, self.sendTar,  
-                    tarfilename, nKu, node, host, port)
-            aggDeferredMap[tarfilename] = {}
-            aggTimeoutMap[tarfilename] = tarfileTimeout
-        else:
-            loggerstoragg.debug("opening tarfile %s to append %s"
-                    % (tarfilename, datafile))
-            tar = tarfile.open(tarfilename, "a")
+        with aggStateLock:
+            create_tar = not os.path.exists(tarfilename) \
+                    or tarfilename not in aggDeferredMap
+            if create_tar:
+                loggerstoragg.debug("creating tarfile %s to append %s"
+                        % (tarfilename, datafile))
+                tar = tarfile.open(tarfilename, "w")
+                aggDeferredMap[tarfilename] = {}
+            else:
+                loggerstoragg.debug("opening tarfile %s to append %s"
+                        % (tarfilename, datafile))
+                tar = tarfile.open(tarfilename, "a")
         
         if os.path.basename(datafile) not in tar.getnames():
             loggerstoragg.info("adding datafile %s to tarball, %s" 
@@ -683,23 +702,62 @@ class AggregateStore:
         self.deferred = defer.Deferred()
         loggerstoragg.debug("adding deferred on %s for %s" 
                 % (tarfilename, datafile))
-        try:
-            aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
-                    self.deferred)
-        except KeyError:
-            aggDeferredMap[tarfilename][os.path.basename(datafile)] \
-                    = [self.deferred]
-        self.resetTimeout(aggTimeoutMap[tarfilename], tarfilename)
+        with aggStateLock:
+            try:
+                aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
+                        self.deferred)
+            except KeyError:
+                aggDeferredMap[tarfilename][os.path.basename(datafile)] \
+                        = [self.deferred]
+        self.resetTimeout(tarfilename, nKu, node, host, port)
 
-    def resetTimeout(self, timeoutFunc, tarball):
+    def resetTimeout(self, tarball, nKu, node, host, port):
         loggerstoragg.debug("in resetTimeout...")
-        if timeoutFunc.active():
-            #timeoutFunc.reset(TARFILE_TO)
-            if os.stat(tarball)[stat.ST_SIZE] < MINSTORSIZE:
-                loggerstoragg.debug("...reset")
-                timeoutFunc.reset(TARFILE_TO)
-                return
+        if _use_async_http():
+            self._resetAsyncTimeout(tarball, nKu, node, host, port)
+            return
+        with aggStateLock:
+            timeoutFunc = aggTimeoutMap.get(tarball)
+            if timeoutFunc is None:
+                timeoutFunc = reactor.callLater(
+                        TARFILE_TO, self.sendTar, tarball, nKu, node, host, port)
+                aggTimeoutMap[tarball] = timeoutFunc
+        if timeoutFunc.active() and os.stat(tarball)[stat.ST_SIZE] < MINSTORSIZE:
+            loggerstoragg.debug("...reset")
+            timeoutFunc.reset(TARFILE_TO)
+            return
         loggerstoragg.debug("...didn't reset")
+
+    def _resetAsyncTimeout(self, tarball, nKu, node, host, port):
+        runtime = node.async_runtime
+        if not os.path.exists(tarball):
+            return
+
+        def _schedule():
+            handle = aggTimeoutMap.get(tarball)
+            if handle is not None:
+                handle.cancel()
+            size_ok = os.path.exists(tarball) and \
+                    os.stat(tarball)[stat.ST_SIZE] < MINSTORSIZE
+            if not size_ok:
+                return
+            aggTimeoutMap[tarball] = runtime.loop.call_later(
+                    TARFILE_TO,
+                    lambda: runtime.submit(
+                        self._sendTarAsync(tarball, nKu, node, host, port)))
+
+        runtime.loop.call_soon_threadsafe(_schedule)
+
+    def _prepareTarball(self, tarball):
+        gtarball = tarball+".gz"
+        gtar = gzip.GzipFile(gtarball, 'wb')
+        try:
+            with open(tarball, 'rb') as src:
+                gtar.write(src.read())
+        finally:
+            gtar.close()
+        os.remove(tarball)
+        return gtarball
         
     def sendTar(self, tarball, nKu, node, host, port):
         gtarball = tarball+".gz"
@@ -716,6 +774,20 @@ class AggregateStore:
         self.deferred = sender(nKu, node, host, port, gtarball).deferred
         self.deferred.addCallback(self.callbackTarfiles, tarball)
         self.deferred.addErrback(self.errbackTarfiles, tarball)
+
+    async def _sendTarAsync(self, tarball, nKu, node, host, port):
+        loggerstoragg.info(
+                "aggregation op triggered, sending tarfile %s.gz to %s:%d (async)"
+                % (tarball, host, port))
+        try:
+            gtarball = await asyncio.to_thread(self._prepareTarball, tarball)
+            result = await maybe_await(
+                    SENDSTORE_ASYNC(nKu, node, host, port, gtarball).deferred)
+        except Exception as exc:
+            self.errbackTarfiles(exc, tarball)
+            return None
+        self.callbackTarfiles(result, tarball)
+        return result
 
     # XXX: make aggDeferredMap use a non-.tar key, so that we don't have to
     # keep passing 'tarball' around (since we removed it and are really only
@@ -740,6 +812,14 @@ class AggregateStore:
             loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
                     str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
+        with aggStateLock:
+            aggDeferredMap.pop(tarball, None)
+            handle = aggTimeoutMap.pop(tarball, None)
+        if handle is not None and hasattr(handle, "cancel"):
+            try:
+                handle.cancel()
+            except Exception:
+                pass
         loggerstoragg.debug("deleting tarball %s" % gtarball)
         os.remove(gtarball)
         for cb in cbs:
@@ -764,6 +844,14 @@ class AggregateStore:
             loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
                     str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
+        with aggStateLock:
+            aggDeferredMap.pop(tarball, None)
+            handle = aggTimeoutMap.pop(tarball, None)
+        if handle is not None and hasattr(handle, "cancel"):
+            try:
+                handle.cancel()
+            except Exception:
+                pass
         loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
         #os.remove(gtarball)
         for cb in cbs:
@@ -900,56 +988,57 @@ class SENDRETRIEVE_ASYNC(REQUEST):
         d.addErrback(self.deferred.errback)
 
     def _sendRequest(self, headers, nKu, host, port, url, filekey):
-        deferred = threads.deferToThread(self._async_request, headers, nKu,
-                host, port, url, filekey)
+        deferred = self._run_async_request(
+                self._async_request(headers, nKu, host, port, url, filekey))
         deferred.addErrback(self._errSendRetrieve, nKu, host, port, url,
                 headers, filekey)
         return deferred
 
-    def _async_request(self, headers, nKu, host, port, url, filekey):
-        async def _run():
-            auth_retries = 0
-            hdrs = dict(headers)
-            timeout = aiohttp.ClientTimeout(total=transfer_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                while True:
-                    async with session.get(url,
-                            headers=_normalize_headers(hdrs)) as resp:
-                        status = resp.status
-                        reason = resp.reason
-                        body = await resp.read()
-                        content_type = resp.headers.get("Content-Type", "")
-                        boundary = resp.headers.get("boundary", "")
-                    if status == twebhttp.UNAUTHORIZED:
-                        if auth_retries >= MAXAUTHRETRY:
-                            raise failure.DefaultException(
-                                    "SENDRETRIEVE unauthorized (retries exhausted)")
-                        challenge = body.decode("utf-8", errors="ignore") \
-                                if body else ""
-                        if not challenge:
-                            challenge = reason
-                        hdrs = answerChallenge(challenge, self.node.config.Kr,
-                                self.node.config.groupIDu, nKu.id(), hdrs)
-                        auth_retries += 1
-                        continue
-                    if status == twebhttp.NOT_FOUND:
-                        raise NotFoundException("Not found: %s" % filekey)
-                    if status == twebhttp.BAD_REQUEST:
-                        raise BadRequestException("Bad request for %s" % filekey)
-                    if status != twebhttp.OK:
-                        raise failure.DefaultException(
-                                "SENDRETRIEVE FAILED: server sent status %s, '%s'"
-                                % (status, body))
-                    saved = _save_retrieve_response(body, content_type,
-                            self.node.config.clientdir, filekey, boundary)
-                    updateNode(self.node.client, self.config, host, port, nKu)
-                    return saved
-
+    async def _async_request(self, headers, nKu, host, port, url, filekey):
         if aiohttp is None:
             raise failure.DefaultException(
                     "aiohttp not available for async RETRIEVE")
         try:
-            return asyncio.run(_run())
+            auth_retries = 0
+            hdrs = dict(headers)
+            timeout = aiohttp.ClientTimeout(total=transfer_to)
+            while True:
+                resp = await self._request(
+                        "GET", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.read()
+                    content_type = resp.headers.get("Content-Type", "")
+                    boundary = resp.headers.get("boundary", "")
+                finally:
+                    resp.release()
+                if status == twebhttp.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise failure.DefaultException(
+                                "SENDRETRIEVE unauthorized (retries exhausted)")
+                    challenge = body.decode("utf-8", errors="ignore") \
+                            if body else ""
+                    if not challenge:
+                        challenge = reason
+                    hdrs = answerChallenge(challenge, self.node.config.Kr,
+                            self.node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == twebhttp.NOT_FOUND:
+                    raise NotFoundException("Not found: %s" % filekey)
+                if status == twebhttp.BAD_REQUEST:
+                    raise BadRequestException("Bad request for %s" % filekey)
+                if status != twebhttp.OK:
+                    raise failure.DefaultException(
+                            "SENDRETRIEVE FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                saved = _save_retrieve_response(body, content_type,
+                        self.node.config.clientdir, filekey, boundary)
+                updateNode(self.node.client, self.config, host, port, nKu)
+                return saved
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 
@@ -1070,47 +1159,48 @@ class SENDDELETE_ASYNC(REQUEST):
         d.addErrback(self.deferred.errback)
 
     def _sendRequest(self, headers, nKu, host, port, url):
-        deferred = threads.deferToThread(self._async_request, headers, nKu,
-                host, port, url)
+        deferred = self._run_async_request(
+                self._async_request(headers, nKu, host, port, url))
         deferred.addErrback(self._errSendDelete, nKu, host, port, url, headers)
         return deferred
 
-    def _async_request(self, headers, nKu, host, port, url):
-        async def _run():
-            auth_retries = 0
-            hdrs = dict(headers)
-            timeout = aiohttp.ClientTimeout(total=primitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                while True:
-                    async with session.delete(url,
-                            headers=_normalize_headers(hdrs)) as resp:
-                        status = resp.status
-                        reason = resp.reason
-                        body = await resp.text()
-                    if status == twebhttp.UNAUTHORIZED:
-                        if auth_retries >= MAXAUTHRETRY:
-                            raise failure.DefaultException(
-                                    "SENDDELETE unauthorized (retries exhausted)")
-                        challenge = body or reason
-                        hdrs = answerChallenge(challenge, self.node.config.Kr,
-                                self.node.config.groupIDu, nKu.id(), hdrs)
-                        auth_retries += 1
-                        continue
-                    if status == twebhttp.NOT_FOUND:
-                        raise NotFoundException(body or "not found")
-                    if status == twebhttp.BAD_REQUEST:
-                        raise BadRequestException(body or "bad request")
-                    if status != twebhttp.OK:
-                        raise failure.DefaultException(
-                                "SENDDELETE FAILED: server sent status %s, '%s'"
-                                % (status, body))
-                    updateNode(self.node.client, self.config, host, port, nKu)
-                    return body
-
+    async def _async_request(self, headers, nKu, host, port, url):
         if aiohttp is None:
             raise failure.DefaultException("aiohttp not available for async DELETE")
         try:
-            return asyncio.run(_run())
+            auth_retries = 0
+            hdrs = dict(headers)
+            timeout = aiohttp.ClientTimeout(total=primitive_to)
+            while True:
+                resp = await self._request(
+                        "DELETE", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.text()
+                finally:
+                    resp.release()
+                if status == twebhttp.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise failure.DefaultException(
+                                "SENDDELETE unauthorized (retries exhausted)")
+                    challenge = body or reason
+                    hdrs = answerChallenge(challenge, self.node.config.Kr,
+                            self.node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == twebhttp.NOT_FOUND:
+                    raise NotFoundException(body or "not found")
+                if status == twebhttp.BAD_REQUEST:
+                    raise BadRequestException(body or "bad request")
+                if status != twebhttp.OK:
+                    raise failure.DefaultException(
+                            "SENDDELETE FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                updateNode(self.node.client, self.config, host, port, nKu)
+                return body
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 
@@ -1262,47 +1352,48 @@ class SENDVERIFY_ASYNC(REQUEST):
         d.addErrback(self.deferred.errback)
 
     def _sendRequest(self, headers, nKu, host, port, url):
-        deferred = threads.deferToThread(self._async_request, headers, nKu,
-                host, port, url)
+        deferred = self._run_async_request(
+                self._async_request(headers, nKu, host, port, url))
         deferred.addErrback(self._errSendVerify, nKu, host, port, url, headers)
         return deferred
 
-    def _async_request(self, headers, nKu, host, port, url):
-        async def _run():
-            auth_retries = 0
-            hdrs = dict(headers)
-            timeout = aiohttp.ClientTimeout(total=primitive_to)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                while True:
-                    async with session.get(url,
-                            headers=_normalize_headers(hdrs)) as resp:
-                        status = resp.status
-                        reason = resp.reason
-                        body = await resp.text()
-                    if status == twebhttp.UNAUTHORIZED:
-                        if auth_retries >= MAXAUTHRETRY:
-                            raise failure.DefaultException(
-                                    "SENDVERIFY unauthorized (retries exhausted)")
-                        challenge = body or reason
-                        hdrs = answerChallenge(challenge, self.node.config.Kr,
-                                self.node.config.groupIDu, nKu.id(), hdrs)
-                        auth_retries += 1
-                        continue
-                    if status == twebhttp.NOT_FOUND:
-                        raise NotFoundException(body or "not found")
-                    if status == twebhttp.BAD_REQUEST:
-                        raise BadRequestException(body or "bad request")
-                    if status != twebhttp.OK:
-                        raise failure.DefaultException(
-                                "SENDVERIFY FAILED: server sent status %s, '%s'"
-                                % (status, body))
-                    updateNode(self.node.client, self.config, host, port, nKu)
-                    return body
-
+    async def _async_request(self, headers, nKu, host, port, url):
         if aiohttp is None:
             raise failure.DefaultException("aiohttp not available for async VERIFY")
         try:
-            return asyncio.run(_run())
+            auth_retries = 0
+            hdrs = dict(headers)
+            timeout = aiohttp.ClientTimeout(total=primitive_to)
+            while True:
+                resp = await self._request(
+                        "GET", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.text()
+                finally:
+                    resp.release()
+                if status == twebhttp.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise failure.DefaultException(
+                                "SENDVERIFY unauthorized (retries exhausted)")
+                    challenge = body or reason
+                    hdrs = answerChallenge(challenge, self.node.config.Kr,
+                            self.node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == twebhttp.NOT_FOUND:
+                    raise NotFoundException(body or "not found")
+                if status == twebhttp.BAD_REQUEST:
+                    raise BadRequestException(body or "bad request")
+                if status != twebhttp.OK:
+                    raise failure.DefaultException(
+                            "SENDVERIFY FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                updateNode(self.node.client, self.config, host, port, nKu)
+                return body
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise socket.error(str(exc))
 

@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 
+import asyncio
 import sys
-from twisted.internet import reactor
 
 from flud.FludConfig import FludConfig
-from flud.protocol.LocalClient import LocalClientFactory
 from flud.FludScheduler import FludScheduler
+from flud.protocol.AsyncLocalClient import AsyncLocalClient
 
-def main():
+
+async def _main():
     config = FludConfig()
     config.load(doLogging=False)
 
-    factory = LocalClientFactory(config)
-    
     if len(sys.argv) == 2:
         config.clientport = int(sys.argv[1])
+
     print("connecting to localhost:%d" % config.clientport)
-    reactor.connectTCP('localhost', config.clientport, factory)
+    client = AsyncLocalClient(config)
+    await client.connect()
+    scheduler = FludScheduler(config, client)
+    try:
+        await scheduler.run_forever()
+    finally:
+        await client.close()
 
-    scheduler = FludScheduler(config, factory)
 
-    reactor.callLater(1, scheduler.run)
-
-    reactor.run()
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(_main())

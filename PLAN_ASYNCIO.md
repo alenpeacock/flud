@@ -9,7 +9,7 @@ It will be updated as the migration progresses.
 - Phase 1: complete
 - Phase 2: complete
 - Phase 3: complete
-- Phase 4: pending
+- Phase 4: in progress
 - Phase 5: pending
 
 ## Target Architecture

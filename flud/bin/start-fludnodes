@@ -13,8 +13,8 @@ if [ -z "$tacfile" ]; then
     echo "could not determine FludNode.tac path" >&2
     exit 1
 fi
-invoker=(poetry run twistd -noy "$tacfile")
 startup_timeout=${FLUDSTARTUPTIMEOUT:-30}
+use_async_server="${FLUD_ASYNCIO_SERVER:-0}"
 
 wait_for_node() {
     local pid="$1"
@@ -41,6 +41,43 @@ wait_for_node() {
     return 1
 }
 
+start_node() {
+    local listenport="$1"
+    local pidfile="$2"
+    local logfile="$3"
+    local gateway_host="$4"
+    local gateway_port="$5"
+
+    rm -f "$pidfile"
+
+    if [ "$use_async_server" = "1" ]; then
+        local cmd=(poetry run python3 "$SCRIPT_DIR/fludnode")
+        if [ -n "$gateway_host" ] && [ -n "$gateway_port" ]; then
+            cmd+=("$gateway_host" "$gateway_port" "$listenport")
+        else
+            cmd+=("$listenport")
+        fi
+        echo "starting {$FLUDHOME} ${cmd[*]} on $listenport"
+        FLUDPORT=$listenport "${cmd[@]}" >"$logfile" 2>&1 &
+        local pid=$!
+        echo "$pid" > "$pidfile"
+        pids[$i]=$pid
+        return 0
+    fi
+
+    local cmd=(poetry run twistd -noy "$tacfile" --pidfile="$pidfile" --logfile="$logfile")
+    if [ -n "$gateway_host" ] && [ -n "$gateway_port" ]; then
+        echo "starting {$FLUDHOME} ${cmd[*]} on $listenport to $gateway_host:$gateway_port"
+        FLUDGWHOST=$gateway_host FLUDGWPORT=$gateway_port FLUDPORT=$listenport \
+            "${cmd[@]}" &
+    else
+        echo "starting {$FLUDHOME} ${cmd[*]} on $listenport"
+        FLUDPORT=$listenport "${cmd[@]}" &
+    fi
+    pids[$i]=$!
+    return 0
+}
+
 if [ -z ${FLUDSTART} ]; then
     i=1
 else
@@ -61,17 +98,7 @@ fi
 let listenport=8080+$i
 pidfile="$FLUDHOME/twistd.pid"
 logfile="$FLUDHOME/twistd.log"
-rm -f "$pidfile"
-if [ -n "$boothost" ]; then
-    echo "starting {$FLUDHOME} $invoker on $listenport to $boothost:$bootport"
-    FLUDGWHOST=$boothost FLUDGWPORT=$bootport FLUDPORT=$listenport \
-        "${invoker[@]}" --pidfile="$pidfile" --logfile="$logfile" &
-else
-    echo "starting {$FLUDHOME} $invoker on $listenport"
-    FLUDPORT=$listenport \
-        "${invoker[@]}" --pidfile="$pidfile" --logfile="$logfile" &
-fi
-pids[$i]=$!
+start_node "$listenport" "$pidfile" "$logfile" "$boothost" "$bootport"
 if ! wait_for_node "${pids[$i]}" "$listenport" "$logfile"; then
     exit 1
 fi
@@ -93,12 +120,7 @@ for i in `seq $seqstart $seqend`; do
     let listenport=8080+$i
     pidfile="$FLUDHOME/twistd.pid"
     logfile="$FLUDHOME/twistd.log"
-    rm -f "$pidfile"
-    #echo "starting {$FLUDHOME} $invoker on $listenport to $testhost:$testport"
-    echo "starting {$FLUDHOME} ${invoker[*]} on $listenport to $testhost:$testport"
-    FLUDGWHOST=$testhost FLUDGWPORT=$testport FLUDPORT=$listenport \
-        "${invoker[@]}" --pidfile="$pidfile" --logfile="$logfile" &
-    pids[$i]=$!
+    start_node "$listenport" "$pidfile" "$logfile" "$testhost" "$testport"
     if ! wait_for_node "${pids[$i]}" "$listenport" "$logfile"; then
         exit 1
     fi

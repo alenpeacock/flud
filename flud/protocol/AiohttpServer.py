@@ -16,15 +16,14 @@ import threading
 from io import BytesIO
 
 from aiohttp import web
-from twisted.internet import reactor
 
 import flud.TarfileUtils as TarfileUtils
 from flud.FludCrypto import FludRSA, generateRandom, hashfile, hashstring
 from flud.fencode import fencode, fdecode
 
 from . import BlockFile
+from .AsyncLocal import AsyncLocalServer
 from .FludCommUtil import PROTOCOL_VERSION, primitive_to, requireParams, updateNode, getCanonicalIP
-from .LocalPrimitives import LocalFactory
 
 logger = logging.getLogger("flud.server.aiohttp")
 
@@ -65,16 +64,9 @@ class FludAiohttpServer(threading.Thread):
         self._runner = None
         self._site = None
         self._stop_event = None
-        self._local_listener = None
+        self._local_server = None
         self._challenges = {}
         self.daemon = True
-
-        # Keep local Twisted protocol compatibility until Phase 4.
-        self._local_listener = reactor.listenTCP(
-            self.clientport,
-            LocalFactory(node),
-            interface="127.0.0.1",
-        )
 
     def _base_headers(self):
         return {
@@ -787,6 +779,8 @@ class FludAiohttpServer(threading.Thread):
         return app
 
     async def _serve(self):
+        self._local_server = AsyncLocalServer(self.node)
+        await self._local_server.start()
         app = self._create_app()
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -794,6 +788,8 @@ class FludAiohttpServer(threading.Thread):
         await self._site.start()
         logger.info("aiohttp server listening on %d", self.port)
         await self._stop_event.wait()
+        if self._local_server is not None:
+            await self._local_server.stop()
         await self._runner.cleanup()
 
     def run(self):
@@ -804,10 +800,5 @@ class FludAiohttpServer(threading.Thread):
         self._loop.close()
 
     def stop(self):
-        if self._local_listener is not None:
-            try:
-                self._local_listener.stopListening()
-            except Exception:
-                pass
         if self._loop is not None and self._stop_event is not None:
             self._loop.call_soon_threadsafe(self._stop_event.set)

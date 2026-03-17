@@ -209,17 +209,23 @@ class FludClient(object):
         return kFindNode(self.node, key).deferred
 
     async def async_kFindNode(self, key):
+        if _use_async_http():
+            return await async_kFindNode(self.node, key)
         return await maybe_await(self.kFindNode(key))
     
     def kStore(self, key, val):
         return kStore(self.node, key, val).deferred
 
     async def async_kStore(self, key, val):
+        if _use_async_http():
+            return await async_kStore(self.node, key, val)
         return await maybe_await(self.kStore(key, val))
     
     def kFindValue(self, key):
         return kFindValue(self.node, key).deferred
 
     async def async_kFindValue(self, key):
+        if _use_async_http():
+            return await async_kFindValue(self.node, key)
         return await maybe_await(self.kFindValue(key))
     

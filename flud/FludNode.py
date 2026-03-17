@@ -240,18 +240,14 @@ class FludNode(object):
 
         for attempt in range(1, max_attempts + 1):
             try:
-                deferred = self.client.sendkFindNode(host, port,
-                        self.config.routing.node[2])
                 if request_timeout > 0:
-                    try:
-                        deferred.addTimeout(request_timeout, reactor)
-                    except Exception:
-                        pass
-                knodes = await asyncio.wrap_future(
-                    self.async_runtime.submit(
-                        self._await_deferred_result(deferred)
-                    )
-                )
+                    knodes = await asyncio.wait_for(
+                        self.client.async_sendkFindNode(
+                            host, port, self.config.routing.node[2]),
+                        timeout=request_timeout)
+                else:
+                    knodes = await self.client.async_sendkFindNode(
+                        host, port, self.config.routing.node[2])
                 await self._async_refresh_buckets(knodes)
                 print("flud node connected and listening on port %d"
                         % self.config.port)
@@ -270,23 +266,6 @@ class FludNode(object):
                 await asyncio.sleep(min(delay, max_delay))
                 delay = min(max_delay, delay * 2)
 
-    async def _await_deferred_result(self, deferred):
-        future = asyncio.get_running_loop().create_future()
-
-        def _cb(result):
-            if not future.done():
-                future.set_result(result)
-            return result
-
-        def _eb(err):
-            exc = getattr(err, "value", err)
-            if not future.done():
-                future.set_exception(exc)
-            return None
-
-        deferred.addCallbacks(_cb, _eb)
-        return await future
-
     async def _async_refresh_buckets(self, knodes):
         dlist = []
         for bucket in self.config.routing.kBuckets:
@@ -298,11 +277,7 @@ class FludNode(object):
                 continue
             refreshID = random.randrange(begin, end)
             dlist.append(
-                asyncio.wrap_future(
-                    self.async_runtime.submit(
-                        self._await_deferred_result(self.client.kFindNode(refreshID))
-                    )
-                )
+                self.client.async_kFindNode(refreshID)
             )
         if dlist:
             results = await asyncio.gather(*dlist, return_exceptions=True)

@@ -14,6 +14,7 @@ from flud.FludCrypto import FludRSA
 import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode, fdecode
 import flud.FludDefer as FludDefer
+from flud.async_runtime import maybe_await
 
 from . import ConnectionQueue
 from .ClientPrimitives import REQUEST, _normalize_headers, _use_async_http
@@ -65,6 +66,223 @@ def serviceWaiting(res, key, pending, waiting):
     
 pendingkFindNodes = {}
 waitingkFindNodes = {}
+
+
+async def _async_send_kfindnode(node, host, port, key, command_name="nodes"):
+    request = SENDkFINDNODE_ASYNC(node, host, port, key, command_name)
+    return await maybe_await(request.deferred)
+
+
+async def _async_send_kfindvalue(node, host, port, key):
+    request = SENDkFINDVALUE_ASYNC(node, host, port, key)
+    return await maybe_await(request.deferred)
+
+
+async def _async_send_kstore(node, host, port, key, val):
+    request = SENDkSTORE_ASYNC(node, host, port, key, val)
+    return await maybe_await(request.deferred)
+
+
+async def async_kFindNode(node, key):
+    node.DHTtstamp = time.time()
+    queried = {}
+    outstanding = set()
+    pending = []
+    kclosest = []
+    abbrvkey = ("%x" % key)[:8] + "..."
+    abbrv = "(%s%s)" % (abbrvkey, str(node.DHTtstamp)[-7:])
+
+    def _update_state(response, host, port):
+        if not isinstance(response, dict):
+            return response
+        if len(response['k']) == 1 and response['k'][0][2] == key:
+            if response['k'][0] not in kclosest:
+                kclosest.insert(0, response['k'][0])
+                del kclosest[FludkRouting.k:]
+            return response
+
+        responder_id = int(response['id'], 16)
+        outstanding.discard((host, port, responder_id))
+        queried[responder_id] = (host, port)
+
+        for candidate in response['k']:
+            node_tuple = (candidate[0], candidate[1], candidate[2])
+            if candidate[2] not in queried and \
+                    node_tuple not in pending and \
+                    node_tuple not in outstanding:
+                pending.append(node_tuple)
+            if candidate not in kclosest:
+                kclosest.append(candidate)
+        kclosest.sort(key=lambda n, t=key: t ^ n[2])
+        del kclosest[FludkRouting.k:]
+
+        pending[:] = list(set(pending) - outstanding)
+        for responder_id, responder_hostport in queried.items():
+            node_tuple = (responder_hostport[0], responder_hostport[1], responder_id)
+            if node_tuple in pending:
+                pending.remove(node_tuple)
+        pending.sort(key=lambda n, t=key: t ^ n[2])
+        return None
+
+    localhost = getCanonicalIP('localhost')
+    local_response = {
+        'id': node.config.nodeID,
+        'k': node.config.routing.findNode(key),
+    }
+    exact = _update_state(local_response, localhost, node.config.port)
+    if exact is not None:
+        return exact
+
+    round_no = 0
+    while pending or outstanding:
+        batch = pending[:FludkRouting.a]
+        pending[:] = pending[len(batch):]
+        if not batch:
+            break
+        logger.debug("FN: %s doing async round %d", abbrv, round_no)
+        round_no += 1
+
+        async def _query_one(host, port, node_id):
+            outstanding.add((host, port, node_id))
+            try:
+                response = await _async_send_kfindnode(node, host, port, key)
+                return response, host, port
+            finally:
+                outstanding.discard((host, port, node_id))
+
+        results = await asyncio.gather(
+            *(_query_one(host, port, node_id) for host, port, node_id in batch),
+            return_exceptions=True,
+        )
+        for item, result in zip(batch, results):
+            host, port, node_id = item
+            if isinstance(result, Exception):
+                logger.info("kFindNode %s request to %s:%d failed -- %s",
+                        abbrv, host, port, str(result))
+                kclosest[:] = [
+                    n for n in kclosest
+                    if (n[0], n[1], n[2]) != (host, port, node_id)
+                ]
+                continue
+            response, host, port = result
+            exact = _update_state(response, host, port)
+            if exact is not None:
+                return exact
+
+    logger.info("kFindNode %s terminated successfully after %d queries.",
+            abbrv, len(queried))
+    kclosest.sort(key=lambda n, t=key: t ^ n[2])
+    return {'k': kclosest[:FludkRouting.k]}
+
+
+async def async_kFindValue(node, key):
+    node.DHTtstamp = time.time()
+    queried = {}
+    outstanding = set()
+    pending = []
+    kclosest = []
+    done = False
+    values = {}
+    abbrvkey = ("%x" % key)[:8] + "..."
+    abbrv = "(%s%s)" % (abbrvkey, str(node.DHTtstamp)[-7:])
+
+    def _remember_value(response):
+        values[response] = values.get(response, 0) + 1
+
+    def _update_state(response, host, port):
+        nonlocal done
+        if not isinstance(response, dict):
+            if response is not None:
+                _remember_value(response)
+            done = True
+            pending[:] = []
+            outstanding.clear()
+            return response
+
+        responder_id = int(response['id'], 16)
+        queried[responder_id] = (host, port)
+        for candidate in response['k']:
+            node_tuple = (candidate[0], candidate[1], candidate[2])
+            if candidate[2] not in queried and \
+                    node_tuple not in pending and \
+                    node_tuple not in outstanding:
+                pending.append(node_tuple)
+            if candidate not in kclosest:
+                kclosest.append(candidate)
+        kclosest.sort(key=lambda n, t=key: t ^ n[2])
+        del kclosest[FludkRouting.k:]
+
+        pending[:] = list(set(pending) - outstanding)
+        for responder_id, responder_hostport in queried.items():
+            node_tuple = (responder_hostport[0], responder_hostport[1], responder_id)
+            if node_tuple in pending:
+                pending.remove(node_tuple)
+        pending.sort(key=lambda n, t=key: t ^ n[2])
+        return None
+
+    localhost = getCanonicalIP('localhost')
+    initial = await _async_send_kfindvalue(node, localhost, node.config.port, key)
+    exact = _update_state(initial, localhost, node.config.port)
+    if exact is not None and not isinstance(exact, dict):
+        return exact
+
+    round_no = 0
+    while not done and (pending or outstanding):
+        batch = pending[:FludkRouting.a]
+        pending[:] = pending[len(batch):]
+        if not batch:
+            break
+        logger.debug("FV: %s doing async round %d", abbrv, round_no)
+        round_no += 1
+
+        async def _query_one(host, port, node_id):
+            outstanding.add((host, port, node_id))
+            try:
+                response = await _async_send_kfindvalue(node, host, port, key)
+                return response, host, port
+            finally:
+                outstanding.discard((host, port, node_id))
+
+        results = await asyncio.gather(
+            *(_query_one(host, port, node_id) for host, port, node_id in batch),
+            return_exceptions=True,
+        )
+        for item, result in zip(batch, results):
+            host, port, node_id = item
+            if isinstance(result, Exception):
+                logger.info("kFindValue %s request to %s:%d failed -- %s",
+                        abbrv, host, port, str(result))
+                kclosest[:] = [
+                    n for n in kclosest
+                    if (n[0], n[1], n[2]) != (host, port, node_id)
+                ]
+                continue
+            response, host, port = result
+            exact = _update_state(response, host, port)
+            if exact is not None and not isinstance(exact, dict):
+                return exact
+
+    if not values:
+        logger.info("couldn't get any results")
+        return None
+    return max(values.items(), key=lambda item: item[1])[0]
+
+
+async def async_kStore(node, key, val):
+    knodes = await async_kFindNode(node, key)
+    knodes = knodes['k']
+    if len(knodes) < 1:
+        raise RuntimeError("can't complete kStore -- no nodes")
+    results = await asyncio.gather(
+        *(_async_send_kstore(node, knode[0], knode[1], key, val)
+          for knode in knodes),
+        return_exceptions=True,
+    )
+    failures = [result for result in results if isinstance(result, Exception)]
+    if failures:
+        raise failure.DefaultException(results)
+    logger.info("kStore finished")
+    return ""
 
 class kFindNode:
     """

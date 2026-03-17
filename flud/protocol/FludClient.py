@@ -2,16 +2,15 @@
 FludClient.py (c) 2003-2006 Alen Peacock.  This program is distributed under
 the terms of the GNU General Public License (the GPL), version 3.
 
-flud client ops. 
+flud client ops.
 """
 
-from twisted.web import client
-from twisted.internet import error
-import os, stat, http.client, sys, logging
+import os
+import stat
+import logging
 
 from .ClientPrimitives import *
 from .ClientDHTPrimitives import *
-from .ClientPrimitives import _use_async_http
 from . import FludCommUtil
 from flud.async_runtime import maybe_await
 
@@ -38,8 +37,7 @@ class FludClient(object):
             return f
 
     def sendGetID(self, host, port):
-        sender = SENDGETID_ASYNC if _use_async_http() else SENDGETID
-        d = sender(self.node, host, port).deferred
+        d = SENDGETID_ASYNC(self.node, host, port).deferred
         #d.addErrback(self.redoTO, self.node, host, port)
         return d
 
@@ -66,8 +64,7 @@ class FludClient(object):
             return self.currentStorOps[key]
 
         def sendStoreWithnKu(nKu, host, port, filename, metadata):
-            sender = SENDSTORE_ASYNC if _use_async_http() else SENDSTORE
-            return sender(nKu, self.node, host, port, filename,
+            return SENDSTORE_ASYNC(nKu, self.node, host, port, filename,
                     metadata).deferred
 
         def removeKey(r, key):
@@ -96,8 +93,7 @@ class FludClient(object):
                     metadata).deferred
         else:
             logger.debug("SENDSTORE")
-            sender = SENDSTORE_ASYNC if _use_async_http() else SENDSTORE
-            d = sender(nKu, self.node, host, port, filename,
+            d = SENDSTORE_ASYNC(nKu, self.node, host, port, filename,
                     metadata).deferred
         self.currentStorOps[key] = d
         d.addBoth(removeKey, key)
@@ -111,8 +107,7 @@ class FludClient(object):
     # XXX: need a version that takes a metakey, too
     def sendRetrieve(self, filekey, host, port, nKu=None, metakey=True):
         def sendRetrieveWithNKu(nKu, host, port, filekey, metakey=True):
-            sender = SENDRETRIEVE_ASYNC if _use_async_http() else SENDRETRIEVE
-            return sender(nKu, self.node, host, port, filekey,
+            return SENDRETRIEVE_ASYNC(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
         if not nKu:
@@ -120,8 +115,7 @@ class FludClient(object):
             d.addCallback(sendRetrieveWithNKu, host, port, filekey, metakey)
             return d
         else:
-            sender = SENDRETRIEVE_ASYNC if _use_async_http() else SENDRETRIEVE
-            return sender(nKu, self.node, host, port, filekey,
+            return SENDRETRIEVE_ASYNC(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
     async def async_sendRetrieve(self, filekey, host, port, nKu=None,
@@ -134,8 +128,7 @@ class FludClient(object):
             meta=None):
         def sendVerifyWithNKu(nKu, host, port, filekey, offset, length, 
                 meta=True):
-            sender = SENDVERIFY_ASYNC if _use_async_http() else SENDVERIFY
-            return sender(nKu, self.node, host, port, filekey, offset,
+            return SENDVERIFY_ASYNC(nKu, self.node, host, port, filekey, offset,
                     length, meta).deferred
 
         if not nKu:
@@ -144,8 +137,7 @@ class FludClient(object):
                     length, meta)
             return d
         else:
-            sender = SENDVERIFY_ASYNC if _use_async_http() else SENDVERIFY
-            s = sender(nKu, self.node, host, port, filekey, offset, length,
+            s = SENDVERIFY_ASYNC(nKu, self.node, host, port, filekey, offset, length,
                     meta)
             return s.deferred
 
@@ -157,8 +149,7 @@ class FludClient(object):
     
     def sendDelete(self, filekey, metakey, host, port, nKu=None):
         def sendDeleteWithNKu(nKu, host, port, filekey, metakey):
-            sender = SENDDELETE_ASYNC if _use_async_http() else SENDDELETE
-            return sender(nKu, self.node, host, port, filekey,
+            return SENDDELETE_ASYNC(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
         if not nKu:
@@ -166,8 +157,7 @@ class FludClient(object):
             d.addCallback(sendDeleteWithNKu, host, port, filekey, metakey)
             return d
         else:
-            sender = SENDDELETE_ASYNC if _use_async_http() else SENDDELETE
-            return sender(nKu, self.node, host, port, filekey,
+            return SENDDELETE_ASYNC(nKu, self.node, host, port, filekey,
                     metakey).deferred
 
     async def async_sendDelete(self, filekey, metakey, host, port, nKu=None):
@@ -182,22 +172,19 @@ class FludClient(object):
     recursive primitives for doing DHT ops.
     """
     def sendkFindNode(self, host, port, key):
-        sender = SENDkFINDNODE_ASYNC if _use_async_http() else SENDkFINDNODE
-        return sender(self.node, host, port, key).deferred
+        return SENDkFINDNODE_ASYNC(self.node, host, port, key).deferred
 
     async def async_sendkFindNode(self, host, port, key):
         return await maybe_await(self.sendkFindNode(host, port, key))
 
     def sendkStore(self, host, port, key, val):
-        sender = SENDkSTORE_ASYNC if _use_async_http() else SENDkSTORE
-        return sender(self.node, host, port, key, val).deferred
+        return SENDkSTORE_ASYNC(self.node, host, port, key, val).deferred
 
     async def async_sendkStore(self, host, port, key, val):
         return await maybe_await(self.sendkStore(host, port, key, val))
 
     def sendkFindValue(self, host, port, key):
-        sender = SENDkFINDVALUE_ASYNC if _use_async_http() else SENDkFINDVALUE
-        return sender(self.node, host, port, key).deferred
+        return SENDkFINDVALUE_ASYNC(self.node, host, port, key).deferred
 
     async def async_sendkFindValue(self, host, port, key):
         return await maybe_await(self.sendkFindValue(host, port, key))
@@ -206,26 +193,20 @@ class FludClient(object):
     DHT recursive primitives (recursive calls to muliple peers)
     """
     def kFindNode(self, key):
-        return kFindNode(self.node, key).deferred
+        return self.node.async_runtime.deferred_from_coro(async_kFindNode(self.node, key))
 
     async def async_kFindNode(self, key):
-        if _use_async_http():
-            return await async_kFindNode(self.node, key)
-        return await maybe_await(self.kFindNode(key))
+        return await async_kFindNode(self.node, key)
     
     def kStore(self, key, val):
-        return kStore(self.node, key, val).deferred
+        return self.node.async_runtime.deferred_from_coro(async_kStore(self.node, key, val))
 
     async def async_kStore(self, key, val):
-        if _use_async_http():
-            return await async_kStore(self.node, key, val)
-        return await maybe_await(self.kStore(key, val))
+        return await async_kStore(self.node, key, val)
     
     def kFindValue(self, key):
-        return kFindValue(self.node, key).deferred
+        return self.node.async_runtime.deferred_from_coro(async_kFindValue(self.node, key))
 
     async def async_kFindValue(self, key):
-        if _use_async_http():
-            return await async_kFindValue(self.node, key)
-        return await maybe_await(self.kFindValue(key))
+        return await async_kFindValue(self.node, key)
     

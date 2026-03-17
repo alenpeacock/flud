@@ -14,7 +14,6 @@ if [ -z "$tacfile" ]; then
     exit 1
 fi
 startup_timeout=${FLUDSTARTUPTIMEOUT:-30}
-use_async_server="${FLUD_ASYNCIO_SERVER:-0}"
 
 wait_for_node() {
     local pid="$1"
@@ -50,31 +49,18 @@ start_node() {
 
     rm -f "$pidfile"
 
-    if [ "$use_async_server" = "1" ]; then
-        local cmd=(poetry run python3 "$SCRIPT_DIR/fludnode")
-        if [ -n "$gateway_host" ] && [ -n "$gateway_port" ]; then
-            cmd+=("$gateway_host" "$gateway_port" "$listenport")
-        else
-            cmd+=("$listenport")
-        fi
-        echo "starting {$FLUDHOME} ${cmd[*]} on $listenport"
-        FLUDPORT=$listenport "${cmd[@]}" >"$logfile" 2>&1 &
-        local pid=$!
-        echo "$pid" > "$pidfile"
-        pids[$i]=$pid
-        return 0
-    fi
-
-    local cmd=(poetry run twistd -noy "$tacfile" --pidfile="$pidfile" --logfile="$logfile")
+    local cmd=(poetry run python3 "$SCRIPT_DIR/fludnode")
     if [ -n "$gateway_host" ] && [ -n "$gateway_port" ]; then
+        cmd+=("$gateway_host" "$gateway_port" "$listenport")
         echo "starting {$FLUDHOME} ${cmd[*]} on $listenport to $gateway_host:$gateway_port"
-        FLUDGWHOST=$gateway_host FLUDGWPORT=$gateway_port FLUDPORT=$listenport \
-            "${cmd[@]}" &
     else
+        cmd+=("$listenport")
         echo "starting {$FLUDHOME} ${cmd[*]} on $listenport"
-        FLUDPORT=$listenport "${cmd[@]}" &
     fi
-    pids[$i]=$!
+    FLUDPORT=$listenport "${cmd[@]}" >"$logfile" 2>&1 &
+    local pid=$!
+    echo "$pid" > "$pidfile"
+    pids[$i]=$pid
     return 0
 }
 

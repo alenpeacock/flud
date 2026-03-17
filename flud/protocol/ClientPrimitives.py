@@ -59,10 +59,10 @@ _warned_missing_aiohttp = False
 
 def _use_async_http():
     global _warned_missing_aiohttp
-    requested = os.environ.get("FLUD_ASYNCIO_CLIENT") == "1"
+    requested = os.environ.get("FLUD_ASYNCIO_CLIENT", "1") != "0"
     if requested and aiohttp is None:
         if not _warned_missing_aiohttp:
-            logger.warning("FLUD_ASYNCIO_CLIENT=1 set but aiohttp is unavailable; "
+            logger.warning("async HTTP client requested but aiohttp is unavailable; "
                     "falling back to Twisted HTTP client primitives")
             _warned_missing_aiohttp = True
         return False

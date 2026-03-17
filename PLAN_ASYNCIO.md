@@ -9,8 +9,8 @@ It will be updated as the migration progresses.
 - Phase 1: complete
 - Phase 2: complete
 - Phase 3: complete
-- Phase 4: in progress
-- Phase 5: pending
+- Phase 4: complete
+- Phase 5: in progress
 
 ## Target Architecture
 
@@ -68,6 +68,11 @@ Deliverables:
 - fully async file ops
 - no Twisted in core paths
 
+Status:
+- complete
+- file ops, local protocol, aggregation, cleanup, and recursive DHT fast path now run natively on asyncio
+- `FludFileOpTest` and local `putf/getf` pass on the asyncio runtime and outperform the previous Twisted path
+
 ### Phase 5 — Cleanup + protocol evolution
 - Remove Twisted dependencies from packaging
 - Tighten protocol and add structured logging
@@ -75,6 +80,11 @@ Deliverables:
 Deliverables:
 - Twisted removed
 - updated docs and CLI
+
+Status:
+- in progress
+- asyncio is now the default runtime path for node startup and local/system tests
+- remaining work is deleting legacy Twisted-only modules and packaging/runtime references
 
 ## Risks / Deficiencies to Track
 

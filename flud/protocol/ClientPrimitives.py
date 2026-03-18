@@ -5,9 +5,8 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Primitive client storage protocol
 """
 
-from twisted.web import http as twebhttp, client
+from http import HTTPStatus
 from twisted.internet import reactor, threads, defer, error
-from twisted.python import failure
 import time, os, stat, sys, logging, tarfile, gzip, asyncio, socket
 from io import StringIO, BytesIO
 import threading
@@ -23,6 +22,22 @@ try:
     import aiohttp
 except Exception:  # pragma: no cover - aiohttp is optional at runtime
     aiohttp = None
+
+
+class _CompatHTTP:
+    OK = HTTPStatus.OK
+    UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
+    CONFLICT = HTTPStatus.CONFLICT
+    NOT_FOUND = HTTPStatus.NOT_FOUND
+    BAD_REQUEST = HTTPStatus.BAD_REQUEST
+
+
+class _CompatFailure:
+    DefaultException = RuntimeError
+
+
+twebhttp = _CompatHTTP()
+failure = _CompatFailure()
 
 logger = logging.getLogger("flud.client.op")
 loggerid = logging.getLogger("flud.client.op.id")
@@ -59,14 +74,12 @@ _warned_missing_aiohttp = False
 
 def _use_async_http():
     global _warned_missing_aiohttp
-    requested = os.environ.get("FLUD_ASYNCIO_CLIENT", "1") != "0"
-    if requested and aiohttp is None:
+    if aiohttp is None:
         if not _warned_missing_aiohttp:
-            logger.warning("async HTTP client requested but aiohttp is unavailable; "
-                    "falling back to Twisted HTTP client primitives")
+            logger.warning("aiohttp is unavailable for required async HTTP client")
             _warned_missing_aiohttp = True
         return False
-    return requested
+    return True
 
 
 def _normalize_headers(headers):
@@ -269,7 +282,7 @@ class SENDGETID_ASYNC(REQUEST):
 
     async def _async_request(self, node, host, port, url):
         if aiohttp is None:
-            raise failure.DefaultException("aiohttp not available for async ID")
+            raise RuntimeError("aiohttp not available for async ID")
         try:
             timeout = aiohttp.ClientTimeout(total=primitive_to)
             resp = await self._request(
@@ -281,14 +294,14 @@ class SENDGETID_ASYNC(REQUEST):
                 body = await resp.text()
             finally:
                 resp.release()
-            if status != twebhttp.OK:
-                raise failure.DefaultException(
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
                         "SENDGETID FAILED to %s: server sent status %s, '%s'"
                         % (self.dest, status, body))
             try:
                 nKu = FludRSA.importPublicKey(eval(body))
             except Exception:
-                raise failure.DefaultException(
+                raise RuntimeError(
                         "SENDGETID FAILED to %s: received response, but it"
                         " did not contain valid key" % self.dest)
             loggerid.info("SENDGETID PASSED to %s" % self.dest)
@@ -478,7 +491,7 @@ class SENDSTORE_ASYNC(REQUEST):
     def _sendRequest(self, headers, nKu, host, port, filekey,
             datafile, metadata, params, skipfile=False):
         if aiohttp is None:
-            return defer.fail(failure.DefaultException(
+            return defer.fail(RuntimeError(
                 "aiohttp not available for async STORE"))
         deferred = self._run_async_request(
                 self._async_request(headers, nKu, host, port, filekey,
@@ -557,9 +570,9 @@ class SENDSTORE_ASYNC(REQUEST):
                 if _async_diag_enabled():
                     loggerstor.warning("SENDSTORE async response %s %s %s",
                             status, reason, url)
-                if status == twebhttp.UNAUTHORIZED:
+                if status == HTTPStatus.UNAUTHORIZED:
                     if auth_retries >= MAXAUTHRETRY:
-                        raise failure.DefaultException(
+                        raise RuntimeError(
                             "SENDSTORE unauthorized (retries exhausted)")
                     challenge = None
                     if body:
@@ -576,10 +589,10 @@ class SENDSTORE_ASYNC(REQUEST):
                     auth_retries += 1
                     skip = False
                     continue
-                if status == twebhttp.CONFLICT:
+                if status == HTTPStatus.CONFLICT:
                     raise BadCASKeyException("%s %s" % (status, reason))
-                if status != twebhttp.OK:
-                    raise failure.DefaultException(
+                if status != HTTPStatus.OK:
+                    raise RuntimeError(
                         "received %s in SENDSTORE response: %s"
                         % (status, body))
                 updateNode(self.node.client, self.config, host, port, nKu)
@@ -713,20 +726,7 @@ class AggregateStore:
 
     def resetTimeout(self, tarball, nKu, node, host, port):
         loggerstoragg.debug("in resetTimeout...")
-        if _use_async_http():
-            self._resetAsyncTimeout(tarball, nKu, node, host, port)
-            return
-        with aggStateLock:
-            timeoutFunc = aggTimeoutMap.get(tarball)
-            if timeoutFunc is None:
-                timeoutFunc = reactor.callLater(
-                        TARFILE_TO, self.sendTar, tarball, nKu, node, host, port)
-                aggTimeoutMap[tarball] = timeoutFunc
-        if timeoutFunc.active() and os.stat(tarball)[stat.ST_SIZE] < MINSTORSIZE:
-            loggerstoragg.debug("...reset")
-            timeoutFunc.reset(TARFILE_TO)
-            return
-        loggerstoragg.debug("...didn't reset")
+        self._resetAsyncTimeout(tarball, nKu, node, host, port)
 
     def _resetAsyncTimeout(self, tarball, nKu, node, host, port):
         runtime = node.async_runtime
@@ -769,8 +769,7 @@ class AggregateStore:
             gtar.write(src.read())
         gtar.close()
         os.remove(tarball)
-        sender = SENDSTORE_ASYNC if _use_async_http() else SENDSTORE
-        self.deferred = sender(nKu, node, host, port, gtarball).deferred
+        self.deferred = SENDSTORE_ASYNC(nKu, node, host, port, gtarball).deferred
         self.deferred.addCallback(self.callbackTarfiles, tarball)
         self.deferred.addErrback(self.errbackTarfiles, tarball)
 

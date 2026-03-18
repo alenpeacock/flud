@@ -5,9 +5,8 @@ under the terms of the GNU General Public License (the GPL), version 3.
 Primitive client DHT protocol
 """
 import time, os, stat, sys, random, logging, asyncio, socket
-from twisted.web import http as twebhttp, client
+from http import HTTPStatus
 from twisted.internet import reactor, threads, defer
-from twisted.python import failure
 import inspect, pdb
 
 from flud.FludCrypto import FludRSA
@@ -16,13 +15,25 @@ from flud.fencode import fencode, fdecode
 from flud.async_runtime import maybe_await
 
 from . import ConnectionQueue
-from .ClientPrimitives import REQUEST, _normalize_headers, _use_async_http
+from .ClientPrimitives import REQUEST, _normalize_headers
 from .FludCommUtil import *
 
 try:
     import aiohttp
 except Exception:  # pragma: no cover - aiohttp is optional at runtime
     aiohttp = None
+
+
+class _CompatHTTP:
+    OK = HTTPStatus.OK
+
+
+class _CompatFailure:
+    DefaultException = RuntimeError
+
+
+twebhttp = _CompatHTTP()
+failure = _CompatFailure()
 
 logger = logging.getLogger("flud.client.dht")
 
@@ -70,7 +81,7 @@ waitingkFindNodes = {}
 def _raise_on_deferred_failures(results):
     for success, result in results:
         if not success:
-            raise failure.DefaultException(results)
+            raise RuntimeError(results)
     return results
 
 
@@ -286,7 +297,7 @@ async def async_kStore(node, key, val):
     )
     failures = [result for result in results if isinstance(result, Exception)]
     if failures:
-        raise failure.DefaultException(results)
+        raise RuntimeError(results)
     logger.info("kStore finished")
     return ""
 
@@ -332,9 +343,7 @@ class kFindNode:
     
     def sendQuery(self, host, port, id, key):
         self.outstanding.append((host, port, id))
-        #d = self.node.client.sendkFindNode(host, port, key)
-        sender = SENDkFINDNODE_ASYNC if _use_async_http() else SENDkFINDNODE
-        d = sender(self.node, host, port, key).deferred
+        d = SENDkFINDNODE_ASYNC(self.node, host, port, key).deferred
         return d
 
     def updateLists(self, response, key, host, port, closestyet, x=0):
@@ -505,8 +514,7 @@ class kStore(kFindNode):
         for knode in knodes:
             host = knode[0]
             port = knode[1]
-            sender = SENDkSTORE_ASYNC if _use_async_http() else SENDkSTORE
-            deferred = sender(self.node, host, port, self.key,
+            deferred = SENDkSTORE_ASYNC(self.node, host, port, self.key,
                     self.val).deferred
             deferred.addErrback(self._kStoreErr, host, port)
             dlist.append(deferred)
@@ -554,8 +562,7 @@ class kFindValue(kFindNode):
         # We override sendQuery here in order to call sendkFindValue and handle
         # its response
         self.outstanding.append((host, port, id))
-        sender = SENDkFINDVALUE_ASYNC if _use_async_http() else SENDkFINDVALUE
-        d = sender(self.node, host, port, key).deferred
+        d = SENDkFINDVALUE_ASYNC(self.node, host, port, key).deferred
         d.addCallback(self._handleFindVal, host, port)
         d.addErrback(self.errkfindnode, key, host, port)
         return d
@@ -727,7 +734,7 @@ class SENDkFINDNODE_ASYNC(REQUEST):
 
     async def _async_request(self, node, host, port, key, url):
         if aiohttp is None:
-            raise failure.DefaultException(
+            raise RuntimeError(
                     "aiohttp not available for async DHT request")
         try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
@@ -740,8 +747,8 @@ class SENDkFINDNODE_ASYNC(REQUEST):
                 body = await resp.text()
             finally:
                 resp.release()
-            if status != twebhttp.OK:
-                raise failure.DefaultException(self.commandName+" FAILED from "
+            if status != HTTPStatus.OK:
+                raise RuntimeError(self.commandName+" FAILED from "
                         +host+":"+str(port)+": received status "
                         +str(status)+", '"+body+"'")
             response = eval(body)
@@ -855,7 +862,7 @@ class SENDkSTORE_ASYNC(REQUEST):
 
     async def _async_request(self, host, port, url):
         if aiohttp is None:
-            raise failure.DefaultException("aiohttp not available for async kSTORE")
+            raise RuntimeError("aiohttp not available for async kSTORE")
         try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
             resp = await self._request(
@@ -867,8 +874,8 @@ class SENDkSTORE_ASYNC(REQUEST):
                 body = await resp.text()
             finally:
                 resp.release()
-            if status != twebhttp.OK:
-                raise failure.DefaultException(
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
                         "kSTORE FAILED from %s:%d status=%s body=%s"
                         % (host, port, status, body))
             logger.info("kSTORE to %s:%d finished" % (host, port))
@@ -932,7 +939,7 @@ class SENDkFINDVALUE_ASYNC(SENDkFINDNODE_ASYNC):
 
     async def _async_request(self, node, host, port, key, url):
         if aiohttp is None:
-            raise failure.DefaultException(
+            raise RuntimeError(
                     "aiohttp not available for async DHT request")
         try:
             timeout = aiohttp.ClientTimeout(total=kprimitive_to)
@@ -947,8 +954,8 @@ class SENDkFINDVALUE_ASYNC(SENDkFINDNODE_ASYNC):
                 node_id = resp.headers.get("nodeID")
             finally:
                 resp.release()
-            if status != twebhttp.OK:
-                raise failure.DefaultException(self.commandName+" FAILED from "
+            if status != HTTPStatus.OK:
+                raise RuntimeError(self.commandName+" FAILED from "
                         +host+":"+str(port)+": received status "
                         +str(status)+", '"+body+"'")
 

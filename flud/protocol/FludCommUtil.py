@@ -115,8 +115,7 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
         if replacee != None:
             logging.getLogger('flud').info(
                     "determining if replacement in ktable is needed")
-            s = SENDGETID(replacee[0], replacee[1])
-            s.addErrback(replaceNode, config.routing, replacee, node)
+            replaceNode(None, config.routing, replacee, node)
     else:
         #print "updateNode nKu=%s, type=%s" % (nKu, type(nKu))
         logging.getLogger('flud').warn( 

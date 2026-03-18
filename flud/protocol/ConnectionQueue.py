@@ -12,7 +12,6 @@ these are popped off when a spot becomes available.
 
 import logging
 import threading
-from twisted.python import failure as twfailure
 
 MAXOPS = 80      # maximum number of concurrent connections to maintain 
 pending = 0      # number of current connections
@@ -67,7 +66,7 @@ def checkWaiting(resp, finishedOne=True):
         if hasattr(Req, "deferred"):
             try:
                 if not Req.deferred.called:
-                    Req.deferred.errback(twfailure.Failure(exc))
+                    Req.deferred.errback(exc)
             except Exception:
                 pass
     return resp

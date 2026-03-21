@@ -10,7 +10,7 @@ It will be updated as the migration progresses.
 - Phase 2: complete
 - Phase 3: complete
 - Phase 4: complete
-- Phase 5: in progress
+- Phase 5: complete
 
 ## Target Architecture
 
@@ -82,10 +82,11 @@ Deliverables:
 - updated docs and CLI
 
 Status:
-- in progress
-- asyncio is now the default runtime path for node startup and local/system tests
+- complete
+- asyncio is now the default runtime path for node startup, local/system tests, and node management scripts
 - obsolete `twistd`/`.tac` packaging and runtime references have been removed
-- remaining work is deleting legacy Twisted-only modules and then dropping the package dependency once no shipped code imports it
+- legacy Twisted-only modules and shipped imports have been removed or migrated
+- the project dependency on Twisted has been dropped
 
 ## Risks / Deficiencies to Track
 
@@ -102,3 +103,10 @@ Status:
 - Milestone B: aiohttp client against Twisted server passes tests
 - Milestone C: aiohttp server passes STORE/RETRIEVE/VERIFY + DHT tests
 - Milestone D: Twisted removed, all tests pass, new CLI works
+
+## Outcome
+
+- The active Flud runtime is now asyncio-native end to end.
+- HTTP client/server traffic uses aiohttp with a shared client session per node.
+- File operations, local control, scheduler flows, and recursive DHT operations run on asyncio.
+- Twisted has been removed from shipped runtime code and project dependencies.

@@ -17,5 +17,5 @@ If pre-built packages are not available for your platform, source RPMs
 (.rpm.src) are available for building them.  RPMs can also be generated via
 'python setup.py bdist_rpm'.  Debian/Ubuntu packages are created by running 
 'dpkg-buildpackage -rfakeroot' while in the top directory. The active runtime
-path is now the Python asyncio entrypoint (`flud/bin/fludnode`) rather than a
-`twistd`/`.tac` deployment.
+path is the Python asyncio entrypoint (`flud/bin/fludnode`); Twisted is no
+longer part of the shipped runtime stack.

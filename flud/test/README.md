@@ -5,8 +5,8 @@ doctest is the preferred unit-testing strategy in flud, and unit tests should be
 flud.test contains more tests than are currently documented here.
 
 The maintained end-to-end test path is `FludFileOpTest.py` running against the
-asyncio node/runtime. The older Twisted-era primitive/unit tests have been
-removed.
+asyncio node/runtime. The primitive and stress suites have also been migrated
+to the asyncio runtime and remain part of the supported test surface.
 
 ## Emulated flud Networks
 

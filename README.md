@@ -26,6 +26,7 @@ fludlocalclient    # start a command-line client
 ```
 
 All of the above commands honor the `FLUDHOME` environment variable for alternate locations of the `~/.flud` directory.
+The shipped runtime is asyncio-native.
 
 ## Experimenting
 

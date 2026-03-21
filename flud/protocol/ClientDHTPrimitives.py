@@ -6,7 +6,7 @@ Primitive client DHT protocol
 """
 import time, logging, asyncio, socket
 from http import HTTPStatus
-from twisted.internet import defer
+import flud.defer as defer
 import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode
 from flud.async_runtime import maybe_await

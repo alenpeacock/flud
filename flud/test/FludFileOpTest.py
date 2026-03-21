@@ -9,14 +9,18 @@ System tests for FludFileOperations
 
 import asyncio
 import sys, os, time, logging, tempfile, shutil, faulthandler, signal
+import socket
 from zlib import crc32
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
+import flud.defer as defer
 from flud.fencode import fdecode
 from flud.FludCrypto import generateRandom
 from flud.FludFileOperations import *
+
+failure = defer.failure
 
 
 def listMeta(config):
@@ -171,7 +175,19 @@ def generateTestFile(minSize):
     os.rename(fname,filename)
     return filename
 
+def ensureGatewayReachable(host, port):
+    timeout = float(os.environ.get("FLUD_TEST_GATEWAY_CONNECT_TIMEOUT", "2.0"))
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return
+    except OSError as exc:
+        raise RuntimeError(
+            "gateway %s:%s is not reachable (%s). Start a flud node there "
+            "before running this test." % (host, port, str(exc))
+        )
+
 def runTests(host, port, listenport=None):
+    ensureGatewayReachable(host, port)
     f1 = generateTestFile(5120)
     f2 = generateTestFile(5120)
     f3 = f2+".dup"

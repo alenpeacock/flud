@@ -13,7 +13,7 @@ from io import StringIO, BytesIO
 from Cryptodome.Cipher import AES
 import zfec.filefec as zfec_filefec
 
-from flud.FludCrypto import FludRSA, hashstring, hashfile
+from flud.FludCrypto import FludRSA, generateRandom, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas

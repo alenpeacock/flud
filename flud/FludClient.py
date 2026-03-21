@@ -1653,6 +1653,3 @@ class FludFrame(wx.Frame):
 #           style=wx.DEFAULT_FRAME_STYLE|wx.NO_FULL_REPAINT_ON_RESIZE,
 #           config=config)
 #
-#   from twisted.internet import reactor
-#   reactor.registerWxApp(app)
-#   reactor.run()

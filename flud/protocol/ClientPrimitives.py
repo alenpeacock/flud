@@ -6,12 +6,13 @@ Primitive client storage protocol
 """
 
 from http import HTTPStatus
-from twisted.internet import defer
+import binascii
 import time, os, stat, sys, logging, tarfile, gzip, asyncio, socket
 from io import StringIO, BytesIO
 import threading
 import itertools
 
+import flud.defer as defer
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
 from flud.async_runtime import maybe_await

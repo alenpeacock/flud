@@ -10,6 +10,7 @@ from twisted.internet import reactor, threads, defer, error
 import time, os, stat, sys, logging, tarfile, gzip, asyncio, socket
 from io import StringIO, BytesIO
 import threading
+import itertools
 
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
@@ -478,7 +479,7 @@ class SENDSTORE_ASYNC(REQUEST):
 
         self.deferred = defer.Deferred()
         ConnectionQueue.enqueue((self, self.headers, nKu, host, port,
-                filekey, datafile, metadata, params, True))
+                filekey, datafile, metadata, params, False))
 
     def startRequest(self, headers, nKu, host, port, filekey,
             datafile, metadata, params, skipFile):
@@ -587,7 +588,6 @@ class SENDSTORE_ASYNC(REQUEST):
                     hdrs = answerChallenge(challenge, self.node.config.Kr,
                             self.node.config.groupIDu, nKu.id(), hdrs)
                     auth_retries += 1
-                    skip = False
                     continue
                 if status == HTTPStatus.CONFLICT:
                     raise BadCASKeyException("%s %s" % (status, reason))
@@ -644,6 +644,7 @@ aggDeferredMap = {}  # a map of maps, containing a list of deferreds.  The
 aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
 aggStateLock = threading.Lock()
+aggGeneration = itertools.count(1)
 class AggregateStore:
 
     # XXX: if multiple guys store the same file, we're going to get into bad
@@ -654,10 +655,15 @@ class AggregateStore:
     # get deleted out from under successive STOR ops for the same chunk, i.e.
     # from two concurrent STORs of the same file contents)
     def __init__(self, nKu, node, host, port, datafile, metadata):
-        tarfilename = os.path.join(node.config.clientdir,nKu.id())\
-                +'-'+host+'-'+str(port)+".tar"
+        tarbase = os.path.join(node.config.clientdir, nKu.id()) \
+                + '-' + host + '-' + str(port)
+        tarfilename = tarbase + ".tar"
         loggerstoragg.debug("tarfile name is %s" % tarfilename)
         with aggStateLock:
+            if tarfilename in aggDeferredMap and not os.path.exists(tarfilename):
+                tarfilename = "%s.%d.tar" % (tarbase, next(aggGeneration))
+                loggerstoragg.debug("using fresh tarfile generation %s",
+                        tarfilename)
             create_tar = not os.path.exists(tarfilename) \
                     or tarfilename not in aggDeferredMap
             if create_tar:
@@ -669,53 +675,54 @@ class AggregateStore:
                 loggerstoragg.debug("opening tarfile %s to append %s"
                         % (tarfilename, datafile))
                 tar = tarfile.open(tarfilename, "a")
-        
-        if os.path.basename(datafile) not in tar.getnames():
-            loggerstoragg.info("adding datafile %s to tarball, %s" 
-                    % (os.path.basename(datafile), tar.getnames()))
-            loggerstoragg.debug("adding data to tarball")
-            tar.add(datafile, os.path.basename(datafile))
-        else:
-            loggerstoragg.info("skip adding datafile %s to tarball" % datafile)
-
-        if metadata:
-            metafilename = "%s.%s.meta" % (os.path.basename(datafile), 
-                    metadata[0])
-            loggerstoragg.debug("metadata filename is %s" % metafilename)
             try:
-                if isinstance(metadata[1], StringIO):
-                    loggerstoragg.debug("metadata is StringIO")
-                    tinfo = tarfile.TarInfo(metafilename)
-                    meta_bytes = metadata[1].getvalue()
-                    if isinstance(meta_bytes, str):
-                        meta_bytes = meta_bytes.encode("utf-8")
-                    metaio = BytesIO(meta_bytes)
-                    tinfo.size = len(meta_bytes)
-                    tar.addfile(tinfo, metaio)
-                elif isinstance(metadata[1], BytesIO):
-                    loggerstoragg.debug("metadata is BytesIO")
-                    tinfo = tarfile.TarInfo(metafilename)
-                    metadata[1].seek(0,2)
-                    tinfo.size = metadata[1].tell()
-                    metadata[1].seek(0,0)
-                    tar.addfile(tinfo, metadata[1])
+                if os.path.basename(datafile) not in tar.getnames():
+                    loggerstoragg.info("adding datafile %s to tarball, %s"
+                            % (os.path.basename(datafile), tar.getnames()))
+                    loggerstoragg.debug("adding data to tarball")
+                    tar.add(datafile, os.path.basename(datafile))
                 else:
-                    loggerstoragg.debug("metadata is file")
-                    tar.add(metadata[1], metafilename) 
-            except:
-                import traceback
-                loggerstoragg.debug("exception while adding metadata to"
-                        " tarball")
-                print(sys.exc_info()[2])
-                traceback.print_exc()
+                    loggerstoragg.info("skip adding datafile %s to tarball"
+                            % datafile)
 
-        tar.close()
-        loggerstoragg.debug("prepping deferred")
-        # XXX: (re)set timeout for tarfilename
-        self.deferred = defer.Deferred()
-        loggerstoragg.debug("adding deferred on %s for %s" 
-                % (tarfilename, datafile))
-        with aggStateLock:
+                if metadata:
+                    metafilename = "%s.%s.meta" % (os.path.basename(datafile),
+                            metadata[0])
+                    loggerstoragg.debug("metadata filename is %s" % metafilename)
+                    try:
+                        if isinstance(metadata[1], StringIO):
+                            loggerstoragg.debug("metadata is StringIO")
+                            tinfo = tarfile.TarInfo(metafilename)
+                            meta_bytes = metadata[1].getvalue()
+                            if isinstance(meta_bytes, str):
+                                meta_bytes = meta_bytes.encode("utf-8")
+                            metaio = BytesIO(meta_bytes)
+                            tinfo.size = len(meta_bytes)
+                            tar.addfile(tinfo, metaio)
+                        elif isinstance(metadata[1], BytesIO):
+                            loggerstoragg.debug("metadata is BytesIO")
+                            tinfo = tarfile.TarInfo(metafilename)
+                            metadata[1].seek(0,2)
+                            tinfo.size = metadata[1].tell()
+                            metadata[1].seek(0,0)
+                            tar.addfile(tinfo, metadata[1])
+                        else:
+                            loggerstoragg.debug("metadata is file")
+                            tar.add(metadata[1], metafilename)
+                    except:
+                        import traceback
+                        loggerstoragg.debug("exception while adding metadata to"
+                                " tarball")
+                        print(sys.exc_info()[2])
+                        traceback.print_exc()
+            finally:
+                tar.close()
+
+            loggerstoragg.debug("prepping deferred")
+            # XXX: (re)set timeout for tarfilename
+            self.deferred = defer.Deferred()
+            loggerstoragg.debug("adding deferred on %s for %s"
+                    % (tarfilename, datafile))
             try:
                 aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
                         self.deferred)
@@ -748,14 +755,21 @@ class AggregateStore:
         runtime.loop.call_soon_threadsafe(_schedule)
 
     def _prepareTarball(self, tarball):
+        work_tarball = tarball + ".sending"
+        with aggStateLock:
+            if not os.path.exists(tarball):
+                raise FileNotFoundError(tarball)
+            if os.path.exists(work_tarball):
+                os.remove(work_tarball)
+            os.rename(tarball, work_tarball)
         gtarball = tarball+".gz"
         gtar = gzip.GzipFile(gtarball, 'wb')
         try:
-            with open(tarball, 'rb') as src:
+            with open(work_tarball, 'rb') as src:
                 gtar.write(src.read())
         finally:
             gtar.close()
-        os.remove(tarball)
+        os.remove(work_tarball)
         return gtarball
         
     def sendTar(self, tarball, nKu, node, host, port):

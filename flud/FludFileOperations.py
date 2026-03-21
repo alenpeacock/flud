@@ -6,10 +6,10 @@ Implements file storage and retrieval operations using flud primitives.
 """
 
 import asyncio
+import concurrent.futures
 import os, stat, sys, logging, binascii, random, time, shutil, threading
 from zlib import crc32
 from io import StringIO, BytesIO
-from twisted.internet import defer, threads, reactor
 from Cryptodome.Cipher import AES
 import zfec.filefec as zfec_filefec
 
@@ -17,7 +17,7 @@ from flud.FludCrypto import FludRSA, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
-from flud.async_runtime import maybe_await
+from flud.async_runtime import maybe_await, concurrent_future_to_deferred
 from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
@@ -68,12 +68,12 @@ def _crc32_value(value):
     return crc32(data)
 
 def _add_timeout(deferred, seconds):
-    if hasattr(deferred, "addTimeout"):
-        return deferred.addTimeout(seconds, reactor)
-    timeout_call = reactor.callLater(seconds, deferred.cancel)
+    timer = threading.Timer(seconds, deferred.cancel)
+    timer.daemon = True
+    timer.start()
     def _cancel_timeout(result):
-        if timeout_call.active():
-            timeout_call.cancel()
+        if timer.is_alive():
+            timer.cancel()
         return result
     deferred.addBoth(_cancel_timeout)
     return deferred
@@ -91,6 +91,12 @@ def _failure_traceback(err):
     if callable(getter):
         return getter()
     return repr(err)
+
+
+def _failed_deferred(exc):
+    future = concurrent.futures.Future()
+    future.set_exception(exc)
+    return concurrent_future_to_deferred(future)
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -191,7 +197,7 @@ class StoreFile:
 
     def _storeFile(self):
         if not os.path.isfile(self.filename):
-            return defer.fail(ValueError("%s is not a file" % self.filename))
+            return _failed_deferred(ValueError("%s is not a file" % self.filename))
 
         # 1: create encryption key (eK) and storage key (sK).  Query DHT using
         #    sK
@@ -232,7 +238,7 @@ class StoreFile:
         try:
             os.mkdir(self.encodedir)
         except:
-            return defer.fail(failure.DefaultException(
+            return _failed_deferred(RuntimeError(
                 "%s already requested" % self.filename))
         # XXX: mfiles should be held in mem, as StringIOs (when coder supports
         # this)
@@ -384,7 +390,7 @@ class StoreFile:
             logger.warn(self.ctx("asked for more nodes, %d nodes found",
                 len(self.nodeChoices)))
         if not self.nodeChoices:
-            raise failure.DefaultException("cannot store blocks to 0 nodes")
+            raise RuntimeError("cannot store blocks to 0 nodes")
         node = random.choice(self.nodeChoices)
         self.nodeChoices.remove(node)
         host = node[0]
@@ -412,7 +418,7 @@ class StoreFile:
             logger.warn(self.ctx("asked for more nodes, %d nodes found", 
                 len(self.nodeChoices)))
         if not self.nodeChoices:
-            return defer.fail(failure.DefaultException(
+            return _failed_deferred(RuntimeError(
                 "cannot store blocks to 0 nodes"))
         node = random.choice(self.nodeChoices)
         self.nodeChoices.remove(node)
@@ -452,11 +458,11 @@ class StoreFile:
             self.usedNodes[nID] = True
             logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up", 
                 nID, host, port))
-            d = defer.Deferred()
+            d = _failed_deferred(RuntimeError(
+                    "couldn't store block %s" % fencode(hash)))
             d.addErrback(self._storeFileErr, "couldn't store block %s"
                     % fencode(hash), lambda: self.config.modifyReputation(nID,
                         TrustDeltas.PUT_FAIL))
-            d.errback()
             return d
 
     async def _retryStoreBlockAsync(self, error, i, hash, location, sfile,
@@ -912,7 +918,7 @@ class RetrieveFile:
         try:
             self.sK = fdecode(key)
         except Exception as inst:
-            self.deferred = defer.fail(inst)
+            self.deferred = _failed_deferred(inst)
             return
         self.ctx = Ctx(_crc32_value(self.sK)).msg
         self.config = node.config
@@ -1203,7 +1209,7 @@ class RetrieveFile:
         expectedmeta = "%s.%s.meta" % (block, mkey)
         metanames = [f for f in msg if f[-len(expectedmeta):] == expectedmeta]
         if not metanames:
-            raise failure.DefaultException("expected metadata was missing")
+            raise RuntimeError("expected metadata was missing")
         if block in self.blocks:
             logger.debug(self.ctx("duplicate block %s already retrieved", block))
             return True
@@ -1631,9 +1637,9 @@ class RetrieveFilename:
                     d = RetrieveFile(self.node, fencode(filekey), 
                             metakey).deferred
                     return d
-                return defer.fail(LookupError("bad filekey %s for %s" 
+                return _failed_deferred(LookupError("bad filekey %s for %s"
                         % (filekey, self.filename)))
-        return defer.fail(LookupError("no record of %s" % self.filename))
+        return _failed_deferred(LookupError("no record of %s" % self.filename))
 
     async def _gatherRecoveries(self, dlist):
         results = await asyncio.gather(
@@ -1703,7 +1709,7 @@ class RetrieveMasterIndex:
     def _foundCAS(self, CAS):
         # 2. oldmaster = kfindval(CAS)
         if isinstance(CAS, dict):
-            return defer.fail(ValueError("couldn't find CAS key"))
+            return _failed_deferred(ValueError("couldn't find CAS key"))
         CAS = fdecode(CAS)
         d = RetrieveFile(self.node, CAS).deferred
         d.addCallback(self._foundMaster)

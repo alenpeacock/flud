@@ -12,6 +12,7 @@ import flud.FludCrypto as FludCrypto
 from flud.fencode import fencode, fdecode
 from flud.protocol.FludCommUtil import *
 from flud.async_runtime import maybe_await
+from flud.test._standalone import SuiteStatus
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -22,6 +23,7 @@ of ROOT and REQUEST in FludProtocol.
 metadatablock = fencode((1,20,40,'adfdsfdffffffddddddddddddddd'))
 metadatablock_bytes = metadatablock.encode("utf-8")
 fake_mkey_offset = 111111
+suite_status = None
 
 
 def gather_deferreds(node, deferreds, return_one=False):
@@ -45,10 +47,11 @@ def testerror(failure, message, node):
     print("testerror message: %s" % message)
     print("testerror: %s" % str(failure))
     print("At least 1 test FAILED")
-    return failure
+    raise suite_status.record_failure(failure, message)
 
 def allGood(_, nKu):
     print("all tests PASSED")
+    suite_status.record_success(nKu)
     return nKu 
 
 def checkDELETE(res, nKu, fname, fkey, mkey, node, host, port, totalDelete):
@@ -225,6 +228,8 @@ def generateTestData(minSize):
     return (filename, filekey)
 
 def runTests(host, port=None, listenport=None):
+    global suite_status
+    suite_status = SuiteStatus("FludPrimitiveTest")
     (largeFilename, largeFilekey) = generateTestData(512000)
     (smallFilename, smallFilekey) = generateTestData(5120)
     aggFiles = []
@@ -238,21 +243,27 @@ def runTests(host, port=None, listenport=None):
     d.addCallback(testSTORE, largeFilename, largeFilekey, node, host, port)
     d.addCallback(testSTORE, smallFilename, smallFilekey, node, host, port)
     d.addCallback(testAggSTORE, aggFiles, node, host, port)
+    d.addCallback(suite_status.record_success)
+    d.addErrback(lambda failure: suite_status.record_failure(failure))
     d.addBoth(cleanup, node, [i[0] for i in aggFiles] + [largeFilename, 
         smallFilename])
     node.join()
+    return suite_status
 
 def main():
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
-        runTests(localhost) # test by talking to self
+        result = runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
-        runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
+        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
     elif len(sys.argv) == 3: 
-        runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
+        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
     elif len(sys.argv) == 4: 
         # talk to [1] on port [2], listen on port [3]
-        runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+    else:
+        raise SystemExit("usage: FludPrimitiveTest.py [host] [port] [listenport]")
+    raise SystemExit(result.exit_code())
 
 if __name__ == '__main__':
     main()

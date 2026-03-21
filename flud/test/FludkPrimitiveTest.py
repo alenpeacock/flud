@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
 from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
+from flud.test._standalone import SuiteStatus
 
 """
 Test code for primitive DHT operations. 
@@ -44,6 +45,7 @@ screenhandler.setFormatter(formatter)
 logger.addHandler(screenhandler)
 #logger.setLevel(logging.DEBUG)
 logger.setLevel(logging.INFO)
+suite_status = None
 
 def cleanup(_, node):
     logger.info("waiting %ds to shutdown..." % stay_alive)
@@ -58,6 +60,7 @@ def testerror(failure, message, node):
     logger.warn("testerror message: %s" % message)
     logger.warn("testerror: '%s'" % str(failure))
     logger.warn("At least 1 test FAILED")
+    raise suite_status.record_failure(failure, message)
 
 def endtests(res, nKu, node, host, port):
     """ executes after all tests """
@@ -73,6 +76,7 @@ def endtests(res, nKu, node, host, port):
     logger.debug("testkFindVal result: %s" % str(res))
 
     logger.info("all tests PASSED")
+    suite_status.record_success(res)
     return res
 
 def testkFindVal(res, nKu, node, host, port):
@@ -145,6 +149,8 @@ def testGetID(node, host, port):
     return deferred
     
 def runTests(host, port=None, listenport=None):
+    global suite_status
+    suite_status = SuiteStatus("FludkPrimitiveTest")
     host = getCanonicalIP(host)
     node = FludNode(port=listenport)
     if port == None:
@@ -153,9 +159,12 @@ def runTests(host, port=None, listenport=None):
         port, listenport))
     node.run()
     d = testGetID(node, host, port)
+    d.addCallback(suite_status.record_success)
+    d.addErrback(lambda failure: suite_status.record_failure(failure))
     d.addBoth(cleanup, node)
     #testkFindVal("blah", node.config.Ku, node, host, port)
     node.join()
+    return suite_status
 
 """
 Main currently invokes test code
@@ -163,10 +172,13 @@ Main currently invokes test code
 if __name__ == '__main__':
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
-        runTests(localhost) # test by talking to self
+        result = runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
-        runTests(localhost, eval(sys.argv[1]))
+        result = runTests(localhost, eval(sys.argv[1]))
     elif len(sys.argv) == 3: 
-        runTests(sys.argv[1], eval(sys.argv[2]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]))
     elif len(sys.argv) == 4: 
-        runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+    else:
+        raise SystemExit("usage: FludkPrimitiveTest.py [host] [port] [listenport]")
+    raise SystemExit(result.exit_code())

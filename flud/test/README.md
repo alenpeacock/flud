@@ -8,6 +8,25 @@ The maintained end-to-end test path is `FludFileOpTest.py` running against the
 asyncio node/runtime. The primitive and stress suites have also been migrated
 to the asyncio runtime and remain part of the supported test surface.
 
+The standalone primitive suites now return shell-correct exit codes. To run the
+supported standalone suites in order and stop at the first failure, use:
+
+```sh
+python flud/test/run_standalone.py
+```
+
+That runner executes:
+
+1. `FludPrimitiveTest.py`
+2. `FludkPrimitiveTest.py`
+3. `FludPrimitiveStressTest.py`
+4. `FludkPrimitiveStressTest.py`
+5. `FludPrimitiveTestFailure.py`
+
+The longer-term direction should be pytest-based integration tests with markers
+for `integration`, `slow`, and `stress`, while keeping these script entrypoints
+as thin compatibility wrappers during migration.
+
 ## Emulated flud Networks
 
 The current release of flud is geared towards testing and vetting emulated flud networks, as well as testing live flud networks among trusted nodes. Some tools to aid in the deployment of emulated flud networks are described below.

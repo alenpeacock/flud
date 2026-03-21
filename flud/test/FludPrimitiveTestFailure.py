@@ -10,6 +10,7 @@ from flud.FludNode import FludNode
 from flud.FludCrypto import generateRandom, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode
+from flud.test._standalone import SuiteStatus
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -25,6 +26,7 @@ largefilename = ""
 largefilenamebad = ""
 
 metadata = 'aaaa'
+suite_status = None
 
 def testerror(failure, message, node):
     """
@@ -33,21 +35,22 @@ def testerror(failure, message, node):
     print("testerror message: %s" % message)
     print("testerror: %s" % str(failure))
     print("At least 1 test FAILED")
-    raise failure
+    raise suite_status.record_failure(failure, message)
 
 def testUnexpectedSuccess(res, message, node):
     print("unexpected success message: %s" % message)
     print("At least 1 test succeeded when it should have failed")
-    raise RuntimeError("unexpected success")
+    raise suite_status.record_failure(RuntimeError("unexpected success"), message)
 
 def testDELETEBadKeyFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
+    if failure.check(NotFoundException):
         print("%s" % msg)
+        suite_status.record_success()
         # the end
     else:
         print("\nDELETEBadKey expected NotFoundException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testDELETEBadKey(nKu, node, host, port):
     print("starting testDELETEBadKey")
@@ -61,13 +64,13 @@ def testDELETEBadKey(nKu, node, host, port):
     return deferred
 
 def testVERIFYBadKeyFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
+    if failure.check(NotFoundException):
         print("%s" % msg)
         return testDELETEBadKey(nKu, node, host, port)
     else:
         print("\nVERIFYBadKey expected NotFoundException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testVERIFYBadKey(nKu, node, host, port):
     print("starting testVERIFYBadKey")
@@ -82,13 +85,13 @@ def testVERIFYBadKey(nKu, node, host, port):
     return deferred
 
 def testVERIFYBadLengthFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
+    if failure.check(BadRequestException):
         print("%s" % msg)
         return testVERIFYBadKey(nKu, node, host, port)
     else:
         print("\nVERIFYBadLength expected BadRequestException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testVERIFYBadLength(nKu, node, host, port):
     print("starting testVERIFYBadOffset")
@@ -102,13 +105,13 @@ def testVERIFYBadLength(nKu, node, host, port):
     return deferred
 
 def testVERIFYBadOffsetFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.BadRequestException'):
+    if failure.check(BadRequestException):
         print("%s" % msg)
         return testVERIFYBadLength(nKu, node, host, port)
     else:
         print("\nVERIFYBadOffset expected BadRequestException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testVERIFYBadOffset(nKu, node, host, port):
     print("starting testVERIFYBadOffset")
@@ -122,13 +125,13 @@ def testVERIFYBadOffset(nKu, node, host, port):
     return deferred
 
 def testVERIFYNotFoundFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
+    if failure.check(NotFoundException):
         print("%s" % msg)
         return testVERIFYBadOffset(nKu, node, host, port)
     else:
         print("\nVERIFYNotFound expected NotFoundException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testVERIFYNotFound(nKu, node, host, port):
     print("starting testVERIFYNotFound")
@@ -141,13 +144,13 @@ def testVERIFYNotFound(nKu, node, host, port):
     return deferred
 
 def testRETRIEVEIllegalPathFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
+    if failure.check(NotFoundException):
         print("%s" % msg)
         return testVERIFYNotFound(nKu, node, host, port)
     else:
         print("\nRETRIEVEIllegalPath expected NotFoundException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testRETRIEVEIllegalPath(nKu, node, host, port):
     print("starting testRETRIEVEIllegalPath")
@@ -161,13 +164,13 @@ def testRETRIEVEIllegalPath(nKu, node, host, port):
     return deferred
 
 def testRETRIEVENotFoundFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.NotFoundException'):
+    if failure.check(NotFoundException):
         print("%s" % msg)
         return testRETRIEVEIllegalPath(nKu, node, host, port)
     else:
         print("\nRETRIEVENotFound expected NotFoundException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testRETRIEVENotFound(nKu, node, host, port):
     print("starting testRETRIEVENotFound")
@@ -180,13 +183,13 @@ def testRETRIEVENotFound(nKu, node, host, port):
     return deferred
 
 def testSTORELargeFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.BadCASKeyException'):
+    if failure.check(BadCASKeyException):
         print("%s" % msg)
         return testRETRIEVENotFound(nKu, node, host, port)
     else:
         print("\nSTORELarge expected BadCASKeyException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 def testSTOREBadKeyLarge(nKu, node, host, port):
     print("starting testSTOREBadKeyLarge")
@@ -201,13 +204,13 @@ def testSTOREBadKeyLarge(nKu, node, host, port):
     return deferred
 
 def testSTORESmallFailed(failure, msg, node, nKu, host, port):
-    if failure.check('flud.protocol.FludCommUtil.BadCASKeyException'):
+    if failure.check(BadCASKeyException):
         print("%s" % msg)
         return testSTOREBadKeyLarge(nKu, node, host, port)
     else:
         print("\nSTORESmall expected BadCASKeyException," \
                 " but got a different failure:")
-        raise failure
+        raise suite_status.record_failure(failure, msg)
 
 
 def testSTOREBadKeySmall(nKu, node, host, port):
@@ -286,14 +289,19 @@ def generateTestData():
     (largefilekey, largefilename, largefilenamebad) = generateFiles(512000)
 
 def runTests(host, port=None, listenport=None):
+    global suite_status
+    suite_status = SuiteStatus("FludPrimitiveTestFailure")
     generateTestData()
     node = FludNode(port=listenport)
     if port == None:
         port = node.config.port
     node.run()
     d = testID(node, host, port)
+    d.addCallback(suite_status.record_success)
+    d.addErrback(lambda failure: suite_status.record_failure(failure))
     d.addBoth(cleanup, node)
     node.join()
+    return suite_status
 
 """
 Main currently invokes test code
@@ -301,11 +309,16 @@ Main currently invokes test code
 if __name__ == '__main__':
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
-        runTests(localhost) # test by talking to self
+        result = runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
-        runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
+        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
     elif len(sys.argv) == 3: 
-        runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
+        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
     elif len(sys.argv) == 4: 
         # talk to [1] on port [2], listen on port [3]
-        runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+    else:
+        raise SystemExit(
+            "usage: FludPrimitiveTestFailure.py [host] [port] [listenport]"
+        )
+    raise SystemExit(result.exit_code())

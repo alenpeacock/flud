@@ -9,6 +9,7 @@ from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import *
 from flud.async_runtime import maybe_await
+from flud.test._standalone import SuiteStatus
 
 """
 Test code for kprimitive operations.  These ops include all of the descendents
@@ -23,6 +24,7 @@ CONCURRENT=50
 CONCREPORT=10
 
 node = None
+testkeys = None
 
 # format of block metadata is 
 # {(i, datakey): storingNodeID, ..., 'n': n, 'm': m} 
@@ -50,6 +52,7 @@ formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s:'
 screenhandler.setFormatter(formatter)
 logger.addHandler(screenhandler)
 logger.setLevel(logging.DEBUG)
+suite_status = None
 
 
 def gather_deferreds(node, deferreds, return_one=False):
@@ -69,12 +72,13 @@ def gather_deferreds(node, deferreds, return_one=False):
 def suitesuccess(results):
     logger.info("all tests in suite passed")
     #print results
+    suite_status.record_success(results)
     return results
 
 def suiteerror(failure):
     logger.info("suite did not complete")
     logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, "suite did not complete")
 
 def stagesuccess(result, message):
     logger.info("stage %s succeeded" % message)
@@ -83,7 +87,7 @@ def stagesuccess(result, message):
 def stageerror(failure, message):
     logger.info("stage %s failed" % message)
     #logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, message)
 
 def itersuccess(res, i, message):
     if i % CONCREPORT == 0:
@@ -93,7 +97,7 @@ def itersuccess(res, i, message):
 def itererror(failure, message):
     logger.info("itererror message: %s" % message)
     logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, message)
 
 def endtests(res, nKu, node, host, port):
     """ executes after all tests """
@@ -102,12 +106,17 @@ def endtests(res, nKu, node, host, port):
     except ValueError:
         pass
     if res != testval:
-        return RuntimeError("retrieved value does not match" 
-                " stored value: '%s' != '%s'" % (res, testval))
+        raise suite_status.record_failure(
+            RuntimeError(
+                "retrieved value does not match stored value: '%s' != '%s'"
+                % (res, testval)
+            )
+        )
     
     logger.log(logging.INFO,"testkFindVal PASSED: %s\n" % str(res))
 
     logger.log(logging.INFO,"all tests PASSED")
+    suite_status.record_success(res)
     return res
 
 def testkFindVal(res, nKu, node, host, port, num=CONCURRENT):
@@ -115,7 +124,7 @@ def testkFindVal(res, nKu, node, host, port, num=CONCURRENT):
     logger.log(logging.INFO,"attempting testkFindValue")
     dlist = []
     for i in range(num):
-        key = random.randrange(2**256)
+        key = testkeys[i]
         deferred = node.client.kFindValue(key)
         deferred.addErrback(itererror, "kFindValue")
         dlist.append(deferred)
@@ -130,7 +139,7 @@ def testSendkFindVal(res, nKu, node, host, port, num=CONCURRENT):
     logger.log(logging.INFO, "attempting testSendkFindValue")
     dlist = []
     for i in range(num):
-        key = random.randrange(2**256)
+        key = testkeys[i]
         deferred = node.client.sendkFindValue(host, port, key)
         deferred.addErrback(itererror, "sendkFindValue")
         dlist.append(deferred)
@@ -145,7 +154,7 @@ def testkStore(res, nKu, node, host, port, num=CONCURRENT):
     logger.log(logging.INFO, "attempting testkStore")
     dlist = []
     for i in range(num):
-        key = random.randrange(2**256)
+        key = testkeys[i]
         deferred = node.client.kStore(key, testval)
         deferred.addErrback(itererror, "kStore")
         dlist.append(deferred)
@@ -160,7 +169,7 @@ def testSendkStore(res, nKu, node, host, port, num=CONCURRENT):
     logger.log(logging.INFO, "attempting testSendkStore")
     dlist = []
     for i in range(num):
-        key = random.randrange(2**256)
+        key = testkeys[i]
         deferred = node.client.sendkStore(host, port, key, testval)
         deferred.addErrback(itererror, "sendkStore")
         dlist.append(deferred)
@@ -210,6 +219,9 @@ def testGetID(node, host, port, num=CONCURRENT):
 def runTests(host, port=None, listenport=None):
     num = CONCURRENT
     #num = 5
+    global suite_status, testkeys
+    suite_status = SuiteStatus("FludkPrimitiveStressTest")
+    testkeys = [random.randrange(2**256) for _ in range(num)]
     node = FludNode(port=listenport)
     if port == None:
         port = node.config.port
@@ -221,6 +233,7 @@ def runTests(host, port=None, listenport=None):
     d.addBoth(cleanup, node)
 
     node.join()
+    return suite_status
     #node.start()  # doesn't work, because reactor may not have started 
                    # listening by time requests start flying
 
@@ -238,11 +251,14 @@ if __name__ == '__main__':
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
         print("Warning: testing against self may result in timeout failures")
-        runTests(localhost) # test by talking to self
+        result = runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
-        runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
+        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
     elif len(sys.argv) == 3: 
-        runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
+        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
     elif len(sys.argv) == 4: 
         # talk to [1] on port [2], listen on port [3]
-        runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+    else:
+        raise SystemExit("usage: FludkPrimitiveStressTest.py [host] [port] [listenport]")
+    raise SystemExit(result.exit_code())

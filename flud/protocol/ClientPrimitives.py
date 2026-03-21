@@ -733,7 +733,7 @@ class SENDRETRIEVE_ASYNC(REQUEST):
             self.timeoutcount += 1
             if self.timeoutcount < MAXTIMEOUTS:
                 return self._sendRequest(headers, nKu, host, port, url, filekey)
-        raise err
+        return err
 
 
 class SENDDELETE_ASYNC(REQUEST):
@@ -902,7 +902,7 @@ class SENDVERIFY_ASYNC(REQUEST):
             self.timeoutcount += 1
             if self.timeoutcount < MAXTIMEOUTS:
                 return self._sendRequest(headers, nKu, host, port, url)
-        raise err
+        return err
 
 
 def _normalize_challenge(challenge):

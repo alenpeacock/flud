@@ -10,6 +10,7 @@ from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.async_runtime import maybe_await
+from flud.test._standalone import SuiteStatus
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -30,6 +31,7 @@ formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s:'
 screenhandler.setFormatter(formatter)
 logger.addHandler(screenhandler)
 logger.setLevel(logging.DEBUG)
+suite_status = None
 
 
 def gather_deferreds(node, deferred_factory, count, return_one=False,
@@ -52,12 +54,13 @@ def gather_deferreds(node, deferred_factory, count, return_one=False,
 def suitesuccess(results):
     logger.info("all tests in suite passed")
     #print results
+    suite_status.record_success(results)
     return results
 
 def suiteerror(failure):
     logger.info("suite did not complete")
     logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, "suite did not complete")
 
 def stagesuccess(result, message):
     logger.info("stage %s succeeded" % message)
@@ -66,7 +69,7 @@ def stagesuccess(result, message):
 def stageerror(failure, message):
     logger.info("stage %s failed" % message)
     #logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, message)
 
 def itersuccess(res, i, message):
     if i % CONCREPORT == 0:
@@ -76,7 +79,7 @@ def itersuccess(res, i, message):
 def itererror(failure, message):
     logger.info("itererror message: %s" % message)
     logger.info("DEBUG: %s" % failure)
-    return failure
+    raise suite_status.record_failure(failure, message)
 
 def checkVERIFY(results, nKu, host, port, hashes, num=CONCURRENT):
     logger.info("  checking VERIFY results...")
@@ -185,7 +188,8 @@ def testID(host, port, num=CONCURRENT):
 def runTests(host, port=None, listenport=None):
     num = CONCURRENT
     #num = 5
-    global files, node
+    global files, node, suite_status
+    suite_status = SuiteStatus("FludPrimitiveStressTest")
     files = createFakeData()
     node = FludNode(port=listenport)
     if port == None:
@@ -205,6 +209,7 @@ def runTests(host, port=None, listenport=None):
     #d2.addErrback(suiteerror, 'failed at %s' % d2.testname)
 
     node.join()
+    return suite_status
     #node.start()  # doesn't work, because reactor may not have started 
                    # listening by time requests start flying
 
@@ -243,11 +248,14 @@ if __name__ == '__main__':
     localhost = socket.getfqdn()
     if len(sys.argv) == 1:
         print("Warning: testing against self my result in timeout failures")
-        runTests(localhost) # test by talking to self
+        result = runTests(localhost) # test by talking to self
     elif len(sys.argv) == 2:
-        runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
+        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
     elif len(sys.argv) == 3: 
-        runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
+        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
     elif len(sys.argv) == 4: 
         # talk to [1] on port [2], listen on port [3]
-        runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
+    else:
+        raise SystemExit("usage: FludPrimitiveStressTest.py [host] [port] [listenport]")
+    raise SystemExit(result.exit_code())

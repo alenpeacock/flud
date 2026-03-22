@@ -23,24 +23,56 @@ That runner executes:
 4. `FludkPrimitiveStressTest.py`
 5. `FludPrimitiveTestFailure.py`
 
-The longer-term direction should be pytest-based integration tests with markers
-for `integration`, `slow`, and `stress`, while keeping these script entrypoints
-as thin compatibility wrappers during migration.
+The longer-term direction was pytest-based integration tests with markers for
+`integration`, `slow`, and `stress`. The non-stress primitive coverage is now
+primarily native pytest, while the original standalone wrappers remain for
+compatibility and for the stress suites that still need their legacy
+high-concurrency orchestration.
 
-The first pytest-facing migration step is now in place. The standalone suites
-can be exercised through pytest as native integration tests by calling the
-existing `runTests(...)` entrypoints directly:
+The legacy-wrapper bridge lives in `flud/test/test_standalone_pytest.py`:
 
 ```sh
 pytest flud/test/test_standalone_pytest.py -m integration
-pytest flud/test/test_standalone_pytest.py -m "integration and not stress"
 pytest flud/test/test_standalone_pytest.py -m stress
 pytest -vv flud/test/test_standalone_pytest.py --flud-host 127.0.0.1
 ```
 
-The pytest layer now reports each suite as a normal pytest test while preserving
-the existing script entrypoints for direct execution and the ordered
-`run_standalone.py` workflow.
+That bridge now covers:
+
+- compatibility coverage for `FludPrimitiveTest.py`
+- compatibility coverage for `FludkPrimitiveTest.py`
+- compatibility coverage for `FludPrimitiveTestFailure.py`
+- wrapper-based stress coverage for `FludPrimitiveStressTest.py`
+- wrapper-based stress coverage for `FludkPrimitiveStressTest.py`
+
+The recommended pytest path for non-stress coverage is the native modules
+below, not the legacy wrapper bridge.
+
+The first direct native-pytest conversion is
+`flud/test/test_primitive_failure_native.py`, which uses pytest fixtures and
+direct protocol assertions instead of delegating to the legacy
+`FludPrimitiveTestFailure.py` script:
+
+```sh
+poetry run pytest -vv flud/test/test_primitive_failure_native.py
+```
+
+The positive primitive flow now also has a native pytest module in
+`flud/test/test_primitive_native.py`, covering direct `STORE`, `RETRIEVE`,
+`VERIFY`, and `DELETE` assertions for small and large files:
+
+```sh
+poetry run pytest -vv flud/test/test_primitive_native.py
+```
+
+The non-stress DHT primitive suite also has a native pytest module in
+`flud/test/test_kprimitive_native.py`, covering direct assertions for
+`sendkFindNode`, `kFindNode`, `sendkStore`, `kStore`, `sendkFindValue`, and
+`kFindValue`:
+
+```sh
+poetry run pytest -vv flud/test/test_kprimitive_native.py
+```
 
 ## Emulated flud Networks
 

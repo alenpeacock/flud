@@ -10,7 +10,14 @@ from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.async_runtime import maybe_await
-from flud.test._standalone import SuiteStatus
+from flud.test._standalone import (
+    SuiteStatus,
+    join_suite,
+    run_cli,
+    schedule_node_stop,
+    start_test_node,
+    suite_port,
+)
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -191,10 +198,8 @@ def runTests(host, port=None, listenport=None):
     global files, node, suite_status
     suite_status = SuiteStatus("FludPrimitiveStressTest")
     files = createFakeData()
-    node = FludNode(port=listenport)
-    if port == None:
-        port = node.config.port
-    node.run()
+    node = start_test_node(listenport)
+    port = suite_port(node, port)
 
     if num > len(files):
         num = len(files)
@@ -202,13 +207,12 @@ def runTests(host, port=None, listenport=None):
     d1 = testID(host, port, num)
     d1.addCallback(suitesuccess)
     d1.addErrback(suiteerror)
-    d1.addBoth(cleanup)
+    join_suite(node, d1, cleanup)
 
     #nku = FludRSA.importPublicKey({'e': 65537L, 'n': 138646504113696863667807411690225283099791076530135000331764542300161152585426296356409290228001197773401729468267448145387041995053893737880473447042984919037843163552727823101445272608470814297563395471329917904393936481407769396601027233955938405001434483474847834031774504827822809611707032477570548179411L})
     #d2 = testSTORE(nku, node, host, port, files, num)
     #d2.addErrback(suiteerror, 'failed at %s' % d2.testname)
 
-    node.join()
     return suite_status
     #node.start()  # doesn't work, because reactor may not have started 
                    # listening by time requests start flying
@@ -234,28 +238,20 @@ def deleteFakeData(files):
         else:
             logger.warn("s already deleted!" % f)
 
-def cleanup(dummy=None):
+def cleanup(dummy=None, cleanup_node=None):
     logger.info("cleaning up files and shutting down in 1 seconds...")
     time.sleep(1)
     deleteFakeData(files)
-    node.async_runtime.loop.call_soon_threadsafe(node.stop)
+    schedule_node_stop(cleanup_node or node)
     logger.info("done cleaning up")
 
 """
 Main currently invokes test code
 """
 if __name__ == '__main__':
-    localhost = socket.getfqdn()
     if len(sys.argv) == 1:
         print("Warning: testing against self my result in timeout failures")
-        result = runTests(localhost) # test by talking to self
-    elif len(sys.argv) == 2:
-        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
-    elif len(sys.argv) == 3: 
-        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
-    elif len(sys.argv) == 4: 
-        # talk to [1] on port [2], listen on port [3]
-        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
-    else:
-        raise SystemExit("usage: FludPrimitiveStressTest.py [host] [port] [listenport]")
-    raise SystemExit(result.exit_code())
+    run_cli(
+        runTests,
+        "usage: FludPrimitiveStressTest.py [host] [port] [listenport]",
+    )

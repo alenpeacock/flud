@@ -380,22 +380,22 @@ class SENDSTORE_ASYNC(REQUEST):
         try:
             return await _run()
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            loggerstor.warn("SENDSTORE async client error: %s", str(exc))
+            loggerstor.warning("SENDSTORE async client error: %s", str(exc))
             raise socket.error(str(exc))
         except Exception as exc:
             import traceback
-            loggerstor.warn("SENDSTORE async unexpected error: %s",
+            loggerstor.warning("SENDSTORE async unexpected error: %s",
                     traceback.format_exc())
-            loggerstor.warn("SENDSTORE async unexpected error: %s", str(exc))
+            loggerstor.warning("SENDSTORE async unexpected error: %s", str(exc))
             raise
 
     def _errSendStore(self, err, msg, headers, nKu, host, port,
             filekey, datafile, metadata, params, skipfile=False):
         try:
             if hasattr(err, "getTraceback"):
-                loggerstor.warn("SENDSTORE async error: %s", err.getTraceback())
+                loggerstor.warning("SENDSTORE async error: %s", err.getTraceback())
             else:
-                loggerstor.warn("SENDSTORE async error: %s", str(err))
+                loggerstor.warning("SENDSTORE async error: %s", str(err))
         except Exception:
             pass
         if err.check(socket.error):
@@ -405,12 +405,12 @@ class SENDSTORE_ASYNC(REQUEST):
                         self.timeoutcount, host, port)
                 return self._sendRequest(headers, nKu, host, port, filekey,
                         datafile, metadata, params, skipfile)
-            loggerstor.warn("async SENDSTORE max timeouts exceeded: %d",
+            loggerstor.warning("async SENDSTORE max timeouts exceeded: %d",
                     self.timeoutcount)
             return err
         if err.check(BadCASKeyException):
             return err
-        loggerstor.warn("%s: unexpected error in async SENDSTORE: %s",
+        loggerstor.warning("%s: unexpected error in async SENDSTORE: %s",
                 msg, str(err))
         return err
 
@@ -596,9 +596,9 @@ class AggregateStore:
                     for d in dlist:
                         cbs.append(d)
         except KeyError:
-            loggerstoragg.warn("aggDeferredMap has keys: %s" 
+            loggerstoragg.warning("aggDeferredMap has keys: %s" 
                     % str(list(aggDeferredMap.keys())))
-            loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
+            loggerstoragg.warning("aggDeferredMap[%s] has keys: %s" % (tarball, 
                     str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
         with aggStateLock:
@@ -628,9 +628,9 @@ class AggregateStore:
                 for d in dlist:
                     cbs.append(d)
         except KeyError:
-            loggerstoragg.warn("aggDeferredMap has keys: %s" 
+            loggerstoragg.warning("aggDeferredMap has keys: %s" 
                     % str(list(aggDeferredMap.keys())))
-            loggerstoragg.warn("aggDeferredMap[%s] has keys: %s" % (tarball, 
+            loggerstoragg.warning("aggDeferredMap[%s] has keys: %s" % (tarball, 
                     str(list(aggDeferredMap[tarball].keys()))))
         tar.close()
         with aggStateLock:

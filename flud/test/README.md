@@ -27,6 +27,21 @@ The longer-term direction should be pytest-based integration tests with markers
 for `integration`, `slow`, and `stress`, while keeping these script entrypoints
 as thin compatibility wrappers during migration.
 
+The first pytest-facing migration step is now in place. The standalone suites
+can be exercised through pytest as native integration tests by calling the
+existing `runTests(...)` entrypoints directly:
+
+```sh
+pytest flud/test/test_standalone_pytest.py -m integration
+pytest flud/test/test_standalone_pytest.py -m "integration and not stress"
+pytest flud/test/test_standalone_pytest.py -m stress
+pytest -vv flud/test/test_standalone_pytest.py --flud-host 127.0.0.1
+```
+
+The pytest layer now reports each suite as a normal pytest test while preserving
+the existing script entrypoints for direct execution and the ordered
+`run_standalone.py` workflow.
+
 ## Emulated flud Networks
 
 The current release of flud is geared towards testing and vetting emulated flud networks, as well as testing live flud networks among trusted nodes. Some tools to aid in the deployment of emulated flud networks are described below.

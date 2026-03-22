@@ -10,7 +10,15 @@ from flud.FludNode import FludNode
 from flud.FludCrypto import generateRandom, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode
-from flud.test._standalone import SuiteStatus
+from flud.test._standalone import (
+    SuiteStatus,
+    attach_suite_status,
+    join_suite,
+    run_cli,
+    schedule_node_stop,
+    start_test_node,
+    suite_port,
+)
 
 """
 Test code for primitive operations.  These ops include all of the descendents
@@ -261,7 +269,7 @@ def cleanup(err, node):
     os.remove(smallfilenamebad)
     os.remove(largefilename)
     os.remove(largefilenamebad)
-    node.async_runtime.loop.call_soon_threadsafe(node.stop)
+    schedule_node_stop(node)
 
 def generateTestData():
     def generateFiles(minsize):
@@ -292,33 +300,18 @@ def runTests(host, port=None, listenport=None):
     global suite_status
     suite_status = SuiteStatus("FludPrimitiveTestFailure")
     generateTestData()
-    node = FludNode(port=listenport)
-    if port == None:
-        port = node.config.port
-    node.run()
+    node = start_test_node(listenport)
+    port = suite_port(node, port)
     d = testID(node, host, port)
-    d.addCallback(suite_status.record_success)
-    d.addErrback(lambda failure: suite_status.record_failure(failure))
-    d.addBoth(cleanup, node)
-    node.join()
+    attach_suite_status(d, suite_status)
+    join_suite(node, d, cleanup)
     return suite_status
 
 """
 Main currently invokes test code
 """
 if __name__ == '__main__':
-    localhost = socket.getfqdn()
-    if len(sys.argv) == 1:
-        result = runTests(localhost) # test by talking to self
-    elif len(sys.argv) == 2:
-        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
-    elif len(sys.argv) == 3: 
-        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
-    elif len(sys.argv) == 4: 
-        # talk to [1] on port [2], listen on port [3]
-        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
-    else:
-        raise SystemExit(
-            "usage: FludPrimitiveTestFailure.py [host] [port] [listenport]"
-        )
-    raise SystemExit(result.exit_code())
+    run_cli(
+        runTests,
+        "usage: FludPrimitiveTestFailure.py [host] [port] [listenport]",
+    )

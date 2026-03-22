@@ -9,7 +9,14 @@ from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import *
 from flud.async_runtime import maybe_await
-from flud.test._standalone import SuiteStatus
+from flud.test._standalone import (
+    SuiteStatus,
+    join_suite,
+    run_cli,
+    schedule_node_stop,
+    start_test_node,
+    suite_port,
+)
 
 """
 Test code for kprimitive operations.  These ops include all of the descendents
@@ -222,17 +229,13 @@ def runTests(host, port=None, listenport=None):
     global suite_status, testkeys
     suite_status = SuiteStatus("FludkPrimitiveStressTest")
     testkeys = [random.randrange(2**256) for _ in range(num)]
-    node = FludNode(port=listenport)
-    if port == None:
-        port = node.config.port
-    node.run()
+    node = start_test_node(listenport)
+    port = suite_port(node, port)
 
     d = testGetID(node, host, port, CONCURRENT)
     d.addCallback(suitesuccess)
     d.addErrback(suiteerror)
-    d.addBoth(cleanup, node)
-
-    node.join()
+    join_suite(node, d, cleanup)
     return suite_status
     #node.start()  # doesn't work, because reactor may not have started 
                    # listening by time requests start flying
@@ -241,24 +244,16 @@ def runTests(host, port=None, listenport=None):
 def cleanup(_, node):
     logger.info("shutting down in 1 seconds...")
     time.sleep(1)
-    node.async_runtime.loop.call_soon_threadsafe(node.stop)
+    schedule_node_stop(node)
     logger.info("done cleaning up")
 
 """
 Main currently invokes test code
 """
 if __name__ == '__main__':
-    localhost = socket.getfqdn()
     if len(sys.argv) == 1:
         print("Warning: testing against self may result in timeout failures")
-        result = runTests(localhost) # test by talking to self
-    elif len(sys.argv) == 2:
-        result = runTests(localhost, eval(sys.argv[1])) # talk to self on port [1]
-    elif len(sys.argv) == 3: 
-        result = runTests(sys.argv[1], eval(sys.argv[2])) # talk to [1] on port [2]
-    elif len(sys.argv) == 4: 
-        # talk to [1] on port [2], listen on port [3]
-        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
-    else:
-        raise SystemExit("usage: FludkPrimitiveStressTest.py [host] [port] [listenport]")
-    raise SystemExit(result.exit_code())
+    run_cli(
+        runTests,
+        "usage: FludkPrimitiveStressTest.py [host] [port] [listenport]",
+    )

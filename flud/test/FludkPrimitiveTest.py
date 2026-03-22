@@ -7,7 +7,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
 from flud.FludNode import FludNode
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
-from flud.test._standalone import SuiteStatus
+from flud.test._standalone import (
+    SuiteStatus,
+    attach_suite_status,
+    join_suite,
+    run_cli,
+    schedule_node_stop,
+    start_test_node,
+    suite_port,
+)
 
 """
 Test code for primitive DHT operations. 
@@ -49,9 +57,7 @@ suite_status = None
 
 def cleanup(_, node):
     logger.info("waiting %ds to shutdown..." % stay_alive)
-    node.async_runtime.loop.call_soon_threadsafe(
-        lambda: node.async_runtime.loop.call_later(stay_alive, node.stop)
-    )
+    schedule_node_stop(node, stay_alive)
 
 def testerror(failure, message, node):
     """
@@ -152,33 +158,18 @@ def runTests(host, port=None, listenport=None):
     global suite_status
     suite_status = SuiteStatus("FludkPrimitiveTest")
     host = getCanonicalIP(host)
-    node = FludNode(port=listenport)
-    if port == None:
-        port = node.config.port
+    node = start_test_node(listenport)
+    port = suite_port(node, port)
     logger.info("testing against %s:%s, localport=%s" % (host, 
         port, listenport))
-    node.run()
     d = testGetID(node, host, port)
-    d.addCallback(suite_status.record_success)
-    d.addErrback(lambda failure: suite_status.record_failure(failure))
-    d.addBoth(cleanup, node)
+    attach_suite_status(d, suite_status)
+    join_suite(node, d, cleanup)
     #testkFindVal("blah", node.config.Ku, node, host, port)
-    node.join()
     return suite_status
 
 """
 Main currently invokes test code
 """
 if __name__ == '__main__':
-    localhost = socket.getfqdn()
-    if len(sys.argv) == 1:
-        result = runTests(localhost) # test by talking to self
-    elif len(sys.argv) == 2:
-        result = runTests(localhost, eval(sys.argv[1]))
-    elif len(sys.argv) == 3: 
-        result = runTests(sys.argv[1], eval(sys.argv[2]))
-    elif len(sys.argv) == 4: 
-        result = runTests(sys.argv[1], eval(sys.argv[2]), eval(sys.argv[3]))
-    else:
-        raise SystemExit("usage: FludkPrimitiveTest.py [host] [port] [listenport]")
-    raise SystemExit(result.exit_code())
+    run_cli(runTests, "usage: FludkPrimitiveTest.py [host] [port] [listenport]")

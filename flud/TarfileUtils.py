@@ -113,10 +113,13 @@ def verifyHashes(tarball, ignoreExt=None):
     # return all the names of files in this tarball if hash checksum passes,
     # otherwise return False
     digests = []
-    if tarball[-7:] == ".tar.gz":
-        tar = tarfile.open(tarball, "r:gz")
-    else:
-        tar = tarfile.open(tarball, "r")
+    try:
+        if tarball[-7:] == ".tar.gz":
+            tar = tarfile.open(tarball, "r:gz")
+        else:
+            tar = tarfile.open(tarball, "r")
+    except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError):
+        return []
     if ignoreExt and not isinstance(ignoreExt, str):
         ignore_names = set(ignoreExt)
     elif ignoreExt:

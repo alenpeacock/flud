@@ -186,6 +186,23 @@ def ensureGatewayReachable(host, port):
             "before running this test." % (host, port, str(exc))
         )
 
+
+def waitForRoutingPopulation(node):
+    min_known = int(os.environ.get("FLUD_FILEOP_MIN_KNOWN_NODES", "1"))
+    timeout = float(os.environ.get("FLUD_FILEOP_ROUTE_TIMEOUT", "15.0"))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        known = len(node.config.routing.knownExternalNodes())
+        if known >= min_known:
+            print("routing population ready: %d known external nodes" % known)
+            return
+        time.sleep(0.2)
+    known = len(node.config.routing.knownExternalNodes())
+    raise RuntimeError(
+        "routing population timed out after %.1fs (%d known external nodes, "
+        "wanted at least %d)" % (timeout, known, min_known)
+    )
+
 def runTests(host, port, listenport=None):
     ensureGatewayReachable(host, port)
     f1 = generateTestFile(5120)
@@ -202,6 +219,7 @@ def runTests(host, port, listenport=None):
         port = node.config.port
     node.run()
     node.connectViaGateway(host, port)
+    waitForRoutingPopulation(node)
 
     d = doTests(node, [f1, f2], [f4, f5], [f2, f3], [f5, f6])
     d.addBoth(cleanup, node, [f1, f2, f3, f4, f5, f6])

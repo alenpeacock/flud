@@ -302,7 +302,7 @@ class StoreFile:
             logger.debug(self.ctx("file block %s hashes to %s", i, fencode(h)))
             destfile = os.path.join(self.encodedir,fencode(h))
             if os.path.exists(destfile):
-                logger.warn(self.ctx("%s exists (%s)", destfile, fencode(h)))
+                logger.warning(self.ctx("%s exists (%s)", destfile, fencode(h)))
             self.segHashesLocal.append(h)
             #logger.debug(self.ctx("moved %s to %s" % (sfile, destfile)))
             os.rename(sfile, destfile)
@@ -334,7 +334,7 @@ class StoreFile:
             storedMetadata = fdecode(storedMetadata)
             logger.info(self.ctx("metadata exists, verifying all data"))
             if not self._compareMetadata(storedMetadata, self.sfiles):
-                logger.warn(self.ctx("stored/local metadata mismatch; "
+                logger.warning(self.ctx("stored/local metadata mismatch; "
                         "attaching metadata to existing blocks"))
                 return self._attachMetadata(storedMetadata)
             logger.info(self.ctx("stored and local metadata match."))
@@ -387,7 +387,7 @@ class StoreFile:
         if not self.nodeChoices:
             self.nodeChoices = self.config.getPreferredNodes(
                 code_k, list(self.usedNodes.keys()))
-            logger.warn(self.ctx("asked for more nodes, %d nodes found",
+            logger.warning(self.ctx("asked for more nodes, %d nodes found",
                 len(self.nodeChoices)))
         if not self.nodeChoices:
             raise RuntimeError("cannot store blocks to 0 nodes")
@@ -415,7 +415,7 @@ class StoreFile:
             # XXX: instead of asking for code_k, ask for code_k - still needed
             self.nodeChoices = self.config.getPreferredNodes(code_k, 
                     list(self.usedNodes.keys()))
-            logger.warn(self.ctx("asked for more nodes, %d nodes found", 
+            logger.warning(self.ctx("asked for more nodes, %d nodes found", 
                 len(self.nodeChoices)))
         if not self.nodeChoices:
             return _failed_deferred(RuntimeError(
@@ -441,7 +441,7 @@ class StoreFile:
             nID, host, port, retry=None): 
         retry = retry - 1
         if retry > 0:
-            logger.warn(self.ctx("STORE to %s (%s:%d) failed, trying again", 
+            logger.warning(self.ctx("STORE to %s (%s:%d) failed, trying again", 
                 nID, host, port))
             d = self._storeBlock(i, hash, sfile, mfile, retry)
             d.addCallback(self._blockStored, nID, i, hash, location)
@@ -456,7 +456,7 @@ class StoreFile:
             return d
         else:
             self.usedNodes[nID] = True
-            logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up", 
+            logger.warning(self.ctx("STORE to %s (%s:%d) failed, giving up", 
                 nID, host, port))
             d = _failed_deferred(RuntimeError(
                     "couldn't store block %s" % fencode(hash)))
@@ -469,7 +469,7 @@ class StoreFile:
             mfile, nID, host, port, retry=None):
         retry = retry - 1
         if retry > 0:
-            logger.warn(self.ctx("STORE to %s (%s:%d) failed, trying again",
+            logger.warning(self.ctx("STORE to %s (%s:%d) failed, trying again",
                 nID, host, port))
             try:
                 return await self._storeBlockAsync(i, hash, sfile, mfile, retry)
@@ -479,7 +479,7 @@ class StoreFile:
                             nID, TrustDeltas.PUT_FAIL))
                 raise
         self.usedNodes[nID] = True
-        logger.warn(self.ctx("STORE to %s (%s:%d) failed, giving up",
+        logger.warning(self.ctx("STORE to %s (%s:%d) failed, giving up",
             nID, host, port))
         self._storeFileErr(error, "couldn't store block %s" % fencode(hash),
                 functor=lambda: self.config.modifyReputation(nID,
@@ -513,12 +513,12 @@ class StoreFile:
             try:
                 hval = fdecode(hname)
             except Exception:
-                logger.warn(self.ctx("could not decode local block %s", hname))
+                logger.warning(self.ctx("could not decode local block %s", hname))
                 return False
             local_keys.add((i, hval))
 
         if stored_keys != local_keys:
-            logger.warn(self.ctx("stored/local metadata mismatch"))
+            logger.warning(self.ctx("stored/local metadata mismatch"))
             if stored_keys:
                 for key in list(stored_keys)[:5]:
                     logger.debug(self.ctx("storedBlock = %s", fencode(key)))
@@ -530,7 +530,14 @@ class StoreFile:
     def _piggybackStoreMetadata(self, piggybackMeta):
         # piggybackMeta is a (nodeID, {blockID: storingNodeID, })
         logger.debug(self.ctx("got piggyBackMeta data"))
-        meta = piggybackMeta[1]
+        meta = piggybackMeta
+        if isinstance(meta, (bytes, str)):
+            meta = fdecode(meta)
+        if isinstance(meta, (list, tuple)) and len(meta) >= 2:
+            meta = meta[1]
+        if not isinstance(meta, dict):
+            raise TypeError("unexpected piggyback metadata type: %s"
+                    % type(meta))
         sortedKeys = {}
         k = meta['k']
         n = meta['n']
@@ -602,7 +609,7 @@ class StoreFile:
                 with open(self.mfiles[i], "rb") as f:
                     mfile = BytesIO(f.read())
             except Exception as exc:
-                logger.warn(self.ctx("failed to read metadata share %s: %s",
+                logger.warning(self.ctx("failed to read metadata share %s: %s",
                         i, str(exc)))
                 continue
             coros.append(self._attachMetadataChain(nID, segl, mfile))
@@ -653,7 +660,7 @@ class StoreFile:
             fencode(segl), 0, 0, host, port, nKu, (self.mkey, mfile))
 
     def _attachMetadataErr(self, failure, nID, segl):
-        logger.warn(self.ctx("couldn't attach metadata to %s: %s",
+        logger.warning(self.ctx("couldn't attach metadata to %s: %s",
                 fencode(segl), _failure_message(failure)))
         self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
         return failure
@@ -863,7 +870,7 @@ class StoreFile:
 
         #return fencode(self.sK)
         if self.eK not in self.currentOps:
-            logger.warn(self.ctx("no %s in currentOps for StoreFile", self.eK))
+            logger.warning(self.ctx("no %s in currentOps for StoreFile", self.eK))
             return (key, meta)
         (d, counter) = self.currentOps[self.eK]
         counter = counter - 1
@@ -881,7 +888,7 @@ class StoreFile:
         if functor:
             functor()
         if self.eK not in self.currentOps:
-            logger.warn(self.ctx("no %s in currentOps for StoreFile", self.eK))
+            logger.warning(self.ctx("no %s in currentOps for StoreFile", self.eK))
             raise failure
         (d, counter) = self.currentOps[self.eK]
         counter = counter - 1
@@ -974,7 +981,7 @@ class RetrieveFile:
         n = self.meta.pop('n')
         logger.debug(self.ctx("metadata entries (post k/n): %d", len(self.meta)))
         if len(self.meta) < code_k:
-            logger.warn(self.ctx(
+            logger.warning(self.ctx(
                 "metadata has %d blocks; need %d, retrying",
                 len(self.meta), code_k))
             return self._schedule_retry(
@@ -1303,7 +1310,7 @@ class RetrieveFile:
                 except Exception as exc:
                     header_errors.append((fname, str(exc)))
             if header_errors:
-                logger.warn(self.ctx("share header parse errors: %s",
+                logger.warning(self.ctx("share header parse errors: %s",
                         header_errors[:5]))
             if header_info and logger.isEnabledFor(logging.DEBUG):
                 shnums = [info[1] for info in header_info]
@@ -1361,13 +1368,13 @@ class RetrieveFile:
     def _decodeError(self, err):
         if err.check(fludfilefec.InsufficientShareFilesError):
             if len(self.meta) > 0:
-                logger.warn(self.ctx("decode failed (insufficient shares); "
+                logger.warning(self.ctx("decode failed (insufficient shares); "
                         "requesting more blocks"))
                 return self._getSomeBlocks(min(3, len(self.meta)))
-            logger.warn(self.ctx("decode failed (insufficient shares); "
+            logger.warning(self.ctx("decode failed (insufficient shares); "
                     "rerunning full retrieve"))
             return self._schedule_retry("decode failed (insufficient shares)")
-        logger.warn(self.ctx("could not decode: %s", str(err)))
+        logger.warning(self.ctx("could not decode: %s", str(err)))
         logger.debug(self.ctx("%s", (_failure_traceback(err),)))
         return err
 
@@ -1389,7 +1396,7 @@ class RetrieveFile:
             raise RuntimeError("%s (retries exhausted)" % reason)
         self.retry_count += 1
         delay = min(30, self.retry_base_delay * (2 ** (self.retry_count - 1)))
-        logger.warn(self.ctx("retry %d/%d in %ds: %s",
+        logger.warning(self.ctx("retry %d/%d in %ds: %s",
                 self.retry_count, self.max_retries, delay, reason))
         self._reset_retrieve_state()
         await asyncio.sleep(delay)
@@ -1419,7 +1426,7 @@ class RetrieveFile:
         try:
             self.nmeta = fdecode(meta)
         except Exception as exc:
-            logger.warn(self.ctx("failed to decode metadata: %s", str(exc)))
+            logger.warning(self.ctx("failed to decode metadata: %s", str(exc)))
             try:
                 os.remove(self.mfname)
             except Exception:
@@ -1585,7 +1592,7 @@ class RetrieveFile:
         try:
             os.chown(fmeta['path'], fmeta['uid'], fmeta['gid'])
         except PermissionError:
-            logger.warn(self.ctx("could not chown %s", fmeta['path']))
+            logger.warning(self.ctx("could not chown %s", fmeta['path']))
         os.utime(fmeta['path'], (fmeta['atim'], fmeta['mtim']))
         os.chmod(fmeta['path'], fmeta['mode'])
         logger.info(self.ctx(f"successfully restored file metadata, {self.fname} complete"))
@@ -1725,7 +1732,7 @@ class RetrieveMasterIndex:
         return result
 
     def _retrieveMasterIndexErr(self, err, msg):
-        logger.warn(msg)
+        logger.warning(msg)
         return err
 
 class UpdateMasterIndex:
@@ -1763,7 +1770,7 @@ class UpdateMasterIndex:
         return d
 
     def _updateMasterIndexErr(self, err, msg):
-        logger.warn(msg)
+        logger.warning(msg)
         return err
 
 

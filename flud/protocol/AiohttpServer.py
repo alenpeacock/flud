@@ -7,6 +7,7 @@ Asyncio/aiohttp HTTP server for Flud Phase 3 migration.
 import asyncio
 import base64
 import binascii
+import gzip
 import logging
 import os
 import random
@@ -261,7 +262,7 @@ class FludAiohttpServer(threading.Thread):
             if os.path.exists(target_tar) and gzipped_target:
                 try:
                     work_tar = TarfileUtils.gunzipTarball(target_tar)
-                except Exception as exc:
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                     logger.warning("STORE tar merge: failed to gunzip %s: %s",
                             target_tar, str(exc))
                     try:
@@ -271,7 +272,7 @@ class FludAiohttpServer(threading.Thread):
             mode = "a" if os.path.exists(work_tar) else "w"
             try:
                 dst = tarfile.open(work_tar, mode)
-            except (tarfile.ReadError, EOFError) as exc:
+            except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                 logger.warning("STORE tar merge: replacing corrupt tarball %s: %s",
                         work_tar, str(exc))
                 try:
@@ -282,7 +283,7 @@ class FludAiohttpServer(threading.Thread):
             try:
                 try:
                     existing = set(dst.getnames())
-                except (tarfile.ReadError, EOFError):
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError):
                     existing = set()
                 src = tarfile.open(tmpfile, tmp_tar_mode)
                 try:
@@ -337,7 +338,7 @@ class FludAiohttpServer(threading.Thread):
         for tarpath, openmode in tarball_paths:
             try:
                 tar = tarfile.open(tarpath, openmode)
-            except (tarfile.ReadError, EOFError) as exc:
+            except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                 logger.warning("STORE metadata check: removing corrupt tarball %s: %s",
                         tarpath, str(exc))
                 try:
@@ -363,7 +364,7 @@ class FludAiohttpServer(threading.Thread):
                             if openmode == "r:gz":
                                 TarfileUtils.gzipTarball(tarpath)
                     return self._response(text="Successful STORE")
-            except (tarfile.ReadError, EOFError) as exc:
+            except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                 # Corrupt or partially-written tarball; ignore and continue.
                 logger.warning("STORE metadata read: corrupt tarball %s: %s",
                         tarpath, str(exc))
@@ -388,7 +389,7 @@ class FludAiohttpServer(threading.Thread):
             else:
                 try:
                     tarballf = tarfile.open(tarname, "a")
-                except (tarfile.ReadError, EOFError) as exc:
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                     logger.warning("STORE aggregation: replacing corrupt tarball %s: %s",
                             tarname, str(exc))
                     try:
@@ -446,7 +447,7 @@ class FludAiohttpServer(threading.Thread):
             for tarpath, openmode in tarballs:
                 try:
                     tar = tarfile.open(tarpath, openmode)
-                except (tarfile.ReadError, EOFError) as exc:
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                     logger.warning("RETRIEVE: ignoring corrupt tarball %s: %s",
                             tarpath, str(exc))
                     continue
@@ -478,7 +479,7 @@ class FludAiohttpServer(threading.Thread):
                         body = self._build_multipart(parts, boundary)
                         return self._response(body=body, headers={"Content-type": "Multipart/Related", "boundary": boundary})
                     return self._response(body=data, headers={"Content-Type": "application/octet-stream"})
-                except (tarfile.ReadError, EOFError) as exc:
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                     # Twisted path ignores corrupt tarballs and continues.
                     logger.warning("RETRIEVE: corrupt tarball while reading %s: %s",
                             tarpath, str(exc))
@@ -561,7 +562,7 @@ class FludAiohttpServer(threading.Thread):
         for tarball, openmode in tarballs:
             try:
                 tar = tarfile.open(tarball, openmode)
-            except (tarfile.ReadError, EOFError) as exc:
+            except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                 logger.warning("VERIFY: ignoring corrupt tarball %s: %s",
                         tarball, str(exc))
                 continue
@@ -646,7 +647,7 @@ class FludAiohttpServer(threading.Thread):
                 mfilekey = "%s.%s.meta" % (filekey, metakey)
                 try:
                     tar = tarfile.open(tarball, openmode)
-                except (tarfile.ReadError, EOFError) as exc:
+                except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
                     logger.warning("DELETE: ignoring corrupt tarball %s: %s",
                             tarball, str(exc))
                     continue

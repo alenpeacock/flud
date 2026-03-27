@@ -15,6 +15,21 @@ from flud.fencode import fencode, fdecode
 
 logger = logging.getLogger('flud')
 
+
+def _parse_loglevel(value):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError("empty log level")
+        if text.isdigit():
+            return int(text)
+        level = getattr(logging, text.upper(), None)
+        if isinstance(level, int):
+            return level
+    raise ValueError("invalid log level %r" % (value,))
+
 CLIENTPORTOFFSET = 500
 
 """ default mapping of trust deltas """
@@ -247,12 +262,22 @@ class FludConfig:
             logfile = self.fludhome+'/flud.log'
         self._setconf("logging", "logfile", logfile)
 
-        try:
-            loglevel = int(self.configParser.get("logging","loglevel"))
-            #loglevel = logging.WARNING # XXX: remove me
-        except:
-            logger.debug("no loglevel specified, using default")
-            loglevel = logging.WARNING
+        env_loglevel = os.environ.get("LOGLEVEL")
+        if env_loglevel is not None:
+            try:
+                loglevel = _parse_loglevel(env_loglevel)
+            except Exception:
+                logger.warning("invalid LOGLEVEL=%r, falling back to config",
+                        env_loglevel)
+                env_loglevel = None
+        if env_loglevel is None:
+            try:
+                loglevel = _parse_loglevel(
+                        self.configParser.get("logging", "loglevel"))
+                #loglevel = logging.WARNING # XXX: remove me
+            except:
+                logger.debug("no loglevel specified, using default")
+                loglevel = logging.WARNING
         self._setconf("logging", "loglevel", loglevel)
 
         return logfile, loglevel 
@@ -545,15 +570,15 @@ class FludConfig:
                     self.throttled.pop(t)
 
             if exclude:
-                items = [(v,k) for (k,v) in items if k not in throttle and 
+                items = [(v,k) for (k,v) in items if k not in self.throttled and 
                         k not in exclude]
                 if num and len(items) < num and numitems >= num:
-                    exitems = [(v,k) for (k,v) in items if k not in throttle 
-                            and k in exclude]
-                    items += exitems[num-len(item):]
+                    exitems = [(v,k) for (k,v) in self.reputations.items()
+                            if k not in self.throttled and k in exclude]
+                    items += exitems[:num-len(items)]
                 logger.debug("%d items now in reps" % len(items))
             else:
-                items = [(v,k) for (k,v) in items if k not in throttle]
+                items = [(v,k) for (k,v) in items if k not in self.throttled]
         
         else:
             # XXX: refactor; 'if exclude else' is same as above, but without
@@ -561,8 +586,9 @@ class FludConfig:
             if exclude:
                 items = [(v,k) for (k,v) in items if k not in exclude]
                 if num and len(items) < num and numitems >= num:
-                    exitems = [(v,k) for (k,v) in items if k in exclude]
-                    items += exitems[num-len(item):]
+                    exitems = [(v,k) for (k,v) in self.reputations.items()
+                            if k in exclude]
+                    items += exitems[:num-len(items)]
                 logger.debug("%d items now in reps" % len(items))
             else:
                 items = [(v,k) for (k,v) in items]

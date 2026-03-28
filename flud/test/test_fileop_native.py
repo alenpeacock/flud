@@ -36,10 +36,6 @@ class FileOpCases:
     def all_paths(self):
         return self.small + self.large + self.small_duplicates + self.large_duplicates
 
-    @property
-    def unique_paths(self):
-        return self.small + self.large
-
 
 def _run(awaitable):
     return asyncio.run(maybe_await(awaitable))
@@ -66,10 +62,6 @@ def _crc32(path):
         for chunk in iter(lambda: handle.read(65536), b""):
             value = crc32(chunk, value)
     return value & 0xFFFFFFFF
-
-
-def _store_file(node, path):
-    return _run(fileops.StoreFile(node, path).deferred)
 
 
 def _store_many(node, paths):

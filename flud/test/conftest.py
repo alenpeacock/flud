@@ -77,14 +77,15 @@ def flud_target(flud_node, flud_host):
     return FludTarget(host=host, port=port, node=flud_node, nku=nku)
 
 
-@pytest.fixture
-def flud_cluster(tmp_path):
+@pytest.fixture(scope="session")
+def flud_cluster(tmp_path_factory):
     pytest.importorskip("Cryptodome.Cipher")
     from flud.protocol.FludCommUtil import getCanonicalIP
     from flud.test._standalone import start_test_node
 
     cluster_size = 12
     base_port = 18080
+    tmp_path = tmp_path_factory.mktemp("flud-cluster")
     homes = [tmp_path / f".flud{i}" for i in range(cluster_size)]
     nodes = []
     host = getCanonicalIP("127.0.0.1")

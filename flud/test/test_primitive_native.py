@@ -119,3 +119,33 @@ def test_native_verify_delete_flow(flud_target, primitive_case):
     _delete(flud_target, primitive_case, replacement_mkey)
     with pytest.raises(NotFoundException):
         _retrieve(flud_target, primitive_case, True)
+
+
+def test_native_aggregate_store_small_files(flud_target, tmp_path):
+    cases = [create_case_file(tmp_path, 4096, f"agg-{index}") for index in range(4)]
+
+    async def _store_all():
+        return await asyncio.gather(
+            *(
+                flud_target.node.client.async_sendStore(
+                    case.path,
+                    metadata_for_key(metadata_key(case.path)),
+                    flud_target.host,
+                    flud_target.port,
+                    flud_target.nku,
+                )
+                for case in cases
+            )
+        )
+
+    _run(_store_all())
+
+    for case in cases:
+        mkey = metadata_key(case.path)
+        saved_paths = _retrieve(flud_target, case, mkey)
+        payload_path = find_retrieved_payload(saved_paths, case.filekey)
+        metadata_path = find_retrieved_metadata(saved_paths, case.filekey, mkey)
+
+        assert verify_payload_matches(case.path, payload_path)
+        assert verify_metadata_matches(metadata_path)
+        _verify(flud_target, case, mkey)

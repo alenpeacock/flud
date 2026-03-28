@@ -137,3 +137,15 @@ def test_native_fileops_retrieve_round_trips_duplicate_small(flud_cluster, store
 def test_native_fileops_retrieve_round_trips_duplicate_large(flud_cluster, stored_fileops):
     for path in stored_fileops.large_duplicates:
         _assert_round_trip(flud_cluster.client, path)
+
+
+def test_native_fileops_same_path_double_store(flud_cluster, fileop_cases):
+    path = fileop_cases.small[0]
+    node = flud_cluster.client
+
+    _run(fileops.StoreFile(node, path).deferred)
+    _run(fileops.StoreFile(node, path).deferred)
+
+    master = _list_meta(node.config)
+    assert path in master
+    _assert_round_trip(node, path)

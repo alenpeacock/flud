@@ -14,11 +14,47 @@ def pytest_addoption(parser):
         default=socket.getfqdn(),
         help="Host name or IP for integration suites that talk to a Flud node.",
     )
+    parser.addoption(
+        "--flud-stress-primitive-concurrency",
+        action="store",
+        type=int,
+        default=300,
+        help="Concurrent operation count for native primitive stress tests.",
+    )
+    parser.addoption(
+        "--flud-stress-k-concurrency",
+        action="store",
+        type=int,
+        default=200,
+        help="Concurrent operation count for native k-primitive stress tests.",
+    )
+    parser.addoption(
+        "--flud-stress-timeout",
+        action="store",
+        type=float,
+        default=60.0,
+        help="Per-operation timeout in seconds for native stress tests.",
+    )
 
 
 @pytest.fixture(scope="session")
 def flud_host(request):
     return request.config.getoption("--flud-host")
+
+
+@pytest.fixture(scope="session")
+def flud_stress_timeout(request):
+    return request.config.getoption("--flud-stress-timeout")
+
+
+@pytest.fixture(scope="session")
+def flud_primitive_stress_concurrency(request):
+    return request.config.getoption("--flud-stress-primitive-concurrency")
+
+
+@pytest.fixture(scope="session")
+def flud_k_stress_concurrency(request):
+    return request.config.getoption("--flud-stress-k-concurrency")
 
 
 @dataclass

@@ -1,78 +1,140 @@
 # Testing Utilities
 
-doctest is the preferred unit-testing strategy in flud, and unit tests should be written before code implementation where possible. However, much of the network code cannot be tested in this way, so custom testing utilities have been written to make correctness and load-testing easier.
+doctest is still the preferred unit-testing strategy where applicable, but much
+of flud's networked behavior is exercised through integration and stress tests
+under `flud/test`.
 
-flud.test contains more tests than are currently documented here.
+The maintained test surface is now primarily native pytest modules. The one
+remaining script-driven compatibility suite is `FludPrimitiveTestFailure.py`,
+and `FludFileOpTest.py` is retained as a manual runner against an already
+running flud network.
 
-The maintained end-to-end test path is `FludFileOpTest.py` running against the
-asyncio node/runtime. The primitive and stress suites have also been migrated
-to the asyncio runtime and remain part of the supported test surface.
+## Recommended Pytest Entry Points
 
-The standalone primitive suites now return shell-correct exit codes. To run the
-supported standalone suites in order and stop at the first failure, use:
-
-```sh
-python flud/test/run_standalone.py
-```
-
-That runner executes:
-
-1. `FludPrimitiveTest.py`
-2. `FludkPrimitiveTest.py`
-3. `FludPrimitiveStressTest.py`
-4. `FludkPrimitiveStressTest.py`
-5. `FludPrimitiveTestFailure.py`
-
-The longer-term direction was pytest-based integration tests with markers for
-`integration`, `slow`, and `stress`. The non-stress primitive coverage is now
-primarily native pytest, while the original standalone wrappers remain for
-compatibility and for the stress suites that still need their legacy
-high-concurrency orchestration.
-
-The legacy-wrapper bridge lives in `flud/test/test_standalone_pytest.py`:
-
-```sh
-pytest flud/test/test_standalone_pytest.py -m integration
-pytest flud/test/test_standalone_pytest.py -m stress
-pytest -vv flud/test/test_standalone_pytest.py --flud-host 127.0.0.1
-```
-
-That bridge now covers:
-
-- compatibility coverage for `FludPrimitiveTest.py`
-- compatibility coverage for `FludkPrimitiveTest.py`
-- compatibility coverage for `FludPrimitiveTestFailure.py`
-- wrapper-based stress coverage for `FludPrimitiveStressTest.py`
-- wrapper-based stress coverage for `FludkPrimitiveStressTest.py`
-
-The recommended pytest path for non-stress coverage is the native modules
-below, not the legacy wrapper bridge.
-
-The first direct native-pytest conversion is
-`flud/test/test_primitive_failure_native.py`, which uses pytest fixtures and
-direct protocol assertions instead of delegating to the legacy
-`FludPrimitiveTestFailure.py` script:
-
-```sh
-poetry run pytest -vv flud/test/test_primitive_failure_native.py
-```
-
-The positive primitive flow now also has a native pytest module in
-`flud/test/test_primitive_native.py`, covering direct `STORE`, `RETRIEVE`,
-`VERIFY`, and `DELETE` assertions for small and large files:
+Primitive protocol coverage:
 
 ```sh
 poetry run pytest -vv flud/test/test_primitive_native.py
 ```
 
-The non-stress DHT primitive suite also has a native pytest module in
-`flud/test/test_kprimitive_native.py`, covering direct assertions for
-`sendkFindNode`, `kFindNode`, `sendkStore`, `kStore`, `sendkFindValue`, and
-`kFindValue`:
+Primitive failure coverage:
+
+```sh
+poetry run pytest -vv flud/test/test_primitive_failure_native.py
+```
+
+DHT primitive coverage:
 
 ```sh
 poetry run pytest -vv flud/test/test_kprimitive_native.py
 ```
+
+File operation system coverage:
+
+```sh
+poetry run pytest -vv flud/test/test_fileop_native.py
+```
+
+Primitive stress coverage:
+
+```sh
+poetry run pytest -vv -m stress flud/test/test_primitive_stress_native.py
+```
+
+K-primitive stress coverage:
+
+```sh
+poetry run pytest -vv -m stress flud/test/test_kprimitive_stress_native.py
+```
+
+Run the native integration and stress suites together:
+
+```sh
+poetry run pytest -vv flud/test/test_primitive_native.py \
+  flud/test/test_primitive_failure_native.py \
+  flud/test/test_kprimitive_native.py \
+  flud/test/test_fileop_native.py \
+  flud/test/test_primitive_stress_native.py \
+  flud/test/test_kprimitive_stress_native.py
+```
+
+Run all tests carrying the `integration` marker:
+
+```sh
+poetry run pytest -vv -m integration
+```
+
+Run only stress suites:
+
+```sh
+poetry run pytest -vv -m stress
+```
+
+## Custom Pytest Options
+
+Shared network target:
+
+```sh
+poetry run pytest --flud-host 127.0.0.1 ...
+```
+
+Stress concurrency and timeout knobs:
+
+```sh
+poetry run pytest -m stress \
+  --flud-stress-primitive-concurrency=300 \
+  --flud-stress-k-concurrency=200 \
+  --flud-stress-timeout=60
+```
+
+Current defaults:
+
+- `--flud-stress-primitive-concurrency=300`
+- `--flud-stress-k-concurrency=200`
+- `--flud-stress-timeout=60.0`
+
+These can be lowered for local debugging or raised for heavier manual runs.
+
+## Remaining Standalone Compatibility Suite
+
+`FludPrimitiveTestFailure.py` still exists as a standalone script and can be
+run directly if needed:
+
+```sh
+python flud/test/FludPrimitiveTestFailure.py
+```
+
+The pytest bridge for that legacy suite is:
+
+```sh
+poetry run pytest -vv flud/test/test_standalone_pytest.py
+```
+
+To run the supported standalone suite directly through the helper runner:
+
+```sh
+python flud/test/run_standalone.py
+```
+
+## Manual File-Op System Runner
+
+`FludFileOpTest.py` is intentionally kept as a manual system-test driver
+against an externally started flud network. Typical usage:
+
+```sh
+poetry run python3 flud/test/FludFileOpTest.py localhost 8082 8200
+```
+
+Useful environment knobs for that script:
+
+- `FLUD_FILEOP_MIN_KNOWN_NODES`
+- `FLUD_FILEOP_ROUTE_TIMEOUT`
+- `FLUD_TEST_GATEWAY_CONNECT_TIMEOUT`
+- `LOGLEVEL`
+- `LOGFILTER`
+- `FLUD_ASYNC_DIAG`
+- `FLUD_ASYNCIO_CLIENT`
+- `FLUD_ASYNCIO_SERVER`
 
 ## Emulated flud Networks
 

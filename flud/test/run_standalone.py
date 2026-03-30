@@ -6,10 +6,6 @@ from pathlib import Path
 
 
 TEST_SEQUENCE = [
-    "FludPrimitiveTest.py",
-    "FludkPrimitiveTest.py",
-    "FludPrimitiveStressTest.py",
-    "FludkPrimitiveStressTest.py",
     "FludPrimitiveTestFailure.py",
 ]
 

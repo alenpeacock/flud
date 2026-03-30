@@ -4,10 +4,9 @@ doctest is still the preferred unit-testing strategy where applicable, but much
 of flud's networked behavior is exercised through integration and stress tests
 under `flud/test`.
 
-The maintained test surface is now primarily native pytest modules. The one
-remaining script-driven compatibility suite is `FludPrimitiveTestFailure.py`,
-and `FludFileOpTest.py` is retained as a manual runner against an already
-running flud network.
+The maintained test surface is now native pytest modules, with
+`FludFileOpTest.py` retained as a manual runner against an already running
+flud network.
 
 ## Recommended Pytest Entry Points
 
@@ -94,27 +93,6 @@ Current defaults:
 - `--flud-stress-timeout=60.0`
 
 These can be lowered for local debugging or raised for heavier manual runs.
-
-## Remaining Standalone Compatibility Suite
-
-`FludPrimitiveTestFailure.py` still exists as a standalone script and can be
-run directly if needed:
-
-```sh
-python flud/test/FludPrimitiveTestFailure.py
-```
-
-The pytest bridge for that legacy suite is:
-
-```sh
-poetry run pytest -vv flud/test/test_standalone_pytest.py
-```
-
-To run the supported standalone suite directly through the helper runner:
-
-```sh
-python flud/test/run_standalone.py
-```
 
 ## Manual File-Op System Runner
 

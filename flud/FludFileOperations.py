@@ -844,17 +844,18 @@ class StoreFile:
         # store the filekey locally
 
         # update entry for file
-        self.config.updateMasterMeta(self.filename, (self.sK, int(time.time())))
+        with self.config.master_lock:
+            self.config.updateMasterMeta(self.filename, (self.sK, int(time.time())))
 
-        # update entry for parent dirs
-        paths = pathsplit(self.filename)
-        for i in paths:
-            if not self.config.getFromMasterMeta(i):
-                self.config.updateMasterMeta(i, filemetadata(i))
+            # update entry for parent dirs
+            paths = pathsplit(self.filename)
+            for i in paths:
+                if not self.config.getFromMasterMeta(i):
+                    self.config.updateMasterMeta(i, filemetadata(i))
 
-        # XXX: not too efficient to write this out for every file.  consider
-        # local caching and periodic syncing instead
-        self.config.syncMasterMeta()
+            # XXX: not too efficient to write this out for every file.  consider
+            # local caching and periodic syncing instead
+            self.config.syncMasterMeta()
 
         # cache the metadata locally (optional)
         fname = os.path.join(self.metadir,key)

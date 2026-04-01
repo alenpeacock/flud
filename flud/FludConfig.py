@@ -5,7 +5,7 @@ the terms of the GNU General Public License (the GPL), version 3.
 manages configuration file for flud backup.
 """
 
-import os, sys, socket, re, logging, time
+import os, sys, socket, re, logging, time, threading
 import configparser
 
 import flud.FludCrypto as FludCrypto
@@ -128,6 +128,7 @@ class FludConfig:
         self.reputations = {}
         self.nodes = {}
         self.throttled = {}  # XXX: should persist this to config file
+        self.master_lock = threading.RLock()
 
         try:
             self.fludhome = os.environ['FLUDHOME']
@@ -611,25 +612,28 @@ class FludConfig:
         """
         update fname with val (sK)
         """
-        self.master[fname] = val
+        with self.master_lock:
+            self.master[fname] = val
 
     def getFromMasterMeta(self, fname):
         """
         get val (sK) for fname
         """
-        try:
-            return self.master[fname]
-        except:
-            return None
+        with self.master_lock:
+            try:
+                return self.master[fname]
+            except:
+                return None
 
     def deleteFromMasterMeta(self, fname):
         """
         remove fname
         """
-        try: 
-            self.master.pop(fname)
-        except:
-            pass
+        with self.master_lock:
+            try: 
+                self.master.pop(fname)
+            except:
+                pass
 
     def loadMasterMeta(self):
         """
@@ -642,13 +646,15 @@ class FludConfig:
             master = {}
         else:
             master = fdecode(master)
-        self.master = master
+        with self.master_lock:
+            self.master = master
 
     def syncMasterMeta(self):
         """
         sync in-mem fname->sK mappings to disk
         """
-        master = fencode(self.master)
+        with self.master_lock:
+            master = fencode(self.master)
         fmaster = open(os.path.join(self.metadir, self.metamaster), 'w')
         fmaster.write(master)
         fmaster.close()

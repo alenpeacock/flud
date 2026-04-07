@@ -54,9 +54,28 @@ Clean out data from all emulated flud nodes:
 clean-fludnodes
 ```
 
-See http://www.flud.org/wiki/Emulated_flud_Networks for instructions and examples of how to run and test emulated flud networks.
+## Testing
 
-See http://www.flud.org/wiki/Testing_Utilities for instructions on running some of the test suites.
+Common test entry points are available through `make`:
+
+```sh
+make test
+make test-integration
+make test-stress
+make test-all
+```
+
+These map to:
+
+- `make test`: native pytest suite excluding stress tests
+- `make test-integration`: tests marked `integration`
+- `make test-stress`: tests marked `stress`
+- `make test-all`: all pytest-discovered tests
+
+For more detailed test commands, custom pytest options, and the retained manual
+file-op system runner, see [flud/test/README.md](/Users/alenpeacock/code/flud/flud/test/README.md).
+
+See http://www.flud.org/wiki/Emulated_flud_Networks for instructions and examples of how to run and test emulated flud networks.
 
 ## Feedback
 

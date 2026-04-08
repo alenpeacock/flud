@@ -82,7 +82,7 @@ def _assert_node_response(response):
 
 def test_native_sendk_find_node(flud_target):
     response = _run(
-        flud_target.node.client.async_sendkFindNode(
+        flud_target.node.client.send_k_find_node(
             flud_target.host,
             flud_target.port,
             KEY,
@@ -92,13 +92,13 @@ def test_native_sendk_find_node(flud_target):
 
 
 def test_native_k_find_node(flud_target):
-    response = _run(flud_target.node.client.async_kFindNode(KEY))
+    response = _run(flud_target.node.client.k_find_node(KEY))
     _assert_node_response(response)
 
 
 def test_native_sendk_store_and_k_store(flud_target):
     send_result = _run(
-        flud_target.node.client.async_sendkStore(
+        flud_target.node.client.send_k_store(
             flud_target.host,
             flud_target.port,
             KEY,
@@ -107,23 +107,23 @@ def test_native_sendk_store_and_k_store(flud_target):
     )
     assert send_result == ""
 
-    recursive_result = _run(flud_target.node.client.async_kStore(KEY, TESTVAL))
+    recursive_result = _run(flud_target.node.client.k_store(KEY, TESTVAL))
     assert recursive_result == ""
 
 
 def test_native_sendk_find_value_and_k_find_value(flud_target):
     _run(
-        flud_target.node.client.async_sendkStore(
+        flud_target.node.client.send_k_store(
             flud_target.host,
             flud_target.port,
             KEY,
             TESTVAL,
         )
     )
-    _run(flud_target.node.client.async_kStore(KEY, TESTVAL))
+    _run(flud_target.node.client.k_store(KEY, TESTVAL))
 
     send_result = _run(
-        flud_target.node.client.async_sendkFindValue(
+        flud_target.node.client.send_k_find_value(
             flud_target.host,
             flud_target.port,
             KEY,
@@ -132,5 +132,5 @@ def test_native_sendk_find_value_and_k_find_value(flud_target):
     decoded_send = _decode_if_needed(send_result)
     assert isinstance(decoded_send, (dict, str))
 
-    recursive_result = _run(flud_target.node.client.async_kFindValue(KEY))
+    recursive_result = _run(flud_target.node.client.k_find_value(KEY))
     assert _decode_if_needed(recursive_result) == TESTVAL

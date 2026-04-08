@@ -33,7 +33,7 @@ def primitive_case(tmp_path, request):
 
 def _store(flud_target, primitive_case, mkey):
     return _run(
-        flud_target.node.client.async_sendStore(
+        flud_target.node.client.store(
             primitive_case.path,
             metadata_for_key(mkey),
             flud_target.host,
@@ -45,7 +45,7 @@ def _store(flud_target, primitive_case, mkey):
 
 def _retrieve(flud_target, primitive_case, metakey=True):
     return _run(
-        flud_target.node.client.async_sendRetrieve(
+        flud_target.node.client.retrieve(
             primitive_case.filekey,
             flud_target.host,
             flud_target.port,
@@ -58,7 +58,7 @@ def _retrieve(flud_target, primitive_case, metakey=True):
 def _verify(flud_target, primitive_case, mkey):
     offset, length, expected_hash = sample_verify_range(primitive_case.path)
     result = _run(
-        flud_target.node.client.async_sendVerify(
+        flud_target.node.client.verify(
             primitive_case.filekey,
             offset,
             length,
@@ -73,7 +73,7 @@ def _verify(flud_target, primitive_case, mkey):
 
 def _delete(flud_target, primitive_case, mkey):
     return _run(
-        flud_target.node.client.async_sendDelete(
+        flud_target.node.client.delete(
             primitive_case.filekey,
             mkey,
             flud_target.host,
@@ -127,7 +127,7 @@ def test_native_aggregate_store_small_files(flud_target, tmp_path):
     async def _store_all():
         return await asyncio.gather(
             *(
-                flud_target.node.client.async_sendStore(
+                flud_target.node.client.store(
                     case.path,
                     metadata_for_key(metadata_key(case.path)),
                     flud_target.host,

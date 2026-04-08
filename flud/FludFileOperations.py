@@ -98,6 +98,26 @@ def _failed_deferred(exc):
     future.set_exception(exc)
     return concurrent_future_to_deferred(future)
 
+
+async def store_file(node, filename):
+    return await maybe_await(StoreFile(node, filename).deferred)
+
+
+async def retrieve_file(node, key, mkey=True):
+    return await maybe_await(RetrieveFile(node, key, mkey).deferred)
+
+
+async def retrieve_filename(node, filename):
+    return await maybe_await(RetrieveFilename(node, filename).deferred)
+
+
+async def retrieve_master_index(node):
+    return await maybe_await(RetrieveMasterIndex(node).deferred)
+
+
+async def update_master_index(node):
+    return await maybe_await(UpdateMasterIndex(node).deferred)
+
 def pathsplit(fname):
     par, chld = os.path.split(fname)
     if chld == "":
@@ -402,7 +422,7 @@ class StoreFile:
             host, port))
         logger.debug(self.ctx("mfile is %s", mfile))
         try:
-            result = await self.node.client.async_sendStore(
+            result = await self.node.client.store(
                 sfile, (self.mkey, mfile), host, port, nKu)
         except Exception as exc:
             return await self._retryStoreBlockAsync(
@@ -575,7 +595,7 @@ class StoreFile:
 
     async def _verifyBlockChain(self, i, sfile, mfile, seg, segl, nID, noopVerify):
         try:
-            kdata = await self.node.client.async_kFindNode(nID)
+            kdata = await self.node.client.k_find_node(nID)
         except Exception as exc:
             self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
             self._storeFileErr(exc, "couldn't find node %s... for VERIFY"
@@ -618,7 +638,7 @@ class StoreFile:
 
     async def _attachMetadataChain(self, nID, segl, mfile):
         try:
-            kdata = await self.node.client.async_kFindNode(nID)
+            kdata = await self.node.client.k_find_node(nID)
             return await self._sendMetadataVerifyAsync(kdata, segl, mfile, nID)
         except Exception as exc:
             self._attachMetadataErr(exc, nID, segl)
@@ -656,7 +676,7 @@ class StoreFile:
         nKu = FludRSA.importPublicKey(node[3])
         logger.info(self.ctx("attaching metadata for %s on %s:%d",
                 fencode(segl), host, port))
-        return await self.node.client.async_sendVerify(
+        return await self.node.client.verify(
             fencode(segl), 0, 0, host, port, nKu, (self.mkey, mfile))
 
     def _attachMetadataErr(self, failure, nID, segl):
@@ -748,7 +768,7 @@ class StoreFile:
             verhash = int(hashstring(data), 16)
 
         try:
-            result = await self.node.client.async_sendVerify(
+            result = await self.node.client.verify(
                 seg, offset, length, host, port, nKu, (self.mkey, mfile))
         except Exception as exc:
             return await self._checkVerifyErrAsync(
@@ -825,7 +845,7 @@ class StoreFile:
 
         logger.debug(self.ctx("storing metadata at %s", fencode(self.sK)))
         logger.debug(self.ctx("len(segMetadata) = %d", len(self.blockMetadata)))
-        result = await self.node.client.async_kStore(self.sK, self.blockMetadata)
+        result = await self.node.client.k_store(self.sK, self.blockMetadata)
         return self._updateMaster(result, self.blockMetadata)
 
     # 7 - update local master file record (store it to the network later).
@@ -955,7 +975,7 @@ class RetrieveFile:
     async def _retrieveFileAsync(self):
         logger.debug(self.ctx("querying DHT for %s", self.sK))
         try:
-            meta = await self.node.client.async_kFindValue(self.sK)
+            meta = await self.node.client.k_find_value(self.sK)
         except Exception as exc:
             return self._findFileErr(exc, "file retrieve failed")
         return await maybe_await(self._retrieveFileBlocks(meta))
@@ -1134,7 +1154,7 @@ class RetrieveFile:
 
     async def _retrieveBlockChain(self, block, id, idx):
         try:
-            kdata = await self.node.client.async_kFindNode(id)
+            kdata = await self.node.client.k_find_node(id)
         except Exception as exc:
             self._findNodeErr(exc,
                     "couldn't find node %s for block %s" % (fencode(id), block),
@@ -1197,7 +1217,7 @@ class RetrieveFile:
         nKu = FludRSA.importPublicKey(node[3])
         if not self.decoded:
             try:
-                msg = await self.node.client.async_sendRetrieve(
+                msg = await self.node.client.retrieve(
                     block, host, port, nKu, self.mkey)
             except Exception as exc:
                 return self._retrieveBlockErr(
@@ -1707,22 +1727,34 @@ class RetrieveMasterIndex:
     def __init__(self, node):
         self.node = node
         nodeID = int(self.node.config.nodeID, 16)
-        # 1. CAS = kfindval(nodeID) (CAS for last FLUDHOME/meta/master)
         logger.info("looking for key %x" % nodeID)
-        self.deferred = self.node.client.kFindValue(nodeID)
-        self.deferred.addCallback(self._foundCAS)
-        self.deferred.addErrback(self._retrieveMasterIndexErr, 
-                "couldn't find master metadata")
+        self.deferred = self.node.async_runtime.deferred_from_coro(
+            self._retrieve_master_index(nodeID)
+        )
+
+    async def _retrieve_master_index(self, nodeID):
+        try:
+            CAS = await self.node.client.k_find_value(nodeID)
+        except Exception as err:
+            return self._retrieveMasterIndexErr(
+                err, "couldn't find master metadata")
+        return await maybe_await(self._foundCAS(CAS))
 
     def _foundCAS(self, CAS):
-        # 2. oldmaster = kfindval(CAS)
         if isinstance(CAS, dict):
             return _failed_deferred(ValueError("couldn't find CAS key"))
         CAS = fdecode(CAS)
-        d = RetrieveFile(self.node, CAS).deferred
-        d.addCallback(self._foundMaster)
-        d.addErrback(self._retrieveMasterIndexErr, "couldn't find Master Index")
-        return d
+        return self.node.async_runtime.deferred_from_coro(
+            self._retrieve_found_master(CAS)
+        )
+
+    async def _retrieve_found_master(self, CAS):
+        try:
+            result = await retrieve_file(self.node, CAS)
+        except Exception as err:
+            return self._retrieveMasterIndexErr(
+                err, "couldn't find Master Index")
+        return self._foundMaster(result)
 
     def _foundMaster(self, result):
         if len(result) == 2: 
@@ -1742,10 +1774,17 @@ class UpdateMasterIndex:
         self.node = node
         self.metamaster = os.path.join(self.node.config.metadir,
                 self.node.config.metamaster)
-        # 0.1. oldmaster = RetrieveMasterIndex()
-        self.deferred = RetrieveMasterIndex(node).deferred
-        self.deferred.addCallback(self._removeOldMasterIndex)
-        self.deferred.addErrback(self._storeMasterIndex)
+        self.deferred = self.node.async_runtime.deferred_from_coro(
+            self._update_master_index()
+        )
+
+    async def _update_master_index(self):
+        try:
+            res = await retrieve_master_index(self.node)
+            res = self._removeOldMasterIndex(res)
+        except Exception as err:
+            res = err
+        return await maybe_await(self._storeMasterIndex(res))
 
     def _removeOldMasterIndex(self, res):
         # 0.2. for i in oldmaster: delete(i)
@@ -1753,22 +1792,26 @@ class UpdateMasterIndex:
         return self._storeMasterIndex(res)
 
     def _storeMasterIndex(self, res_or_err):
-        # 1. store FLUDHOME/meta/master
         print("going to store %s" % self.metamaster)
-        d = StoreFile(self.node, self.metamaster).deferred
-        d.addCallback(self._updateCAS)
-        d.addErrback(self._updateMasterIndexErr, "couldn't store master index")
-        return d
+        return self.node.async_runtime.deferred_from_coro(
+            self._store_master_index_async()
+        )
+
+    async def _store_master_index_async(self):
+        try:
+            stored = await store_file(self.node, self.metamaster)
+        except Exception as err:
+            return self._updateMasterIndexErr(
+                err, "couldn't store master index")
+        return await maybe_await(self._updateCAS(stored))
 
     def _updateCAS(self, stored):
-        # 2. kstore(nodeID, CAS(FLUDHOME/meta/master))
-        #print "stored = %s" % str(stored)
         key, meta = stored
         logger.info("storing %s at %x" % (key, 
             int(self.node.config.nodeID,16)))
-        d = self.node.client.kStore(int(self.node.config.nodeID,16), 
-                key)  # XXX: key should be fdecode()ed
-        return d
+        return self.node.async_runtime.deferred_from_coro(
+            self.node.client.k_store(int(self.node.config.nodeID,16), key)
+        )
 
     def _updateMasterIndexErr(self, err, msg):
         logger.warning(msg)

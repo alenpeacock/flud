@@ -54,6 +54,38 @@ loggerauth = logging.getLogger("flud.client.op.auth")
 def _async_diag_enabled():
     return os.environ.get("FLUD_ASYNC_DIAG") == "1"
 
+
+async def send_get_id(node, host, port):
+    request = SENDGETID_ASYNC(node, host, port)
+    return await maybe_await(request.deferred)
+
+
+async def send_store_request(nKu, node, host, port, datafile, metadata=None):
+    request = SENDSTORE_ASYNC(nKu, node, host, port, datafile, metadata)
+    return await maybe_await(request.deferred)
+
+
+async def aggregate_store(nKu, node, host, port, datafile, metadata=None):
+    request = AggregateStore(nKu, node, host, port, datafile, metadata)
+    return await maybe_await(request.deferred)
+
+
+async def send_retrieve(nKu, node, host, port, filekey, metakey=True):
+    request = SENDRETRIEVE_ASYNC(nKu, node, host, port, filekey, metakey)
+    return await maybe_await(request.deferred)
+
+
+async def send_delete(nKu, node, host, port, filekey, metakey):
+    request = SENDDELETE_ASYNC(nKu, node, host, port, filekey, metakey)
+    return await maybe_await(request.deferred)
+
+
+async def send_verify(nKu, node, host, port, filename, offset, length,
+        meta=None):
+    request = SENDVERIFY_ASYNC(
+            nKu, node, host, port, filename, offset, length, meta)
+    return await maybe_await(request.deferred)
+
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
 TARFILE_TO = 2        # timeout for checking aggregated tar files
 

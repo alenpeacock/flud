@@ -159,24 +159,20 @@ class AsyncLocalServer:
     async def _run_fileop(self, operation, *args):
         if _diag_enabled():
             logger.warning("dispatching fileop %s via async runtime", operation.__name__)
-        async def _invoke():
-            deferred = operation(*args).deferred
-            return await maybe_await(deferred)
-
-        future = self.node.async_runtime.submit(_invoke())
+        future = self.node.async_runtime.submit(operation(*args))
         return await asyncio.wrap_future(future)
 
     async def _doOp(self, command, fname):
         if command == "PUTF":
-            return await self._run_fileop(FileOps.StoreFile, self.node, fname)
+            return await self._run_fileop(FileOps.store_file, self.node, fname)
         if command == "GETI":
-            return await self._run_fileop(FileOps.RetrieveFile, self.node, fname)
+            return await self._run_fileop(FileOps.retrieve_file, self.node, fname)
         if command == "GETF":
-            return await self._run_fileop(FileOps.RetrieveFilename, self.node, fname)
+            return await self._run_fileop(FileOps.retrieve_filename, self.node, fname)
         if command == "FNDN":
-            return await maybe_await(self.node.client.kFindNode(int(fname, 16)))
+            return await self.node.client.k_find_node(int(fname, 16))
         if command == "FNDV":
-            return await maybe_await(self.node.client.kFindValue(int(fname, 16)))
+            return await self.node.client.k_find_value(int(fname, 16))
         if command == "CRED":
             passphrase, email = fdecode(fname)
             passphrase = self.config.Kr.decrypt(passphrase)
@@ -215,24 +211,22 @@ class AsyncLocalServer:
         if command == "LIST":
             return self.config.master
         if command == "GETM":
-            return await self._run_fileop(FileOps.RetrieveMasterIndex, self.node)
+            return await self._run_fileop(FileOps.retrieve_master_index, self.node)
         if command == "PUTM":
-            return await self._run_fileop(FileOps.UpdateMasterIndex, self.node)
+            return await self._run_fileop(FileOps.update_master_index, self.node)
         host = fname[:fname.find(":")]
         port = fname[fname.find(":") + 1:fname.find(",")]
         fname = fname[fname.find(",") + 1:]
         if command == "STOR":
-            return await maybe_await(
-                self.node.client.sendStore(fname, None, host, int(port))
-            )
+            return await self.node.client.store(fname, None, host, int(port))
         if command == "RTRV":
-            return await maybe_await(self.node.client.sendRetrieve(fname, host, int(port)))
+            return await self.node.client.retrieve(fname, host, int(port))
         if command == "VRFY":
             offset = port[port.find(":") + 1:port.find("-")]
             length = port[port.find("-") + 1:]
             port = port[:port.find(":")]
-            return await maybe_await(
-                self.node.client.sendVerify(fname, int(offset), int(length), host, int(port))
+            return await self.node.client.verify(
+                fname, int(offset), int(length), host, int(port)
             )
         raise ValueError("bad op")
 

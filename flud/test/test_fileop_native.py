@@ -65,11 +65,11 @@ def _crc32(path):
 
 
 def _store_many(node, paths):
-    return _gather([fileops.StoreFile(node, path).deferred for path in paths])
+    return _gather([fileops.store_file(node, path) for path in paths])
 
 
 def _retrieve_file(node, path):
-    return _run(fileops.RetrieveFilename(node, path).deferred)
+    return _run(fileops.retrieve_filename(node, path))
 
 
 def _assert_round_trip(node, path):
@@ -143,8 +143,8 @@ def test_native_fileops_same_path_double_store(flud_cluster, fileop_cases):
     path = fileop_cases.small[0]
     node = flud_cluster.client
 
-    _run(fileops.StoreFile(node, path).deferred)
-    _run(fileops.StoreFile(node, path).deferred)
+    _run(fileops.store_file(node, path))
+    _run(fileops.store_file(node, path))
 
     master = _list_meta(node.config)
     assert path in master

@@ -104,11 +104,11 @@ class FludNode(object):
             try:
                 if request_timeout > 0:
                     knodes = await asyncio.wait_for(
-                        self.client.async_sendkFindNode(
+                        self.client.send_k_find_node(
                             host, port, self.config.routing.node[2]),
                         timeout=request_timeout)
                 else:
-                    knodes = await self.client.async_sendkFindNode(
+                    knodes = await self.client.send_k_find_node(
                         host, port, self.config.routing.node[2])
                 await self._async_refresh_buckets(knodes)
                 print("flud node connected and listening on port %d"
@@ -139,7 +139,7 @@ class FludNode(object):
                 continue
             refreshID = random.randrange(begin, end)
             dlist.append(
-                self.client.async_kFindNode(refreshID)
+                self.client.k_find_node(refreshID)
             )
         if dlist:
             results = await asyncio.gather(*dlist, return_exceptions=True)

@@ -58,7 +58,7 @@ async def test_native_primitive_stress_sequence(
     port = flud_target.port
 
     id_results = await _gather_stage(
-        (target.async_sendGetID(host, port) for _ in primitive_stress_files),
+        (target.get_id(host, port) for _ in primitive_stress_files),
         flud_stress_timeout,
     )
     assert id_results
@@ -68,7 +68,7 @@ async def test_native_primitive_stress_sequence(
 
     store_results = await _gather_stage(
         (
-            target.async_sendStore(
+            target.store(
                 str(path),
                 None,
                 host,
@@ -83,7 +83,7 @@ async def test_native_primitive_stress_sequence(
 
     retrieve_results = await _gather_stage(
         (
-            target.async_sendRetrieve(
+            target.retrieve(
                 path.name,
                 host,
                 port,
@@ -109,7 +109,7 @@ async def test_native_primitive_stress_sequence(
 
     verify_results = await _gather_stage(
         (
-            target.async_sendVerify(
+            target.verify(
                 filekey,
                 offset,
                 length,

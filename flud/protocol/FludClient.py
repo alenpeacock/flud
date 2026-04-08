@@ -11,8 +11,6 @@ import logging
 
 from .ClientPrimitives import *
 from .ClientDHTPrimitives import *
-from . import FludCommUtil
-from flud.async_runtime import maybe_await
 
 logger = logging.getLogger('flud.client')
 
@@ -36,17 +34,18 @@ class FludClient(object):
         else:
             return f
 
+    async def get_id(self, host, port):
+        return await send_get_id(self.node, host, port)
+
     def sendGetID(self, host, port):
-        d = SENDGETID_ASYNC(self.node, host, port).deferred
-        #d.addErrback(self.redoTO, self.node, host, port)
-        return d
+        return self.node.async_runtime.deferred_from_coro(self.get_id(host, port))
 
     async def async_sendGetID(self, host, port):
-        return await maybe_await(self.sendGetID(host, port))
+        return await self.get_id(host, port)
 
     # XXX: we should cache nKu so that we don't do the GETID for all of these
     # ops every single time
-    def sendStore(self, filename, metadata, host, port, nKu=None):
+    async def store(self, filename, metadata, host, port, nKu=None):
         # XXX: need to keep a map of 'filename' to deferreds, in case we are
         # asked to store the same chunk more than once concurrently (happens
         # for 0-byte files or from identical copies of the same file, for
@@ -59,111 +58,88 @@ class FludClient(object):
         key = "%s:%d:%s" % (host, port, filename)
 
         if key in self.currentStorOps:
-            logger.debug("returning saved deferred for %s in sendStore" 
+            logger.debug("returning saved store op for %s in store"
                     % filename)
-            return self.currentStorOps[key]
-
-        def sendStoreWithnKu(nKu, host, port, filename, metadata):
-            return SENDSTORE_ASYNC(nKu, self.node, host, port, filename,
-                    metadata).deferred
-
-        def removeKey(r, key):
-            self.currentStorOps.pop(key)
-            return r
+            return await self.currentStorOps[key]
 
         if not nKu:
-            # XXX: doesn't do AggregateStore if file is small.  Can fix by
-            #      moving this AggStore v. SENDSTORE choice into SENDSTORE 
-            #      proper
             logger.warn("not doing AggregateStore on small file because"
                     " of missing nKu")
             print("not doing AggregateStore on small file because" \
                     " of missing nKu")
-            d = self.sendGetID(host, port)
-            d.addCallback(sendStoreWithnKu, host, port, filename, metadata)
-            self.currentStorOps[key] = d
-            return d
+            nKu = await self.get_id(host, port)
 
         fsize = os.stat(filename)[stat.ST_SIZE];
         if fsize < MINSTORSIZE:
             logger.debug("doing AggStore")
             if metadata:
                 logger.debug("with metadata")
-            d = AggregateStore(nKu, self.node, host, port, filename, 
-                    metadata).deferred
+            operation = aggregate_store(
+                    nKu, self.node, host, port, filename, metadata)
         else:
             logger.debug("SENDSTORE")
-            d = SENDSTORE_ASYNC(nKu, self.node, host, port, filename,
-                    metadata).deferred
-        self.currentStorOps[key] = d
-        d.addBoth(removeKey, key)
-        return d
+            operation = send_store_request(
+                    nKu, self.node, host, port, filename, metadata)
+        self.currentStorOps[key] = operation
+        try:
+            return await operation
+        finally:
+            self.currentStorOps.pop(key, None)
+
+    def sendStore(self, filename, metadata, host, port, nKu=None):
+        return self.node.async_runtime.deferred_from_coro(
+            self.store(filename, metadata, host, port, nKu)
+        )
 
     async def async_sendStore(self, filename, metadata, host, port, nKu=None):
-        return await maybe_await(
-            self.sendStore(filename, metadata, host, port, nKu)
-        )
+        return await self.store(filename, metadata, host, port, nKu)
     
     # XXX: need a version that takes a metakey, too
-    def sendRetrieve(self, filekey, host, port, nKu=None, metakey=True):
-        def sendRetrieveWithNKu(nKu, host, port, filekey, metakey=True):
-            return SENDRETRIEVE_ASYNC(nKu, self.node, host, port, filekey,
-                    metakey).deferred
-
+    async def retrieve(self, filekey, host, port, nKu=None, metakey=True):
         if not nKu:
-            d = self.sendGetID(host, port)
-            d.addCallback(sendRetrieveWithNKu, host, port, filekey, metakey)
-            return d
-        else:
-            return SENDRETRIEVE_ASYNC(nKu, self.node, host, port, filekey,
-                    metakey).deferred
+            nKu = await self.get_id(host, port)
+        return await send_retrieve(
+                nKu, self.node, host, port, filekey, metakey)
+
+    def sendRetrieve(self, filekey, host, port, nKu=None, metakey=True):
+        return self.node.async_runtime.deferred_from_coro(
+            self.retrieve(filekey, host, port, nKu, metakey)
+        )
 
     async def async_sendRetrieve(self, filekey, host, port, nKu=None,
             metakey=True):
-        return await maybe_await(
-            self.sendRetrieve(filekey, host, port, nKu, metakey)
-        )
+        return await self.retrieve(filekey, host, port, nKu, metakey)
     
+    async def verify(self, filekey, offset, length, host, port, nKu=None,
+            meta=None):
+        if not nKu:
+            nKu = await self.get_id(host, port)
+        return await send_verify(
+                nKu, self.node, host, port, filekey, offset, length, meta)
+
     def sendVerify(self, filekey, offset, length, host, port, nKu=None, 
             meta=None):
-        def sendVerifyWithNKu(nKu, host, port, filekey, offset, length, 
-                meta=True):
-            return SENDVERIFY_ASYNC(nKu, self.node, host, port, filekey, offset,
-                    length, meta).deferred
-
-        if not nKu:
-            d = self.sendGetID(host, port)
-            d.addCallback(sendVerifyWithNKu, host, port, filekey, offset, 
-                    length, meta)
-            return d
-        else:
-            s = SENDVERIFY_ASYNC(nKu, self.node, host, port, filekey, offset, length,
-                    meta)
-            return s.deferred
+        return self.node.async_runtime.deferred_from_coro(
+            self.verify(filekey, offset, length, host, port, nKu, meta)
+        )
 
     async def async_sendVerify(self, filekey, offset, length, host, port,
             nKu=None, meta=None):
-        return await maybe_await(
-            self.sendVerify(filekey, offset, length, host, port, nKu, meta)
-        )
+        return await self.verify(filekey, offset, length, host, port, nKu, meta)
     
-    def sendDelete(self, filekey, metakey, host, port, nKu=None):
-        def sendDeleteWithNKu(nKu, host, port, filekey, metakey):
-            return SENDDELETE_ASYNC(nKu, self.node, host, port, filekey,
-                    metakey).deferred
-
+    async def delete(self, filekey, metakey, host, port, nKu=None):
         if not nKu:
-            d = self.sendGetID(host, port)
-            d.addCallback(sendDeleteWithNKu, host, port, filekey, metakey)
-            return d
-        else:
-            return SENDDELETE_ASYNC(nKu, self.node, host, port, filekey,
-                    metakey).deferred
+            nKu = await self.get_id(host, port)
+        return await send_delete(
+                nKu, self.node, host, port, filekey, metakey)
+
+    def sendDelete(self, filekey, metakey, host, port, nKu=None):
+        return self.node.async_runtime.deferred_from_coro(
+            self.delete(filekey, metakey, host, port, nKu)
+        )
 
     async def async_sendDelete(self, filekey, metakey, host, port, nKu=None):
-        return await maybe_await(
-            self.sendDelete(filekey, metakey, host, port, nKu)
-        )
+        return await self.delete(filekey, metakey, host, port, nKu)
     
     """
     DHT single primitives (single call to single peer).  These should probably
@@ -171,42 +147,66 @@ class FludClient(object):
     'connect' to the flud network via a gateway, for instance).  Use the
     recursive primitives for doing DHT ops.
     """
+    async def send_k_find_node(self, host, port, key):
+        return await send_kfindnode(self.node, host, port, key)
+
     def sendkFindNode(self, host, port, key):
-        return SENDkFINDNODE_ASYNC(self.node, host, port, key).deferred
+        return self.node.async_runtime.deferred_from_coro(
+            self.send_k_find_node(host, port, key)
+        )
 
     async def async_sendkFindNode(self, host, port, key):
-        return await maybe_await(self.sendkFindNode(host, port, key))
+        return await self.send_k_find_node(host, port, key)
+
+    async def send_k_store(self, host, port, key, val):
+        return await send_kstore(self.node, host, port, key, val)
 
     def sendkStore(self, host, port, key, val):
-        return SENDkSTORE_ASYNC(self.node, host, port, key, val).deferred
+        return self.node.async_runtime.deferred_from_coro(
+            self.send_k_store(host, port, key, val)
+        )
 
     async def async_sendkStore(self, host, port, key, val):
-        return await maybe_await(self.sendkStore(host, port, key, val))
+        return await self.send_k_store(host, port, key, val)
+
+    async def send_k_find_value(self, host, port, key):
+        return await send_kfindvalue(self.node, host, port, key)
 
     def sendkFindValue(self, host, port, key):
-        return SENDkFINDVALUE_ASYNC(self.node, host, port, key).deferred
+        return self.node.async_runtime.deferred_from_coro(
+            self.send_k_find_value(host, port, key)
+        )
 
     async def async_sendkFindValue(self, host, port, key):
-        return await maybe_await(self.sendkFindValue(host, port, key))
+        return await self.send_k_find_value(host, port, key)
     
     """
     DHT recursive primitives (recursive calls to muliple peers)
     """
+    async def k_find_node(self, key):
+        return await async_kFindNode(self.node, key)
+
     def kFindNode(self, key):
-        return self.node.async_runtime.deferred_from_coro(async_kFindNode(self.node, key))
+        return self.node.async_runtime.deferred_from_coro(self.k_find_node(key))
 
     async def async_kFindNode(self, key):
-        return await async_kFindNode(self.node, key)
+        return await self.k_find_node(key)
     
+    async def k_store(self, key, val):
+        return await async_kStore(self.node, key, val)
+
     def kStore(self, key, val):
-        return self.node.async_runtime.deferred_from_coro(async_kStore(self.node, key, val))
+        return self.node.async_runtime.deferred_from_coro(self.k_store(key, val))
 
     async def async_kStore(self, key, val):
-        return await async_kStore(self.node, key, val)
+        return await self.k_store(key, val)
     
+    async def k_find_value(self, key):
+        return await async_kFindValue(self.node, key)
+
     def kFindValue(self, key):
-        return self.node.async_runtime.deferred_from_coro(async_kFindValue(self.node, key))
+        return self.node.async_runtime.deferred_from_coro(self.k_find_value(key))
 
     async def async_kFindValue(self, key):
-        return await async_kFindValue(self.node, key)
+        return await self.k_find_value(key)
     

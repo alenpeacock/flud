@@ -8,19 +8,17 @@ System tests for FludFileOperations
 """
 
 import asyncio
-import sys, os, time, logging, tempfile, shutil, faulthandler, signal
+import sys, os, time, logging, tempfile, shutil, faulthandler, signal, random
 import socket
 from zlib import crc32
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-import flud.defer as defer
+from flud.async_runtime import maybe_await
 from flud.fencode import fdecode
 from flud.FludCrypto import generateRandom
 from flud.FludFileOperations import *
-
-failure = defer.failure
 
 
 def listMeta(config):
@@ -31,23 +29,25 @@ def listMeta(config):
     return fdecode(master)
 
 
-def gather_deferreds(node, deferreds):
-    async def _gather():
-        results = await asyncio.gather(
-            *(maybe_await(d) for d in deferreds),
-            return_exceptions=True,
-        )
-        normalized = []
-        for result in results:
-            if isinstance(result, Exception):
-                normalized.append((False, result))
-            else:
-                normalized.append((True, result))
-        for success, result in normalized:
-            if not success:
-                raise result
-        return normalized
-    return node.async_runtime.deferred_from_coro(_gather())
+def _run(awaitable):
+    return asyncio.run(maybe_await(awaitable))
+
+
+async def gather_results(awaitables):
+    results = await asyncio.gather(
+        *(maybe_await(item) for item in awaitables),
+        return_exceptions=True,
+    )
+    normalized = []
+    for result in results:
+        if isinstance(result, Exception):
+            normalized.append((False, result))
+        else:
+            normalized.append((True, result))
+    for success, result in normalized:
+        if not success:
+            raise result
+    return normalized
 
 logger = logging.getLogger('flud')
 #logging.basicConfig(level=logging.DEBUG)
@@ -64,7 +64,7 @@ def testError(failure, message, node):
 def verifySuccess(r, desc):
     print("%s succeeded" % desc)
 
-def checkRetrieveFile(res, node, fname):
+def checkRetrieveFile(res, fname):
     retrieved = res
     if isinstance(res, (list, tuple)) and res:
         retrieved = res[0]
@@ -80,79 +80,66 @@ def checkRetrieveFile(res, node, fname):
         orig_crc &= 0xFFFFFFFF
         retrieved_crc &= 0xFFFFFFFF
         if orig_crc != retrieved_crc:
-            return defer.fail(failure.DefaultException(
+            raise RuntimeError(
                 "crc mismatch for %s (expected %08x, got %08x)" % (
-                    retrieved, orig_crc, retrieved_crc)))
+                    retrieved, orig_crc, retrieved_crc))
     print("retrieve of %s succeeded" % fname)
-    return res  # <- *VITAL* for concurrent dup ops to succeed.
+    return res
 
-def testRetrieveFile(node, fname):
-    d = RetrieveFilename(node, fname).deferred
-    d.addCallback(checkRetrieveFile, node, fname)
-    d.addErrback(testError, fname, node)
-    return d
+async def testRetrieveFile(node, fname):
+    res = await retrieve_filename(node, fname)
+    return checkRetrieveFile(res, fname)
 
-def retrieveSequential(r, node, filenamelist, desc):
-    def loop(r, node, filenamelist, desc):
-        if filenamelist:
-            fname = filenamelist.pop()
-            print("testing retrieve (%s) %s" % (desc, fname))
-            d = testRetrieveFile(node, fname)
-            d.addCallback(loop, node, filenamelist, desc)
-            d.addErrback(testError)
-            return d
-        else:
-            print("retrieve sequential (%s) done" % desc)
-
+async def retrieveSequential(node, filenamelist, desc):
     print("test retrieveSequential %s" % desc)
-    return loop(None, node, filenamelist, desc)
+    remaining = list(filenamelist)
+    while remaining:
+        fname = remaining.pop()
+        print("testing retrieve (%s) %s" % (desc, fname))
+        try:
+            await testRetrieveFile(node, fname)
+        except Exception as exc:
+            return testError(exc, fname, node)
+    print("retrieve sequential (%s) done" % desc)
 
 def storeSuccess(r, desc):
     print("%s succeeded" % desc)
 
-def storeConcurrent(r, node, files, desc):
-    #print "r was %s" % r
+async def storeConcurrent(node, files, desc):
     print("test storeConcurrent %s" % desc)
-    dlist = []
-    for file in files:
-        d = testStoreFile(node, file)
-        dlist.append(d)
-    dl = gather_deferreds(node, dlist)
-    dl.addCallback(storeSuccess, desc)
-    dl.addErrback(testError)
-    return dl
+    try:
+        result = await gather_results(testStoreFile(node, file) for file in files)
+    except Exception as exc:
+        return testError(exc, desc, node)
+    storeSuccess(result, desc)
+    return result
 
 def checkStoreFile(res, node, fname):
     master = listMeta(node.config)
     if fname not in master:
-        return defer.fail(failure.DefaultException("file not stored"))
+        raise RuntimeError("file not stored")
     else:
         print("store of %s appeared successful" % fname)
-    return res  # <- *VITAL* for concurrent dup ops to succeed.
+    return res
 
-def testStoreFile(node, fname):
-    d = StoreFile(node, fname).deferred
-    d.addCallback(checkStoreFile, node, fname)
-    d.addErrback(testError, fname, node)
-    return d
+async def testStoreFile(node, fname):
+    try:
+        res = await store_file(node, fname)
+    except Exception as exc:
+        return testError(exc, fname, node)
+    return checkStoreFile(res, node, fname)
 
 
-def doTests(node, smallfnames, largefnames, dupsmall, duplarge):
-    d = testStoreFile(node, smallfnames[0])
-    d.addCallback(storeConcurrent, node, smallfnames, "small")
-    d.addCallback(storeConcurrent, node, largefnames, "large")
-    d.addCallback(storeConcurrent, node, dupsmall, "small duplicates")
-    d.addCallback(storeConcurrent, node, duplarge, "large duplicates")
-
-    #d = storeConcurrent(None, node, dupsmall, "small duplicates")
-    #d = storeConcurrent(None, node, duplarge, "large duplicates")
-    
-    d.addCallback(retrieveSequential, node, smallfnames, "small")
-    d.addCallback(retrieveSequential, node, largefnames, "large")
-    d.addCallback(retrieveSequential, node, dupsmall, "small duplicates")
-    d.addCallback(retrieveSequential, node, duplarge, "large duplicates")
-
-    return d
+async def doTests(node, smallfnames, largefnames, dupsmall, duplarge):
+    await testStoreFile(node, smallfnames[0])
+    await storeConcurrent(node, smallfnames, "small")
+    await storeConcurrent(node, largefnames, "large")
+    await storeConcurrent(node, dupsmall, "small duplicates")
+    await storeConcurrent(node, duplarge, "large duplicates")
+    await retrieveSequential(node, smallfnames, "small")
+    await retrieveSequential(node, largefnames, "large")
+    await retrieveSequential(node, dupsmall, "small duplicates")
+    await retrieveSequential(node, duplarge, "large duplicates")
 
 def cleanup(_, node, filenamelist):
     #print _
@@ -221,8 +208,10 @@ def runTests(host, port, listenport=None):
     node.connectViaGateway(host, port)
     waitForRoutingPopulation(node)
 
-    d = doTests(node, [f1, f2], [f4, f5], [f2, f3], [f5, f6])
-    d.addBoth(cleanup, node, [f1, f2, f3, f4, f5, f6])
+    try:
+        _run(doTests(node, [f1, f2], [f4, f5], [f2, f3], [f5, f6]))
+    finally:
+        cleanup(None, node, [f1, f2, f3, f4, f5, f6])
     node.join()
 
 if __name__ == '__main__':

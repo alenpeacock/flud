@@ -98,7 +98,7 @@ async def test_native_kprimitive_stress_sequence(
     lookup_keys = [random.randrange(2**256) for _ in range(flud_k_stress_concurrency)]
 
     id_results = await _gather_stage(
-        (target.async_sendGetID(host, port) for _ in range(flud_k_stress_concurrency)),
+        (target.get_id(host, port) for _ in range(flud_k_stress_concurrency)),
         flud_stress_timeout,
     )
     assert id_results
@@ -107,40 +107,40 @@ async def test_native_kprimitive_stress_sequence(
     assert all(_public_key_fingerprint(result) == expected_key for result in id_results)
 
     send_find_node_results = await _gather_stage(
-        (target.async_sendkFindNode(host, port, key) for key in lookup_keys),
+        (target.send_k_find_node(host, port, key) for key in lookup_keys),
         flud_stress_timeout,
     )
     for response in send_find_node_results:
         _assert_node_response(response)
 
     find_node_results = await _gather_stage(
-        (target.async_kFindNode(key) for key in lookup_keys),
+        (target.k_find_node(key) for key in lookup_keys),
         flud_stress_timeout,
     )
     for response in find_node_results:
         _assert_node_response(response)
 
     send_store_results = await _gather_stage(
-        (target.async_sendkStore(host, port, key, TESTVAL) for key in testkeys),
+        (target.send_k_store(host, port, key, TESTVAL) for key in testkeys),
         flud_stress_timeout,
     )
     assert all(result == "" for result in send_store_results)
 
     store_results = await _gather_stage(
-        (target.async_kStore(key, TESTVAL) for key in testkeys),
+        (target.k_store(key, TESTVAL) for key in testkeys),
         flud_stress_timeout,
     )
     assert all(result == "" for result in store_results)
 
     send_find_value_results = await _gather_stage(
-        (target.async_sendkFindValue(host, port, key) for key in testkeys),
+        (target.send_k_find_value(host, port, key) for key in testkeys),
         flud_stress_timeout,
     )
     for result in send_find_value_results:
         assert _decode_if_needed(result) == TESTVAL
 
     find_value_results = await _gather_stage(
-        (target.async_kFindValue(key) for key in testkeys),
+        (target.k_find_value(key) for key in testkeys),
         flud_stress_timeout,
     )
     for result in find_value_results:

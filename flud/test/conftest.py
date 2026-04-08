@@ -109,7 +109,7 @@ def flud_target(flud_node, flud_host):
 
     host = getCanonicalIP(flud_host)
     port = flud_node.config.port
-    nku = asyncio.run(flud_node.client.async_sendGetID(host, port))
+    nku = asyncio.run(flud_node.client.get_id(host, port))
     return FludTarget(host=host, port=port, node=flud_node, nku=nku)
 
 
@@ -144,7 +144,7 @@ def flud_cluster(tmp_path_factory):
 
         client = nodes[-1]
         for peer in nodes[:-1]:
-            asyncio.run(client.client.async_sendGetID(host, peer.config.port))
+            asyncio.run(client.client.get_id(host, peer.config.port))
         yield FludCluster(
             host=host,
             port=gateway.config.port,

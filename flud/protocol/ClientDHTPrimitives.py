@@ -47,17 +47,17 @@ operations.
 """
 
 
-async def _async_send_kfindnode(node, host, port, key, command_name="nodes"):
+async def send_kfindnode(node, host, port, key, command_name="nodes"):
     request = SENDkFINDNODE_ASYNC(node, host, port, key, command_name)
     return await maybe_await(request.deferred)
 
 
-async def _async_send_kfindvalue(node, host, port, key):
+async def send_kfindvalue(node, host, port, key):
     request = SENDkFINDVALUE_ASYNC(node, host, port, key)
     return await maybe_await(request.deferred)
 
 
-async def _async_send_kstore(node, host, port, key, val):
+async def send_kstore(node, host, port, key, val):
     request = SENDkSTORE_ASYNC(node, host, port, key, val)
     return await maybe_await(request.deferred)
 
@@ -124,7 +124,7 @@ async def async_kFindNode(node, key):
         async def _query_one(host, port, node_id):
             outstanding.add((host, port, node_id))
             try:
-                response = await _async_send_kfindnode(node, host, port, key)
+                response = await send_kfindnode(node, host, port, key)
                 return response, host, port
             finally:
                 outstanding.discard((host, port, node_id))
@@ -200,7 +200,7 @@ async def async_kFindValue(node, key):
         return None
 
     localhost = getCanonicalIP('localhost')
-    initial = await _async_send_kfindvalue(node, localhost, node.config.port, key)
+    initial = await send_kfindvalue(node, localhost, node.config.port, key)
     exact = _update_state(initial, localhost, node.config.port)
     if exact is not None and not isinstance(exact, dict):
         return exact
@@ -217,7 +217,7 @@ async def async_kFindValue(node, key):
         async def _query_one(host, port, node_id):
             outstanding.add((host, port, node_id))
             try:
-                response = await _async_send_kfindvalue(node, host, port, key)
+                response = await send_kfindvalue(node, host, port, key)
                 return response, host, port
             finally:
                 outstanding.discard((host, port, node_id))
@@ -253,7 +253,7 @@ async def async_kStore(node, key, val):
     if len(knodes) < 1:
         raise RuntimeError("can't complete kStore -- no nodes")
     results = await asyncio.gather(
-        *(_async_send_kstore(node, knode[0], knode[1], key, val)
+        *(send_kstore(node, knode[0], knode[1], key, val)
           for knode in knodes),
         return_exceptions=True,
     )

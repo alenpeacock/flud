@@ -102,14 +102,6 @@ async def update_manifest(node):
     operation = UpdateManifest(node)
     return await operation.run()
 
-
-async def retrieve_master_index(node):
-    return await retrieve_manifest(node)
-
-
-async def update_master_index(node):
-    return await update_manifest(node)
-
 def pathsplit(fname):
     par, chld = os.path.split(fname)
     if chld == "":
@@ -1534,6 +1526,3 @@ class UpdateManifest:
         logger.warning(msg)
         return err
 
-
-RetrieveMasterIndex = RetrieveManifest
-UpdateMasterIndex = UpdateManifest

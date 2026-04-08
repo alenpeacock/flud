@@ -35,9 +35,6 @@ def listManifest(config):
     return fdecode(manifest)
 
 
-listMeta = listManifest
-
-
 class AsyncGUIRequest:
     def __init__(self, future):
         self._future = future

@@ -129,7 +129,6 @@ class FludConfig:
         self.nodes = {}
         self.throttled = {}  # XXX: should persist this to config file
         self.manifest_lock = threading.RLock()
-        self.master_lock = self.manifest_lock
 
         try:
             self.fludhome = os.environ['FLUDHOME']
@@ -223,7 +222,6 @@ class FludConfig:
         logger.debug('clientdir = %s' % self.clientdir)
 
         self.metadir, self.manifest_name = self._getMetaConf()
-        self.metamaster = self.manifest_name
         if not os.path.isdir(self.metadir):
             os.mkdir(self.metadir)
             os.chmod(self.metadir, 0o700)
@@ -650,7 +648,6 @@ class FludConfig:
             manifest = fdecode(manifest)
         with self.manifest_lock:
             self.manifest = manifest
-            self.master = self.manifest
 
     def syncManifest(self):
         """
@@ -661,22 +658,6 @@ class FludConfig:
         manifest_file = open(os.path.join(self.metadir, self.manifest_name), 'w')
         manifest_file.write(manifest)
         manifest_file.close()
-
-    # Compatibility aliases for older callers.
-    def updateMasterMeta(self, fname, val):
-        self.updateManifest(fname, val)
-
-    def getFromMasterMeta(self, fname):
-        return self.getFromManifest(fname)
-
-    def deleteFromMasterMeta(self, fname):
-        self.deleteFromManifest(fname)
-
-    def loadMasterMeta(self):
-        self.loadManifest()
-
-    def syncMasterMeta(self):
-        self.syncManifest()
         
     def _test(self):
         import doctest

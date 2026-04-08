@@ -39,19 +39,19 @@ logger = logging.getLogger("flud.client.dht")
 #      aren't waiting for remote GETIDs to return before recursing.
 
 """
-The active DHT client path is asyncio-native.  Single-node SEND* request
-classes live here, and the async_k* helpers compose them into recursive
-operations.
+The active DHT client path is asyncio-native. Single-hop helpers use the
+``send_k_*`` naming scheme, and recursive helpers use the canonical
+``k_*`` names.
 """
 
 
-async def send_kfindnode(node, host, port, key, command_name="nodes"):
+async def send_k_find_node(node, host, port, key, command_name="nodes"):
     return await maybe_await(
             node.async_runtime.submit(
-                _send_kfindnode(node, host, port, key, command_name)))
+                _send_k_find_node(node, host, port, key, command_name)))
 
 
-async def _send_kfindnode(node, host, port, key, command_name="nodes"):
+async def _send_k_find_node(node, host, port, key, command_name="nodes"):
     if aiohttp is None:
         raise RuntimeError("aiohttp not available for async DHT request")
     host = getCanonicalIP(host)
@@ -88,13 +88,13 @@ async def _send_kfindnode(node, host, port, key, command_name="nodes"):
                 raise socket.error(str(exc))
 
 
-async def send_kfindvalue(node, host, port, key):
+async def send_k_find_value(node, host, port, key):
     return await maybe_await(
             node.async_runtime.submit(
-                _send_kfindvalue(node, host, port, key)))
+                _send_k_find_value(node, host, port, key)))
 
 
-async def _send_kfindvalue(node, host, port, key):
+async def _send_k_find_value(node, host, port, key):
     if aiohttp is None:
         raise RuntimeError("aiohttp not available for async DHT request")
     host = getCanonicalIP(host)
@@ -136,13 +136,13 @@ async def _send_kfindvalue(node, host, port, key):
                 raise socket.error(str(exc))
 
 
-async def send_kstore(node, host, port, key, val):
+async def send_k_store(node, host, port, key, val):
     return await maybe_await(
             node.async_runtime.submit(
-                _send_kstore(node, host, port, key, val)))
+                _send_k_store(node, host, port, key, val)))
 
 
-async def _send_kstore(node, host, port, key, val):
+async def _send_k_store(node, host, port, key, val):
     if aiohttp is None:
         raise RuntimeError("aiohttp not available for async kSTORE")
     host = getCanonicalIP(host)
@@ -176,7 +176,7 @@ async def _send_kstore(node, host, port, key, val):
                 raise socket.error(str(exc))
 
 
-async def async_kFindNode(node, key):
+async def k_find_node(node, key):
     node.DHTtstamp = time.time()
     queried = {}
     outstanding = set()
@@ -238,7 +238,7 @@ async def async_kFindNode(node, key):
         async def _query_one(host, port, node_id):
             outstanding.add((host, port, node_id))
             try:
-                response = await send_kfindnode(node, host, port, key)
+                response = await send_k_find_node(node, host, port, key)
                 return response, host, port
             finally:
                 outstanding.discard((host, port, node_id))
@@ -268,7 +268,7 @@ async def async_kFindNode(node, key):
     return {'k': kclosest[:FludkRouting.k]}
 
 
-async def async_kFindValue(node, key):
+async def k_find_value(node, key):
     node.DHTtstamp = time.time()
     queried = {}
     outstanding = set()
@@ -314,7 +314,7 @@ async def async_kFindValue(node, key):
         return None
 
     localhost = getCanonicalIP('localhost')
-    initial = await send_kfindvalue(node, localhost, node.config.port, key)
+    initial = await send_k_find_value(node, localhost, node.config.port, key)
     exact = _update_state(initial, localhost, node.config.port)
     if exact is not None and not isinstance(exact, dict):
         return exact
@@ -331,7 +331,7 @@ async def async_kFindValue(node, key):
         async def _query_one(host, port, node_id):
             outstanding.add((host, port, node_id))
             try:
-                response = await send_kfindvalue(node, host, port, key)
+                response = await send_k_find_value(node, host, port, key)
                 return response, host, port
             finally:
                 outstanding.discard((host, port, node_id))
@@ -361,13 +361,13 @@ async def async_kFindValue(node, key):
     return max(values.items(), key=lambda item: item[1])[0]
 
 
-async def async_kStore(node, key, val):
-    knodes = await async_kFindNode(node, key)
+async def k_store(node, key, val):
+    knodes = await k_find_node(node, key)
     knodes = knodes['k']
     if len(knodes) < 1:
         raise RuntimeError("can't complete kStore -- no nodes")
     results = await asyncio.gather(
-        *(send_kstore(node, knode[0], knode[1], key, val)
+        *(send_k_store(node, knode[0], knode[1], key, val)
           for knode in knodes),
         return_exceptions=True,
     )

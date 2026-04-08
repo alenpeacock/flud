@@ -48,11 +48,11 @@ def _gather(awaitables):
 
 
 def _list_meta(config):
-    with open(os.path.join(config.metadir, config.metamaster), "r") as handle:
-        master = handle.read()
-    if master == "":
+    with open(os.path.join(config.metadir, config.manifest_name), "r") as handle:
+        manifest = handle.read()
+    if manifest == "":
         return {}
-    return fdecode(master)
+    return fdecode(manifest)
 
 
 def _crc32(path):

@@ -93,14 +93,22 @@ async def retrieve_filename(node, filename):
     return await operation.run()
 
 
-async def retrieve_master_index(node):
-    operation = RetrieveMasterIndex(node)
+async def retrieve_manifest(node):
+    operation = RetrieveManifest(node)
     return await operation.run()
+
+
+async def update_manifest(node):
+    operation = UpdateManifest(node)
+    return await operation.run()
+
+
+async def retrieve_master_index(node):
+    return await retrieve_manifest(node)
 
 
 async def update_master_index(node):
-    operation = UpdateMasterIndex(node)
-    return await operation.run()
+    return await update_manifest(node)
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -169,7 +177,7 @@ class StoreFile:
     6. Store file metadata (both node-specific and data-specific) to the
     DHT.  Keep a local copy as well.
 
-    7. Update the master file record index for this node, and store it to
+    7. Update the manifest for this node, and store it to
     the DHT layer.
     """
 
@@ -632,7 +640,7 @@ class StoreFile:
         result = await self.node.client.k_store(self.sK, self.blockMetadata)
         return self._updateMaster(result, self.blockMetadata)
 
-    # 7 - update local master file record (store it to the network later).
+    # 7 - update local manifest record (store it to the network later).
     def _updateMaster(self, res, meta):
         # clean up locally coded files and encrypted file
         for sfile in self.sfiles:
@@ -643,23 +651,23 @@ class StoreFile:
         if self.efilename: os.remove(self.efilename)
 
         key = fencode(self.sK)
-        logger.info(self.ctx("updating local master metadata with %s", key))
+        logger.info(self.ctx("updating local manifest with %s", key))
 
         # store the filekey locally
 
         # update entry for file
-        with self.config.master_lock:
-            self.config.updateMasterMeta(self.filename, (self.sK, int(time.time())))
+        with self.config.manifest_lock:
+            self.config.updateManifest(self.filename, (self.sK, int(time.time())))
 
             # update entry for parent dirs
             paths = pathsplit(self.filename)
             for i in paths:
-                if not self.config.getFromMasterMeta(i):
-                    self.config.updateMasterMeta(i, filemetadata(i))
+                if not self.config.getFromManifest(i):
+                    self.config.updateManifest(i, filemetadata(i))
 
             # XXX: not too efficient to write this out for every file.  consider
             # local caching and periodic syncing instead
-            self.config.syncMasterMeta()
+            self.config.syncManifest()
 
         # cache the metadata locally (optional)
         fname = os.path.join(self.metadir,key)
@@ -1323,9 +1331,9 @@ class RetrieveFile:
                     os.mkdir(i) # best effort dir creation, even if missing
                                 # directory metadata
                     # XXX: should be using an accessor method on config for
-                    # master
-                    if i in self.config.master:
-                        dirmeta = self.config.getFromMasterMeta(i)
+                    # manifest
+                    if i in self.config.manifest:
+                        dirmeta = self.config.getFromManifest(i)
                         os.chmod(i,dirmeta['mode']) 
                         os.chown(i,dirmeta['uid'],dirmeta['gid']) # XXX: windows
                         # XXX: atim, mtim, ctim
@@ -1348,8 +1356,8 @@ class RetrieveFile:
 
 class RetrieveFilename:
     """
-    Retrieves a File given its local name.  Only works if the local master
-    index contains an entry for this filename.
+    Retrieves a File given its local name.  Only works if the local manifest
+    contains an entry for this filename.
     """
 
     def __init__(self, node, filename):
@@ -1359,26 +1367,26 @@ class RetrieveFilename:
         self.config = self.node.config
 
     async def run(self):
-        fmeta = self.config.getFromMasterMeta(self.filename)
+        fmeta = self.config.getFromManifest(self.filename)
         if fmeta:
             if isinstance(fmeta, dict):
-                logger.debug("%s is a directory in master metadata", 
+                logger.debug("%s is a directory in the manifest", 
                         self.filename)
                 # RetrieveFile will restore parent dirs, so we don't need to
                 dlist = []
                 dirname = self.filename+os.path.sep
                 # XXX: this should be calling a config.getAllFromMasterMeta()
-                for i in [x for x in list(self.config.master.keys()) 
+                for i in [x for x in list(self.config.manifest.keys()) 
                         if dirname == x[:len(dirname)]]:
-                    filekey = self.config.getFromMasterMeta(i)
+                    filekey = self.config.getFromManifest(i)
                     metakey = _crc32_value(i)
                     logger.debug("calling RetrieveFile %s" % filekey)
                     dlist.append(retrieve_file(self.node, fencode(filekey),
                             metakey))
                 return await self._gatherRecoveries(dlist)
             else:
-                logger.debug("%s is file in master metadata", self.filename)
-                (filekey, backuptime) = self.config.getFromMasterMeta(
+                logger.debug("%s is a file in the manifest", self.filename)
+                (filekey, backuptime) = self.config.getFromManifest(
                         self.filename)
                 metakey = _crc32_value(self.filename)
                 if filekey != None and filekey != "":
@@ -1420,7 +1428,7 @@ class VerifyFile:
         """
         Chooses some random blocks from filepath to verify against the store.
         The algorithm is as follows: sK = H(H(file at filepath)).  Look up sK
-        in the local master index.  If the record isn't there, return this
+        in the local manifest.  If the record isn't there, return this
         fact.  If the record is there, retrieve its metadata.  Verify k
         blocks as follows:
         
@@ -1439,7 +1447,7 @@ class VerifyFile:
         pass #remove me
         
 
-class RetrieveMasterIndex:
+class RetrieveManifest:
     
     def __init__(self, node):
         self.node = node
@@ -1447,14 +1455,14 @@ class RetrieveMasterIndex:
         logger.info("looking for key %x" % nodeID)
         self.nodeID = nodeID
     async def run(self):
-        return await self._retrieve_master_index(self.nodeID)
+        return await self._retrieve_manifest(self.nodeID)
 
-    async def _retrieve_master_index(self, nodeID):
+    async def _retrieve_manifest(self, nodeID):
         try:
             CAS = await self.node.client.k_find_value(nodeID)
         except Exception as err:
-            return self._retrieveMasterIndexErr(
-                err, "couldn't find master metadata")
+            return self._retrieveManifestErr(
+                err, "couldn't find manifest")
         return await self._foundCAS(CAS)
 
     def _foundCAS(self, CAS):
@@ -1467,11 +1475,11 @@ class RetrieveMasterIndex:
         try:
             result = await retrieve_file(self.node, CAS)
         except Exception as err:
-            return self._retrieveMasterIndexErr(
-                err, "couldn't find Master Index")
-        return self._foundMaster(result)
+            return self._retrieveManifestErr(
+                err, "couldn't find manifest")
+        return self._foundManifest(result)
 
-    def _foundMaster(self, result):
+    def _foundManifest(self, result):
         if len(result) == 2: 
             # got two filenames back, must mean we should choose one: the
             # one from the distributed store
@@ -1479,42 +1487,41 @@ class RetrieveMasterIndex:
             result = (result[1],)
         return result
 
-    def _retrieveMasterIndexErr(self, err, msg):
+    def _retrieveManifestErr(self, err, msg):
         logger.warning(msg)
         return err
 
-class UpdateMasterIndex:
+class UpdateManifest:
 
     def __init__(self, node):
         self.node = node
-        self.metamaster = os.path.join(self.node.config.metadir,
-                self.node.config.metamaster)
+        self.manifest_path = os.path.join(self.node.config.metadir,
+                self.node.config.manifest_name)
     async def run(self):
-        return await self._update_master_index()
+        return await self._update_manifest()
 
-    async def _update_master_index(self):
+    async def _update_manifest(self):
         try:
-            res = await retrieve_master_index(self.node)
-            self._removeOldMasterIndex(res)
+            res = await retrieve_manifest(self.node)
+            self._removeOldManifest(res)
         except Exception as err:
             res = err
-        return await self._storeMasterIndex(res)
+        return await self._storeManifest(res)
 
-    def _removeOldMasterIndex(self, res):
-        # 0.2. for i in oldmaster: delete(i)
-        print("removing old master not yet implemented")
+    def _removeOldManifest(self, res):
+        print("removing old manifest not yet implemented")
         return res
 
-    def _storeMasterIndex(self, res_or_err):
-        print("going to store %s" % self.metamaster)
-        return self._store_master_index_async()
+    def _storeManifest(self, res_or_err):
+        print("going to store %s" % self.manifest_path)
+        return self._store_manifest_async()
 
-    async def _store_master_index_async(self):
+    async def _store_manifest_async(self):
         try:
-            stored = await store_file(self.node, self.metamaster)
+            stored = await store_file(self.node, self.manifest_path)
         except Exception as err:
-            return self._updateMasterIndexErr(
-                err, "couldn't store master index")
+            return self._updateManifestErr(
+                err, "couldn't store manifest")
         return await self._updateCAS(stored)
 
     def _updateCAS(self, stored):
@@ -1523,6 +1530,10 @@ class UpdateMasterIndex:
             int(self.node.config.nodeID,16)))
         return self.node.client.k_store(int(self.node.config.nodeID,16), key)
 
-    def _updateMasterIndexErr(self, err, msg):
+    def _updateManifestErr(self, err, msg):
         logger.warning(msg)
         return err
+
+
+RetrieveMasterIndex = RetrieveManifest
+UpdateMasterIndex = UpdateManifest

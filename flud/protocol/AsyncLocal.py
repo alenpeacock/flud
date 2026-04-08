@@ -209,11 +209,11 @@ class AsyncLocalServer:
                 message.as_string(),
             )
         if command == "LIST":
-            return self.config.master
+            return self.config.manifest
         if command == "GETM":
-            return await self._run_fileop(FileOps.retrieve_master_index, self.node)
+            return await self._run_fileop(FileOps.retrieve_manifest, self.node)
         if command == "PUTM":
-            return await self._run_fileop(FileOps.update_master_index, self.node)
+            return await self._run_fileop(FileOps.update_manifest, self.node)
         host = fname[:fname.find(":")]
         port = fname[fname.find(":") + 1:fname.find(",")]
         fname = fname[fname.find(",") + 1:]

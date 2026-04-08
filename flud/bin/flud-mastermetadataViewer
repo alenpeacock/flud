@@ -5,7 +5,7 @@ flud-mastermetadataViewer (c) 2003-2006 Alen Peacock.  This program is
 distributed under the terms of the GNU General Public License (the GPL), 
 version 3.
 
-Utility for displaying master metadata.
+Utility for displaying the manifest.
 """
 
 import sys, os

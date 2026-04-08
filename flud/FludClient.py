@@ -27,12 +27,15 @@ imgdir = os.path.join(datadir,'images')
 mimeMgr = wx.MimeTypesManager()
 
 
-def listMeta(config):
-    with open(os.path.join(config.metadir, config.metamaster), 'r') as fmaster:
-        master = fmaster.read()
-    if master == "":
+def listManifest(config):
+    with open(os.path.join(config.metadir, config.manifest_name), 'r') as manifest_file:
+        manifest = manifest_file.read()
+    if manifest == "":
         return {}
-    return fdecode(master)
+    return fdecode(manifest)
+
+
+listMeta = listManifest
 
 
 class AsyncGUIRequest:

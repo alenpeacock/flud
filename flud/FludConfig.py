@@ -128,7 +128,8 @@ class FludConfig:
         self.reputations = {}
         self.nodes = {}
         self.throttled = {}  # XXX: should persist this to config file
-        self.master_lock = threading.RLock()
+        self.manifest_lock = threading.RLock()
+        self.master_lock = self.manifest_lock
 
         try:
             self.fludhome = os.environ['FLUDHOME']
@@ -221,7 +222,8 @@ class FludConfig:
             os.chmod(self.clientdir, 0o700)
         logger.debug('clientdir = %s' % self.clientdir)
 
-        self.metadir, self.metamaster = self._getMetaConf()
+        self.metadir, self.manifest_name = self._getMetaConf()
+        self.metamaster = self.manifest_name
         if not os.path.isdir(self.metadir):
             os.mkdir(self.metadir)
             os.chmod(self.metadir, 0o700)
@@ -236,7 +238,7 @@ class FludConfig:
         self.save()
         os.chmod(self.fludconfig, 0o600)
 
-        self.loadMasterMeta()
+        self.loadManifest()
 
     def save(self):
         """
@@ -432,16 +434,16 @@ class FludConfig:
         metadir = self._getDirConf(self.configParser, "metadata", "meta")
         
         try:
-            master = self.configParser.get("meta","master")
+            manifest = self.configParser.get("meta","master")
         except:
-            logger.debug("no meta master file specified, using default")
-            master = "master"
+            logger.debug("no manifest file specified, using default")
+            manifest = "manifest"
 
-        if not os.path.isfile(metadir+'/'+master):
-            f = open(metadir+'/'+master, 'w')
+        if not os.path.isfile(metadir+'/'+manifest):
+            f = open(metadir+'/'+manifest, 'w')
             f.close()
         
-        return (metadir, master)
+        return (metadir, manifest)
 
     def _getReputations(self):
         """
@@ -605,59 +607,76 @@ class FludConfig:
             logger.debug("returning all %d of the items" % len(items))
             return [self.routing.getNode(f) for (f,v) in items]
 
-    # XXX: note that this master metadata all-in-mem scheme doesn't really work
+    # XXX: note that this manifest all-in-mem scheme doesn't really work
     # long term; these methods should eventually go to a local db or db-like
     # something
-    def updateMasterMeta(self, fname, val): 
+    def updateManifest(self, fname, val): 
         """
         update fname with val (sK)
         """
-        with self.master_lock:
-            self.master[fname] = val
+        with self.manifest_lock:
+            self.manifest[fname] = val
 
-    def getFromMasterMeta(self, fname):
+    def getFromManifest(self, fname):
         """
         get val (sK) for fname
         """
-        with self.master_lock:
+        with self.manifest_lock:
             try:
-                return self.master[fname]
+                return self.manifest[fname]
             except:
                 return None
 
-    def deleteFromMasterMeta(self, fname):
+    def deleteFromManifest(self, fname):
         """
         remove fname
         """
-        with self.master_lock:
+        with self.manifest_lock:
             try: 
-                self.master.pop(fname)
+                self.manifest.pop(fname)
             except:
                 pass
 
-    def loadMasterMeta(self):
+    def loadManifest(self):
         """
         loads fname->sK mappings from file
         """
-        fmaster = open(os.path.join(self.metadir, self.metamaster), 'r')
-        master = fmaster.read()
-        fmaster.close()
-        if master == "":
-            master = {}
+        manifest_file = open(os.path.join(self.metadir, self.manifest_name), 'r')
+        manifest = manifest_file.read()
+        manifest_file.close()
+        if manifest == "":
+            manifest = {}
         else:
-            master = fdecode(master)
-        with self.master_lock:
-            self.master = master
+            manifest = fdecode(manifest)
+        with self.manifest_lock:
+            self.manifest = manifest
+            self.master = self.manifest
 
-    def syncMasterMeta(self):
+    def syncManifest(self):
         """
         sync in-mem fname->sK mappings to disk
         """
-        with self.master_lock:
-            master = fencode(self.master)
-        fmaster = open(os.path.join(self.metadir, self.metamaster), 'w')
-        fmaster.write(master)
-        fmaster.close()
+        with self.manifest_lock:
+            manifest = fencode(self.manifest)
+        manifest_file = open(os.path.join(self.metadir, self.manifest_name), 'w')
+        manifest_file.write(manifest)
+        manifest_file.close()
+
+    # Compatibility aliases for older callers.
+    def updateMasterMeta(self, fname, val):
+        self.updateManifest(fname, val)
+
+    def getFromMasterMeta(self, fname):
+        return self.getFromManifest(fname)
+
+    def deleteFromMasterMeta(self, fname):
+        self.deleteFromManifest(fname)
+
+    def loadMasterMeta(self):
+        self.loadManifest()
+
+    def syncMasterMeta(self):
+        self.syncManifest()
         
     def _test(self):
         import doctest

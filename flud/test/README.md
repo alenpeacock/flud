@@ -232,11 +232,11 @@ Start up the FludLocalClient once again:
 ```sh
 FLUDHOME=~/.flud5 fludlocalclient
 ```
-See that master metadata is gone:
+See that the manifest is gone:
 ```sh
 > list
 ```
-Recover master metadata:
+Recover the manifest:
 ```sh
 > getm
 ```

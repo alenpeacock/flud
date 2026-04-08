@@ -21,11 +21,11 @@ from flud.FludFileOperations import *
 
 
 def listMeta(config):
-    with open(os.path.join(config.metadir, config.metamaster), 'r') as fmaster:
-        master = fmaster.read()
-    if master == "":
+    with open(os.path.join(config.metadir, config.manifest_name), 'r') as manifest_file:
+        manifest = manifest_file.read()
+    if manifest == "":
         return {}
-    return fdecode(master)
+    return fdecode(manifest)
 
 
 def _run(awaitable):

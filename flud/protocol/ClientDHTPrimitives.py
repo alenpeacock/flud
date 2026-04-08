@@ -376,14 +376,3 @@ async def async_kStore(node, key, val):
         raise RuntimeError(results)
     logger.info("kStore finished")
     return ""
-
-class SENDkFINDNODE_ASYNC(REQUEST):
-    pass
-
-
-class SENDkSTORE_ASYNC(REQUEST):
-    pass
-
-
-class SENDkFINDVALUE_ASYNC(SENDkFINDNODE_ASYNC):
-    pass

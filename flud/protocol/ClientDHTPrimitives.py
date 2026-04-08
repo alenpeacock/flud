@@ -48,18 +48,134 @@ operations.
 
 
 async def send_kfindnode(node, host, port, key, command_name="nodes"):
-    request = SENDkFINDNODE_ASYNC(node, host, port, key, command_name)
-    return await maybe_await(request.deferred)
+    return await maybe_await(
+            node.async_runtime.deferred_from_coro(
+                _send_kfindnode(node, host, port, key, command_name)))
+
+
+async def _send_kfindnode(node, host, port, key, command_name="nodes"):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async DHT request")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/%s/%s?nodeID=%s&Ku_e=%s&Ku_n=%s&port=%s') % (
+            host, port, command_name, fencode(key), node.config.nodeID,
+            Ku['e'], Ku['n'], node.config.port)
+    timeoutcount = 0
+    while True:
+        try:
+            timeout = aiohttp.ClientTimeout(total=kprimitive_to)
+            resp = await node.async_http.request(
+                    "GET", url,
+                    headers=_normalize_headers(headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
+                        "%s FAILED from %s:%d: received status %s, '%s'"
+                        % (command_name, host, port, status, body))
+            response = eval(body)
+            nID = int(response['id'], 16)
+            updateNode(node.client, node.config, host, port, None, nID)
+            updateNodes(node.client, node.config, response['k'])
+            return response
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 
 async def send_kfindvalue(node, host, port, key):
-    request = SENDkFINDVALUE_ASYNC(node, host, port, key)
-    return await maybe_await(request.deferred)
+    return await maybe_await(
+            node.async_runtime.deferred_from_coro(
+                _send_kfindvalue(node, host, port, key)))
+
+
+async def _send_kfindvalue(node, host, port, key):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async DHT request")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/meta/%s?nodeID=%s&Ku_e=%s&Ku_n=%s&port=%s') % (
+            host, port, fencode(key), node.config.nodeID,
+            Ku['e'], Ku['n'], node.config.port)
+    timeoutcount = 0
+    while True:
+        try:
+            timeout = aiohttp.ClientTimeout(total=kprimitive_to)
+            resp = await node.async_http.request(
+                    "GET", url,
+                    headers=_normalize_headers(headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+                content_type = resp.headers.get("Content-Type", "")
+                node_id = resp.headers.get("nodeID")
+            finally:
+                resp.release()
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
+                        "meta FAILED from %s:%d: received status %s, '%s'"
+                        % (host, port, status, body))
+            if content_type == "application/x-flud-data":
+                updateNode(node.client, node.config, host, port, None, node_id)
+                return body
+            response = eval(body)
+            nID = int(response['id'], 16)
+            updateNode(node.client, node.config, host, port, None, nID)
+            updateNodes(node.client, node.config, response['k'])
+            return response
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 
 async def send_kstore(node, host, port, key, val):
-    request = SENDkSTORE_ASYNC(node, host, port, key, val)
-    return await maybe_await(request.deferred)
+    return await maybe_await(
+            node.async_runtime.deferred_from_coro(
+                _send_kstore(node, host, port, key, val)))
+
+
+async def _send_kstore(node, host, port, key, val):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async kSTORE")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/meta/%s/%s?nodeID=%s&Ku_e=%s&Ku_n=%s&port=%s') % (
+            host, port, fencode(key), fencode(val), node.config.nodeID,
+            Ku['e'], Ku['n'], node.config.port)
+    timeoutcount = 0
+    while True:
+        try:
+            timeout = aiohttp.ClientTimeout(total=kprimitive_to)
+            resp = await node.async_http.request(
+                    "PUT", url,
+                    headers=_normalize_headers(headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
+                        "kSTORE FAILED from %s:%d status=%s body=%s"
+                        % (host, port, status, body))
+            logger.info("kSTORE to %s:%d finished", host, port)
+            return body
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 
 async def async_kFindNode(node, key):

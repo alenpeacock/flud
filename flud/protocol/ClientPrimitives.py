@@ -55,14 +55,163 @@ def _async_diag_enabled():
     return os.environ.get("FLUD_ASYNC_DIAG") == "1"
 
 
+async def _run_on_node_runtime(node, coro):
+    return await maybe_await(node.async_runtime.deferred_from_coro(coro))
+
+
 async def send_get_id(node, host, port):
-    request = SENDGETID_ASYNC(node, host, port)
-    return await maybe_await(request.deferred)
+    return await _run_on_node_runtime(node, _send_get_id(node, host, port))
+
+
+async def _send_get_id(node, host, port):
+    host = getCanonicalIP(host)
+    Ku = node.config.Ku.exportPublicKey()
+    url = "http://%s:%d/ID?nodeID=%s&port=%s&Ku_e=%s&Ku_n=%s" % (
+            host, port, node.config.nodeID, node.config.port, Ku['e'], Ku['n'])
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    for timeoutcount in range(MAXTIMEOUTS):
+        try:
+            timeout = aiohttp.ClientTimeout(total=primitive_to)
+            resp = await node.async_http.request(
+                    "GET", url,
+                    headers=_normalize_headers(headers),
+                    timeout=timeout)
+            try:
+                status = resp.status
+                body = await resp.text()
+            finally:
+                resp.release()
+            if status != HTTPStatus.OK:
+                raise RuntimeError(
+                        "SENDGETID FAILED to %s:%d: server sent status %s, '%s'"
+                        % (host, port, status, body))
+            try:
+                nKu = FludRSA.importPublicKey(eval(body))
+            except Exception:
+                raise RuntimeError(
+                        "SENDGETID FAILED to %s:%d: received invalid key"
+                        % (host, port))
+            updateNode(node.client, node.config, host, port, nKu)
+            loggerid.info("SENDGETID PASSED to %s:%d", host, port)
+            return nKu
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            if timeoutcount + 1 >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
+
+
+def _build_store_form(datafile, metadata, params, skipfile):
+    data = aiohttp.FormData()
+    params_local = list(params)
+    files = []
+    if skipfile:
+        files = [(None, 'filename')]
+    elif metadata:
+        metakey = metadata[0]
+        params_local.append(('metakey', metakey))
+        metafile = metadata[1]
+        files = [(datafile, 'filename'), (metafile, 'meta')]
+    else:
+        files = [(datafile, 'filename')]
+
+    for (param, value) in params_local:
+        data.add_field(param, str(value))
+
+    for fileobj, element in files:
+        if fileobj is None:
+            data.add_field(element, b"", filename="null",
+                    content_type="application/octet-stream")
+            continue
+        if hasattr(fileobj, "read"):
+            fileobj.seek(0, 2)
+            fileobj.seek(0, 0)
+            file_bytes = fileobj.read()
+            if isinstance(file_bytes, str):
+                file_bytes = file_bytes.encode("utf-8")
+            data.add_field(element, file_bytes, filename=element,
+                    content_type="application/octet-stream")
+            continue
+        with open(fileobj, "rb") as fhandle:
+            file_bytes = fhandle.read()
+        data.add_field(element, file_bytes,
+                filename=os.path.basename(fileobj),
+                content_type="application/octet-stream")
+    return data
 
 
 async def send_store_request(nKu, node, host, port, datafile, metadata=None):
-    request = SENDSTORE_ASYNC(nKu, node, host, port, datafile, metadata)
-    return await maybe_await(request.deferred)
+    return await _run_on_node_runtime(
+            node, _send_store_request(nKu, node, host, port, datafile, metadata))
+
+
+async def _send_store_request(nKu, node, host, port, datafile, metadata=None):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async STORE")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    fsize = os.stat(datafile)[stat.ST_SIZE]
+    Ku = node.config.Ku.exportPublicKey()
+    filekey = os.path.basename(datafile)
+    params = [('nodeID', node.config.nodeID),
+            ('Ku_e', str(Ku['e'])),
+            ('Ku_n', str(Ku['n'])),
+            ('port', str(node.config.port)),
+            ('size', str(fsize))]
+    url = "http://%s:%d/file/%s" % (host, port, filekey)
+    timeoutcount = 0
+    while True:
+        try:
+            auth_retries = 0
+            hdrs = dict(headers)
+            while True:
+                if _async_diag_enabled():
+                    loggerstor.warning("SENDSTORE async POST %s skip=%s",
+                            url, False)
+                timeout = aiohttp.ClientTimeout(total=primitive_to)
+                resp = await node.async_http.request(
+                        "POST", url,
+                        data=_build_store_form(datafile, metadata, params, False),
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.read()
+                finally:
+                    resp.release()
+                if _async_diag_enabled():
+                    loggerstor.warning("SENDSTORE async response %s %s %s",
+                            status, reason, url)
+                if status == HTTPStatus.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise RuntimeError(
+                                "SENDSTORE unauthorized (retries exhausted)")
+                    challenge = None
+                    if body:
+                        challenge = body.decode("utf-8", errors="ignore")
+                    if not challenge:
+                        challenge = reason
+                    hdrs = answerChallenge(challenge, node.config.Kr,
+                            node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == HTTPStatus.CONFLICT:
+                    raise BadCASKeyException("%s %s" % (status, reason))
+                if status != HTTPStatus.OK:
+                    raise RuntimeError(
+                            "received %s in SENDSTORE response: %s"
+                            % (status, body))
+                updateNode(node.client, node.config, host, port, nKu)
+                loggerstor.info("received SENDSTORE response from %s:%d: %s",
+                        host, port, str(body))
+                return body
+        except BadCASKeyException:
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
+            loggerstor.info("retrying async SENDSTORE [#%d] to %s:%d",
+                    timeoutcount, host, port)
 
 
 async def aggregate_store(nKu, node, host, port, datafile, metadata=None):
@@ -71,20 +220,186 @@ async def aggregate_store(nKu, node, host, port, datafile, metadata=None):
 
 
 async def send_retrieve(nKu, node, host, port, filekey, metakey=True):
-    request = SENDRETRIEVE_ASYNC(nKu, node, host, port, filekey, metakey)
-    return await maybe_await(request.deferred)
+    return await _run_on_node_runtime(
+            node, _send_retrieve(nKu, node, host, port, filekey, metakey))
+
+
+async def _send_retrieve(nKu, node, host, port, filekey, metakey=True):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async RETRIEVE")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/file/%s?nodeID=%s&port=%s&Ku_e=%s&Ku_n=%s'
+           '&metakey=%s') % (
+            host, port, filekey, node.config.nodeID, node.config.port,
+            Ku['e'], Ku['n'], metakey)
+    timeoutcount = 0
+    while True:
+        try:
+            auth_retries = 0
+            hdrs = dict(headers)
+            while True:
+                timeout = aiohttp.ClientTimeout(total=transfer_to)
+                resp = await node.async_http.request(
+                        "GET", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.read()
+                    content_type = resp.headers.get("Content-Type", "")
+                    boundary = resp.headers.get("boundary", "")
+                finally:
+                    resp.release()
+                if status == HTTPStatus.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise RuntimeError(
+                                "SENDRETRIEVE unauthorized (retries exhausted)")
+                    challenge = body.decode("utf-8", errors="ignore") if body else ""
+                    if not challenge:
+                        challenge = reason
+                    hdrs = answerChallenge(challenge, node.config.Kr,
+                            node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == HTTPStatus.NOT_FOUND:
+                    raise NotFoundException("Not found: %s" % filekey)
+                if status == HTTPStatus.BAD_REQUEST:
+                    raise BadRequestException("Bad request for %s" % filekey)
+                if status != HTTPStatus.OK:
+                    raise RuntimeError(
+                            "SENDRETRIEVE FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                saved = _save_retrieve_response(
+                        body, content_type, node.config.clientdir, filekey, boundary)
+                updateNode(node.client, node.config, host, port, nKu)
+                return saved
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 
 async def send_delete(nKu, node, host, port, filekey, metakey):
-    request = SENDDELETE_ASYNC(nKu, node, host, port, filekey, metakey)
-    return await maybe_await(request.deferred)
+    return await _run_on_node_runtime(
+            node, _send_delete(nKu, node, host, port, filekey, metakey))
+
+
+async def _send_delete(nKu, node, host, port, filekey, metakey):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async DELETE")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/file/%s?nodeID=%s&port=%s&Ku_e=%s&Ku_n=%s'
+           '&metakey=%s') % (
+            host, port, filekey, node.config.nodeID, node.config.port,
+            Ku['e'], Ku['n'], metakey)
+    timeoutcount = 0
+    while True:
+        try:
+            auth_retries = 0
+            hdrs = dict(headers)
+            while True:
+                timeout = aiohttp.ClientTimeout(total=primitive_to)
+                resp = await node.async_http.request(
+                        "DELETE", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.text()
+                finally:
+                    resp.release()
+                if status == HTTPStatus.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise RuntimeError(
+                                "SENDDELETE unauthorized (retries exhausted)")
+                    challenge = body or reason
+                    hdrs = answerChallenge(challenge, node.config.Kr,
+                            node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == HTTPStatus.NOT_FOUND:
+                    raise NotFoundException(body or "not found")
+                if status == HTTPStatus.BAD_REQUEST:
+                    raise BadRequestException(body or "bad request")
+                if status != HTTPStatus.OK:
+                    raise RuntimeError(
+                            "SENDDELETE FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                updateNode(node.client, node.config, host, port, nKu)
+                return body
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 
 async def send_verify(nKu, node, host, port, filename, offset, length,
         meta=None):
-    request = SENDVERIFY_ASYNC(
-            nKu, node, host, port, filename, offset, length, meta)
-    return await maybe_await(request.deferred)
+    return await _run_on_node_runtime(
+            node,
+            _send_verify(nKu, node, host, port, filename, offset, length, meta))
+
+
+async def _send_verify(nKu, node, host, port, filename, offset, length,
+        meta=None):
+    if aiohttp is None:
+        raise RuntimeError("aiohttp not available for async VERIFY")
+    host = getCanonicalIP(host)
+    headers = {'Fludprotocol': PROTOCOL_VERSION, 'User-Agent': 'FludClient'}
+    filekey = os.path.basename(filename)
+    Ku = node.config.Ku.exportPublicKey()
+    url = ('http://%s:%d/hash/%s?nodeID=%s&port=%s&Ku_e=%s&Ku_n=%s'
+           '&offset=%s&length=%s') % (
+            host, port, filekey, node.config.nodeID, node.config.port,
+            Ku['e'], Ku['n'], offset, length)
+    if meta:
+        url += "&metakey=%s&meta=%s" % (meta[0], fencode(meta[1].read()))
+    timeoutcount = 0
+    while True:
+        try:
+            auth_retries = 0
+            hdrs = dict(headers)
+            while True:
+                timeout = aiohttp.ClientTimeout(total=primitive_to)
+                resp = await node.async_http.request(
+                        "GET", url,
+                        headers=_normalize_headers(hdrs),
+                        timeout=timeout)
+                try:
+                    status = resp.status
+                    reason = resp.reason
+                    body = await resp.text()
+                finally:
+                    resp.release()
+                if status == HTTPStatus.UNAUTHORIZED:
+                    if auth_retries >= MAXAUTHRETRY:
+                        raise RuntimeError(
+                                "SENDVERIFY unauthorized (retries exhausted)")
+                    challenge = body or reason
+                    hdrs = answerChallenge(challenge, node.config.Kr,
+                            node.config.groupIDu, nKu.id(), hdrs)
+                    auth_retries += 1
+                    continue
+                if status == HTTPStatus.NOT_FOUND:
+                    raise NotFoundException(body or "not found")
+                if status == HTTPStatus.BAD_REQUEST:
+                    raise BadRequestException(body or "bad request")
+                if status != HTTPStatus.OK:
+                    raise RuntimeError(
+                            "SENDVERIFY FAILED: server sent status %s, '%s'"
+                            % (status, body))
+                updateNode(node.client, node.config, host, port, nKu)
+                return body
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            timeoutcount += 1
+            if timeoutcount >= MAXTIMEOUTS:
+                raise socket.error(str(exc))
 
 MINSTORSIZE = 512000  # anything smaller than this tries to get aggregated
 TARFILE_TO = 2        # timeout for checking aggregated tar files

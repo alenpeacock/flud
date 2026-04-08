@@ -637,7 +637,7 @@ class AggregateStore:
         self.completeTarfiles(result, tarball)
         return result
 
-    # XXX: make aggDeferredMap use a non-.tar key, so that we don't have to
+    # XXX: make aggregate_waiters use a non-.tar key, so that we don't have to
     # keep passing 'tarball' around (since we removed it and are really only
     # interested in gtarball now, use gtarball at the least)
     def completeTarfiles(self, result, tarball):

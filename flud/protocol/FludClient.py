@@ -93,7 +93,7 @@ class FludClient(object):
     
     """
     DHT single primitives (single call to single peer).  These should probably
-    only be called for testing or bootstrapping (sendkFindNode can be used to
+    only be called for testing or bootstrapping (`send_k_find_node` can be used to
     'connect' to the flud network via a gateway, for instance).  Use the
     recursive primitives for doing DHT ops.
     """

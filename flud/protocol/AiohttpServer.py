@@ -1,7 +1,7 @@
 """
 AiohttpServer.py
 
-Asyncio/aiohttp HTTP server for Flud Phase 3 migration.
+Asyncio/aiohttp HTTP server for Flud.
 """
 
 import asyncio
@@ -480,7 +480,7 @@ class FludAiohttpServer(threading.Thread):
                         return self._response(body=body, headers={"Content-type": "Multipart/Related", "boundary": boundary})
                     return self._response(body=data, headers={"Content-Type": "application/octet-stream"})
                 except (tarfile.ReadError, EOFError, gzip.BadGzipFile, OSError) as exc:
-                    # Twisted path ignores corrupt tarballs and continues.
+                    # Ignore corrupt tarballs and continue checking other candidates.
                     logger.warning("RETRIEVE: corrupt tarball while reading %s: %s",
                             tarpath, str(exc))
                     continue

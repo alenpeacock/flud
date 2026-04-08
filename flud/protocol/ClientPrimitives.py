@@ -12,7 +12,6 @@ from io import StringIO, BytesIO
 import threading
 import itertools
 
-import flud.defer as defer
 from flud.FludCrypto import FludRSA
 from flud.fencode import fencode, fdecode
 from flud.async_runtime import maybe_await
@@ -40,7 +39,7 @@ def _async_diag_enabled():
 
 
 async def _run_on_node_runtime(node, coro):
-    return await maybe_await(node.async_runtime.deferred_from_coro(coro))
+    return await maybe_await(node.async_runtime.submit(coro))
 
 
 async def send_get_id(node, host, port):
@@ -199,8 +198,7 @@ async def _send_store_request(nKu, node, host, port, datafile, metadata=None):
 
 
 async def aggregate_store(nKu, node, host, port, datafile, metadata=None):
-    request = AggregateStore(
-            nKu, node, host, port, datafile, metadata, start=False)
+    request = AggregateStore(nKu, node, host, port, datafile, metadata)
     return await request.run()
 
 
@@ -493,9 +491,6 @@ class REQUEST(object):
         self.headers = {'Fludprotocol': PROTOCOL_VERSION,
                 'User-Agent': 'FludClient'}
 
-    def _run_async_request(self, coro):
-        return self.node.async_runtime.deferred_from_coro(coro)
-
     async def _request(self, method, url, **kwargs):
         return await self.node.async_http.request(method, url, **kwargs)
 
@@ -507,6 +502,16 @@ aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
 aggStateLock = threading.Lock()
 aggGeneration = itertools.count(1)
+def _resolve_waiter(waiter, result):
+    loop = waiter.get_loop()
+    loop.call_soon_threadsafe(waiter.set_result, result)
+
+
+def _reject_waiter(waiter, failure):
+    loop = waiter.get_loop()
+    loop.call_soon_threadsafe(waiter.set_exception, failure)
+
+
 class AggregateStore:
 
     # XXX: if multiple guys store the same file, we're going to get into bad
@@ -516,7 +521,7 @@ class AggregateStore:
     # FludClient -- non-agg store has a similar problem (encoded file chunks
     # get deleted out from under successive STOR ops for the same chunk, i.e.
     # from two concurrent STORs of the same file contents)
-    def __init__(self, nKu, node, host, port, datafile, metadata, start=True):
+    def __init__(self, nKu, node, host, port, datafile, metadata):
         self.nKu = nKu
         self.node = node
         self.host = host
@@ -586,16 +591,9 @@ class AggregateStore:
             finally:
                 tar.close()
 
-            loggerstoragg.debug("prepping deferred")
-            # XXX: (re)set timeout for tarfilename
-            if start:
-                self.deferred = defer.Deferred()
-                waiter = self.deferred
-                self.future_loop = None
-            else:
-                self.future_loop = asyncio.get_running_loop()
-                waiter = self.future_loop.create_future()
-                self.future = waiter
+            loggerstoragg.debug("prepping future")
+            waiter = asyncio.get_running_loop().create_future()
+            self.future = waiter
             loggerstoragg.debug("adding deferred on %s for %s"
                     % (tarfilename, datafile))
             try:
@@ -650,22 +648,6 @@ class AggregateStore:
         os.remove(work_tarball)
         return gtarball
         
-    def sendTar(self, tarball, nKu, node, host, port):
-        gtarball = tarball+".gz"
-        loggerstoragg.info(
-                "aggregation op triggered, sending tarfile %s to %s:%d" 
-                % (gtarball, host, port))
-        # XXX: bad blocking io
-        gtar = gzip.GzipFile(gtarball, 'wb')
-        with open(tarball, 'rb') as src:
-            gtar.write(src.read())
-        gtar.close()
-        os.remove(tarball)
-        self.deferred = node.async_runtime.deferred_from_coro(
-                _send_store_request(nKu, node, host, port, gtarball))
-        self.deferred.addCallback(self.callbackTarfiles, tarball)
-        self.deferred.addErrback(self.errbackTarfiles, tarball)
-
     async def _sendTarAsync(self, tarball, nKu, node, host, port):
         loggerstoragg.info(
                 "aggregation op triggered, sending tarfile %s.gz to %s:%d (async)"
@@ -713,10 +695,7 @@ class AggregateStore:
         loggerstoragg.debug("deleting tarball %s" % gtarball)
         os.remove(gtarball)
         for cb in cbs:
-            if hasattr(cb, "callback"):
-                cb.callback(result)
-            else:
-                self.future_loop.call_soon_threadsafe(cb.set_result, result)
+            _resolve_waiter(cb, result)
 
     def errbackTarfiles(self, failure, tarball):
         loggerstoragg.debug("errbackTarfiles")
@@ -748,10 +727,7 @@ class AggregateStore:
         loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
         #os.remove(gtarball)
         for cb in cbs:
-            if hasattr(cb, "errback"):
-                cb.errback(failure)
-            else:
-                self.future_loop.call_soon_threadsafe(cb.set_exception, failure)
+            _reject_waiter(cb, failure)
 
 def _normalize_challenge(challenge):
     if isinstance(challenge, bytes):

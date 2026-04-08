@@ -11,8 +11,6 @@ try:
 except Exception:  # pragma: no cover - optional at runtime
     aiohttp = None
 
-from flud.defer import Deferred
-
 logger = logging.getLogger("flud.async_runtime")
 httplogger = logging.getLogger("flud.async_http")
 
@@ -21,61 +19,14 @@ def _diag_enabled():
     return os.environ.get("FLUD_ASYNC_DIAG") == "1"
 
 
-def deferred_to_future_threadsafe(deferred, loop=None):
-    if loop is None:
-        loop = asyncio.get_running_loop()
-    future = loop.create_future()
-
-    def _set_result(result):
-        if not future.done():
-            future.set_result(result)
-
-    def _set_exception(exc):
-        if not future.done():
-            future.set_exception(exc)
-
-    def _callback(result):
-        loop.call_soon_threadsafe(_set_result, result)
-        return result
-
-    def _errback(err):
-        exc = getattr(err, "value", err)
-        loop.call_soon_threadsafe(_set_exception, exc)
-        return None
-
-    deferred.addCallbacks(_callback, _errback)
-    return future
-
-
 async def maybe_await(result, loop=None):
-    if hasattr(result, "addCallbacks"):
-        return await deferred_to_future_threadsafe(result, loop=loop)
+    if isinstance(result, concurrent.futures.Future):
+        if loop is None:
+            loop = asyncio.get_running_loop()
+        return await asyncio.wrap_future(result, loop=loop)
     if asyncio.isfuture(result) or asyncio.iscoroutine(result):
         return await result
     return result
-
-
-def concurrent_future_to_deferred(future):
-    deferred = Deferred()
-
-    def _deliver_result(result):
-        if not deferred.called:
-            deferred.callback(result)
-
-    def _deliver_error(exc):
-        if not deferred.called:
-            deferred.errback(exc)
-
-    def _done(done_future):
-        try:
-            result = done_future.result()
-        except Exception as exc:
-            _deliver_error(exc)
-            return
-        _deliver_result(result)
-
-    future.add_done_callback(_done)
-    return deferred
 
 
 class AsyncRuntime:
@@ -132,9 +83,6 @@ class AsyncRuntime:
             task.add_done_callback(_copy_result)
             return future
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
-
-    def deferred_from_coro(self, coro):
-        return concurrent_future_to_deferred(self.submit(coro))
 
     def stop(self):
         if self._loop is None:

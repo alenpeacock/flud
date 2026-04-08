@@ -47,7 +47,7 @@ operations.
 
 async def send_kfindnode(node, host, port, key, command_name="nodes"):
     return await maybe_await(
-            node.async_runtime.deferred_from_coro(
+            node.async_runtime.submit(
                 _send_kfindnode(node, host, port, key, command_name)))
 
 
@@ -90,7 +90,7 @@ async def _send_kfindnode(node, host, port, key, command_name="nodes"):
 
 async def send_kfindvalue(node, host, port, key):
     return await maybe_await(
-            node.async_runtime.deferred_from_coro(
+            node.async_runtime.submit(
                 _send_kfindvalue(node, host, port, key)))
 
 
@@ -138,7 +138,7 @@ async def _send_kfindvalue(node, host, port, key):
 
 async def send_kstore(node, host, port, key, val):
     return await maybe_await(
-            node.async_runtime.deferred_from_coro(
+            node.async_runtime.submit(
                 _send_kstore(node, host, port, key, val)))
 
 

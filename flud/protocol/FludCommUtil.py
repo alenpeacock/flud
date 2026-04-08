@@ -72,10 +72,10 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
     if nKu is None:
         #print "updateNode, no nKu"
         if nID is None:
-            d = client.node.async_runtime.deferred_from_coro(
-                    client.get_id(host, port))
-            d.addCallback(callUpdateNode, client, config, host, port, nID)
-            d.addErrback(updateNodeFail, host, port)
+            future = client.node.async_runtime.submit(client.get_id(host, port))
+            future.add_done_callback(
+                    lambda done: _handle_get_id(
+                        done, client, config, host, port, nID))
         else:
             #print "updateNode, no nKu but got a nID"
             if nID in config.nodes:
@@ -86,10 +86,11 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
             else:
                 #print "updateNode, sending GETID"
                 updateNodePendingGETID[nID] = True
-                d = client.node.async_runtime.deferred_from_coro(
+                future = client.node.async_runtime.submit(
                         client.get_id(host, port))
-                d.addCallback(callUpdateNode, client, config, host, port, nID)
-                d.addErrback(updateNodeFail, host, port)
+                future.add_done_callback(
+                        lambda done: _handle_get_id(
+                            done, client, config, host, port, nID))
     elif isinstance(nKu, FludRSA):
         #print "updateNode with nKu"
         if nID in updateNodePendingGETID:
@@ -129,6 +130,14 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
             " (received %s) or an nID of type long or str (received %s)" 
             % (type(nKu), type(nID)))
         # XXX: should really make it impossible to call without one of these...
+
+    def _handle_get_id(done_future, client, config, host, port, nID):
+        try:
+            remote_nKu = done_future.result()
+        except Exception as exc:
+            updateNodeFail(exc, host, port)
+            return
+        callUpdateNode(remote_nKu, client, config, host, port, nID)
 
 def replaceNode(error, routing, replacee, replacer):
     routing.replaceNode(replacee, replacer) 

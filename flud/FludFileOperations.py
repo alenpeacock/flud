@@ -461,8 +461,8 @@ class StoreFile:
         logger.info(self.ctx("STOREing under %s on %s:%d", fencode(hash), 
             host, port))
         logger.debug(self.ctx("mfile is %s", mfile))
-        deferred = self.node.client.sendStore(sfile, (self.mkey, mfile), host, 
-                port, nKu) 
+        deferred = self.node.async_runtime.deferred_from_coro(
+                self.node.client.store(sfile, (self.mkey, mfile), host, port, nKu))
         deferred.addCallback(self._blockStored, nID, i, hash, location)
         deferred.addErrback(self._retryStoreBlock, i, hash, location, 
                 sfile, mfile, nID, host, port, retry)
@@ -669,8 +669,9 @@ class StoreFile:
         nKu = FludRSA.importPublicKey(node[3])
         logger.info(self.ctx("attaching metadata for %s on %s:%d",
                 fencode(segl), host, port))
-        deferred = self.node.client.sendVerify(fencode(segl), 0, 0,
-                host, port, nKu, (self.mkey, mfile))
+        deferred = self.node.async_runtime.deferred_from_coro(
+                self.node.client.verify(
+                    fencode(segl), 0, 0, host, port, nKu, (self.mkey, mfile)))
         return deferred
 
     async def _sendMetadataVerifyAsync(self, kdata, segl, mfile, nID):
@@ -740,8 +741,9 @@ class StoreFile:
             os.close(fd)
             verhash = int(hashstring(data), 16)
         
-        deferred = self.node.client.sendVerify(seg, offset, length, 
-                    host, port, nKu, (self.mkey, mfile)) 
+        deferred = self.node.async_runtime.deferred_from_coro(
+                self.node.client.verify(
+                    seg, offset, length, host, port, nKu, (self.mkey, mfile)))
         deferred.addCallback(self._checkVerify, nKu, host, port, i, segl, 
                 sfile, mfile, verhash)
         deferred.addErrback(self._checkVerifyErr, nID, i, segl, sfile, mfile,
@@ -842,7 +844,8 @@ class StoreFile:
         #           % (fencode(i), fencode(self.blockMetadata[i]))))
         logger.debug(self.ctx("storing metadata at %s", fencode(self.sK)))
         logger.debug(self.ctx("len(segMetadata) = %d", len(self.blockMetadata)))
-        d = self.node.client.kStore(self.sK, self.blockMetadata) 
+        d = self.node.async_runtime.deferred_from_coro(
+                self.node.client.k_store(self.sK, self.blockMetadata))
         d.addCallback(self._updateMaster, self.blockMetadata)
         d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
         return d
@@ -1207,7 +1210,8 @@ class RetrieveFile:
         id = node[2]
         nKu = FludRSA.importPublicKey(node[3])
         if not self.decoded:
-            d = self.node.client.sendRetrieve(block, host, port, nKu, self.mkey)
+            d = self.node.async_runtime.deferred_from_coro(
+                    self.node.client.retrieve(block, host, port, nKu, self.mkey))
             _add_timeout(d, 20)
             d.addCallback(self._retrievedBlock, id, block, self.mkey, idx)
             d.addErrback(self._retrieveBlockErr, id,
@@ -1940,7 +1944,8 @@ if __name__ == "__main__":
     n.run()
 
     if len(sys.argv) == 3:
-        deferred = n.client.sendkFindNode(sys.argv[1], int(sys.argv[2]), 1)
+        deferred = n.async_runtime.deferred_from_coro(
+                n.client.send_k_find_node(sys.argv[1], int(sys.argv[2]), 1))
         deferred.addCallback(runTests)
         deferred.addErrback(errTest)
     else:

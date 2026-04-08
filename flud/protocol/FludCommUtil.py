@@ -73,7 +73,8 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
     if nKu is None:
         #print "updateNode, no nKu"
         if nID is None:
-            d = client.sendGetID(host, port)
+            d = client.node.async_runtime.deferred_from_coro(
+                    client.get_id(host, port))
             d.addCallback(callUpdateNode, client, config, host, port, nID)
             d.addErrback(updateNodeFail, host, port)
         else:
@@ -86,7 +87,8 @@ def updateNode(client, config, host, port, nKu=None, nID=None):
             else:
                 #print "updateNode, sending GETID"
                 updateNodePendingGETID[nID] = True
-                d = client.sendGetID(host, port)
+                d = client.node.async_runtime.deferred_from_coro(
+                        client.get_id(host, port))
                 d.addCallback(callUpdateNode, client, config, host, port, nID)
                 d.addErrback(updateNodeFail, host, port)
     elif isinstance(nKu, FludRSA):

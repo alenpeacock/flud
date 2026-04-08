@@ -100,23 +100,28 @@ def _failed_deferred(exc):
 
 
 async def store_file(node, filename):
-    return await maybe_await(StoreFile(node, filename).deferred)
+    operation = StoreFile(node, filename, start=False)
+    return await operation.run()
 
 
 async def retrieve_file(node, key, mkey=True):
-    return await maybe_await(RetrieveFile(node, key, mkey).deferred)
+    operation = RetrieveFile(node, key, mkey, start=False)
+    return await operation.run()
 
 
 async def retrieve_filename(node, filename):
-    return await maybe_await(RetrieveFilename(node, filename).deferred)
+    operation = RetrieveFilename(node, filename, start=False)
+    return await operation.run()
 
 
 async def retrieve_master_index(node):
-    return await maybe_await(RetrieveMasterIndex(node).deferred)
+    operation = RetrieveMasterIndex(node, start=False)
+    return await operation.run()
 
 
 async def update_master_index(node):
-    return await maybe_await(UpdateMasterIndex(node).deferred)
+    operation = UpdateMasterIndex(node, start=False)
+    return await operation.run()
 
 def pathsplit(fname):
     par, chld = os.path.split(fname)
@@ -196,7 +201,7 @@ class StoreFile:
     # XXX: should follow this currentOps model for the other FludFileOps
     currentOps = {}
 
-    def __init__(self, node, filename):
+    def __init__(self, node, filename, start=True):
         self.node = node
         self.filename = filename
         self.mkey = _crc32_value(self.filename)
@@ -213,11 +218,15 @@ class StoreFile:
 
         if _diag_enabled():
             logger.warning(self.ctx("StoreFile init %s", filename))
-        self.deferred = self._storeFile()
+        if start:
+            self.deferred = self._storeFile()
 
     def _storeFile(self):
+        return self.node.async_runtime.deferred_from_coro(self.run())
+
+    async def run(self):
         if not os.path.isfile(self.filename):
-            return _failed_deferred(ValueError("%s is not a file" % self.filename))
+            raise ValueError("%s is not a file" % self.filename)
 
         # 1: create encryption key (eK) and storage key (sK).  Query DHT using
         #    sK
@@ -258,8 +267,7 @@ class StoreFile:
         try:
             os.mkdir(self.encodedir)
         except:
-            return _failed_deferred(RuntimeError(
-                "%s already requested" % self.filename))
+            raise RuntimeError("%s already requested" % self.filename)
         # XXX: mfiles should be held in mem, as StringIOs (when coder supports
         # this)
         self.mfiles = fludfilefec.encode_to_files(BytesIO(fsMetadata_bytes),
@@ -279,8 +287,8 @@ class StoreFile:
             self.sfiles = []
             self.encodedir = None
             self.efilename = None
-            d.addCallback(self._piggybackStoreMetadata)
-            return d
+            result = await maybe_await(d)
+            return await maybe_await(self._piggybackStoreMetadata(result))
 
         # 3: encrypt and encode the file locally.
         self.efilename = os.path.join(self.metadir,self.flatname+appendEncrypt)
@@ -335,11 +343,14 @@ class StoreFile:
         # 4a: query DHT for metadata.
         if _diag_enabled():
             logger.warning(self.ctx("StoreFile dispatch kFindValue %s", fencode(self.sK)))
-        d = self.node.client.kFindValue(self.sK)
-        d.addCallback(self._checkForExistingFileMetadata)
-        d.addErrback(self._storeFileErr, "DHT query for metadata failed")
-        self.currentOps[self.eK] = (d, 1)
-        return d
+        task = asyncio.create_task(self.node.client.k_find_value(self.sK))
+        self.currentOps[self.eK] = (task, 1)
+        try:
+            storedMetadata = await task
+        except Exception as exc:
+            self._storeFileErr(exc, "DHT query for metadata failed")
+        return await maybe_await(
+                self._checkForExistingFileMetadata(storedMetadata))
 
     # 4b: compare hashlists (locally encrypted vs. DHT -- if available).
     #     for lhash, dhash in zip(segHashesLocal, segHashesDHT):
@@ -934,7 +945,7 @@ class RetrieveFile:
     until the complete file can be regenerated and saved locally.
     """
 
-    def __init__(self, node, key, mkey=True):
+    def __init__(self, node, key, mkey=True, start=True):
         # 1: Query DHT for sK
         # 2: Retrieve entries for sK, decoding until efile can be regenerated
         # 3: Retrieve eK from sK by eK=Kp(eKe).  Use eK to decrypt file.  Strip
@@ -946,7 +957,8 @@ class RetrieveFile:
         try:
             self.sK = fdecode(key)
         except Exception as inst:
-            self.deferred = _failed_deferred(inst)
+            if start:
+                self.deferred = _failed_deferred(inst)
             return
         self.ctx = Ctx(_crc32_value(self.sK)).msg
         self.config = node.config
@@ -965,12 +977,16 @@ class RetrieveFile:
         self.max_retries = 5
         self.retry_base_delay = 1
 
-        self.deferred = self._retrieveFile()
+        if start:
+            self.deferred = self._retrieveFile()
         
     def _retrieveFile(self):
         return self.node.async_runtime.deferred_from_coro(
             self._retrieveFileAsync()
         )
+
+    async def run(self):
+        return await self._retrieveFileAsync()
 
     async def _retrieveFileAsync(self):
         logger.debug(self.ctx("querying DHT for %s", self.sK))
@@ -1626,15 +1642,19 @@ class RetrieveFilename:
     index contains an entry for this filename.
     """
 
-    def __init__(self, node, filename):
+    def __init__(self, node, filename, start=True):
         self.node = node
         self.filename = filename
         self.metadir = self.node.config.metadir
         self.config = self.node.config
 
-        self.deferred = self._recoverFile()
+        if start:
+            self.deferred = self._recoverFile()
         
     def _recoverFile(self):
+        return self.node.async_runtime.deferred_from_coro(self.run())
+
+    async def run(self):
         fmeta = self.config.getFromMasterMeta(self.filename)
         if fmeta:
             if isinstance(fmeta, dict):
@@ -1649,12 +1669,9 @@ class RetrieveFilename:
                     filekey = self.config.getFromMasterMeta(i)
                     metakey = _crc32_value(i)
                     logger.debug("calling RetrieveFile %s" % filekey)
-                    d = RetrieveFile(self.node, fencode(filekey),
-                            metakey).deferred
-                    dlist.append(d)
-                return self.node.async_runtime.deferred_from_coro(
-                    self._gatherRecoveries(dlist)
-                )
+                    dlist.append(retrieve_file(self.node, fencode(filekey),
+                            metakey))
+                return await self._gatherRecoveries(dlist)
             else:
                 logger.debug("%s is file in master metadata", self.filename)
                 (filekey, backuptime) = self.config.getFromMasterMeta(
@@ -1662,12 +1679,11 @@ class RetrieveFilename:
                 metakey = _crc32_value(self.filename)
                 if filekey != None and filekey != "":
                     logger.debug("calling RetrieveFile %s" % filekey)
-                    d = RetrieveFile(self.node, fencode(filekey), 
-                            metakey).deferred
-                    return d
-                return _failed_deferred(LookupError("bad filekey %s for %s"
-                        % (filekey, self.filename)))
-        return _failed_deferred(LookupError("no record of %s" % self.filename))
+                    return await retrieve_file(self.node, fencode(filekey),
+                            metakey)
+                raise LookupError("bad filekey %s for %s"
+                        % (filekey, self.filename))
+        raise LookupError("no record of %s" % self.filename)
 
     async def _gatherRecoveries(self, dlist):
         results = await asyncio.gather(
@@ -1724,13 +1740,18 @@ class VerifyFile:
 
 class RetrieveMasterIndex:
     
-    def __init__(self, node):
+    def __init__(self, node, start=True):
         self.node = node
         nodeID = int(self.node.config.nodeID, 16)
         logger.info("looking for key %x" % nodeID)
-        self.deferred = self.node.async_runtime.deferred_from_coro(
-            self._retrieve_master_index(nodeID)
-        )
+        self.nodeID = nodeID
+        if start:
+            self.deferred = self.node.async_runtime.deferred_from_coro(
+                self.run()
+            )
+
+    async def run(self):
+        return await self._retrieve_master_index(self.nodeID)
 
     async def _retrieve_master_index(self, nodeID):
         try:
@@ -1738,15 +1759,13 @@ class RetrieveMasterIndex:
         except Exception as err:
             return self._retrieveMasterIndexErr(
                 err, "couldn't find master metadata")
-        return await maybe_await(self._foundCAS(CAS))
+        return await self._foundCAS(CAS)
 
     def _foundCAS(self, CAS):
         if isinstance(CAS, dict):
-            return _failed_deferred(ValueError("couldn't find CAS key"))
+            raise ValueError("couldn't find CAS key")
         CAS = fdecode(CAS)
-        return self.node.async_runtime.deferred_from_coro(
-            self._retrieve_found_master(CAS)
-        )
+        return self._retrieve_found_master(CAS)
 
     async def _retrieve_found_master(self, CAS):
         try:
@@ -1770,32 +1789,34 @@ class RetrieveMasterIndex:
 
 class UpdateMasterIndex:
 
-    def __init__(self, node):
+    def __init__(self, node, start=True):
         self.node = node
         self.metamaster = os.path.join(self.node.config.metadir,
                 self.node.config.metamaster)
-        self.deferred = self.node.async_runtime.deferred_from_coro(
-            self._update_master_index()
-        )
+        if start:
+            self.deferred = self.node.async_runtime.deferred_from_coro(
+                self.run()
+            )
+
+    async def run(self):
+        return await self._update_master_index()
 
     async def _update_master_index(self):
         try:
             res = await retrieve_master_index(self.node)
-            res = self._removeOldMasterIndex(res)
+            self._removeOldMasterIndex(res)
         except Exception as err:
             res = err
-        return await maybe_await(self._storeMasterIndex(res))
+        return await self._storeMasterIndex(res)
 
     def _removeOldMasterIndex(self, res):
         # 0.2. for i in oldmaster: delete(i)
         print("removing old master not yet implemented")
-        return self._storeMasterIndex(res)
+        return res
 
     def _storeMasterIndex(self, res_or_err):
         print("going to store %s" % self.metamaster)
-        return self.node.async_runtime.deferred_from_coro(
-            self._store_master_index_async()
-        )
+        return self._store_master_index_async()
 
     async def _store_master_index_async(self):
         try:
@@ -1803,15 +1824,13 @@ class UpdateMasterIndex:
         except Exception as err:
             return self._updateMasterIndexErr(
                 err, "couldn't store master index")
-        return await maybe_await(self._updateCAS(stored))
+        return await self._updateCAS(stored)
 
     def _updateCAS(self, stored):
         key, meta = stored
         logger.info("storing %s at %x" % (key, 
             int(self.node.config.nodeID,16)))
-        return self.node.async_runtime.deferred_from_coro(
-            self.node.client.k_store(int(self.node.config.nodeID,16), key)
-        )
+        return self.node.client.k_store(int(self.node.config.nodeID,16), key)
 
     def _updateMasterIndexErr(self, err, msg):
         logger.warning(msg)

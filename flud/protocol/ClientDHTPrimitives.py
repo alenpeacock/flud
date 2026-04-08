@@ -10,7 +10,7 @@ import flud.FludkRouting as FludkRouting
 from flud.fencode import fencode
 from flud.async_runtime import maybe_await
 
-from .ClientPrimitives import REQUEST, _normalize_headers
+from .ClientPrimitives import _normalize_headers
 from .FludCommUtil import *
 
 try:

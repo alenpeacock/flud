@@ -20,7 +20,7 @@ class FludClient(object):
     """
     def __init__(self, node):
         self.node = node
-        self.currentStorOps = {}
+        self.current_store_tasks = {}
     
     """
     Data storage primitives
@@ -31,21 +31,21 @@ class FludClient(object):
     # XXX: we should cache nKu so that we don't do the GETID for all of these
     # ops every single time
     async def store(self, filename, metadata, host, port, nKu=None):
-        # XXX: need to keep a map of 'filename' to deferreds, in case we are
+        # XXX: need to keep a map of 'filename' to in-flight tasks, in case we are
         # asked to store the same chunk more than once concurrently (happens
         # for 0-byte files or from identical copies of the same file, for
         # example).  both SENDSTORE and AggregateStore will choke on this.
-        # if we find a store req in said map, just return that deferred instead
+        # if we find a store request in said map, just return that task instead
         # of redoing the op. [note, could mess up node choice... should also do
         # this on whole-file level in FileOps]
 
-        # XXX: need to remove from currentStorOps on success or failure
+        # XXX: need to remove from current_store_tasks on success or failure
         key = "%s:%d:%s" % (host, port, filename)
 
-        if key in self.currentStorOps:
+        if key in self.current_store_tasks:
             logger.debug("returning saved store op for %s in store"
                     % filename)
-            return await self.currentStorOps[key]
+            return await self.current_store_tasks[key]
 
         if not nKu:
             logger.warn("not doing AggregateStore on small file because"
@@ -65,11 +65,11 @@ class FludClient(object):
             logger.debug("SENDSTORE")
             operation = send_store_request(
                     nKu, self.node, host, port, filename, metadata)
-        self.currentStorOps[key] = operation
+        self.current_store_tasks[key] = operation
         try:
             return await operation
         finally:
-            self.currentStorOps.pop(key, None)
+            self.current_store_tasks.pop(key, None)
 
     # XXX: need a version that takes a metakey, too
     async def retrieve(self, filekey, host, port, nKu=None, metakey=True):

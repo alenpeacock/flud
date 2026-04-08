@@ -16,7 +16,6 @@ from flud.FludCrypto import FludRSA, generateRandom, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
-from flud.async_runtime import maybe_await
 from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
@@ -253,17 +252,17 @@ class StoreFile:
         # to append metadata, or if already in progress, redo via verify ops
         # if already storing identical file by CAS, piggyback on it
         if self.eK in self.currentOps:
-            logger.debug(self.ctx("reusing callback on %s", self.eK))
-            (d, counter) = self.currentOps[self.eK]
-            self.currentOps[self.eK] = (d, counter+1)
+            logger.debug(self.ctx("reusing in-flight task on %s", self.eK))
+            task, counter = self.currentOps[self.eK]
+            self.currentOps[self.eK] = (task, counter+1)
             # setting sfile, encodedir, and efilename to empty vals is kinda
             # hokey -- could split _storeMetadata into two funcs instead (the
             # cleanup part and the store part; see _storeMetadata)
             self.sfiles = []
             self.encodedir = None
             self.efilename = None
-            result = await maybe_await(d)
-            return await maybe_await(self._piggybackStoreMetadata(result))
+            result = await task
+            return await self._piggybackStoreMetadata(result)
 
         # 3: encrypt and encode the file locally.
         self.efilename = os.path.join(self.metadir,self.flatname+appendEncrypt)
@@ -324,8 +323,7 @@ class StoreFile:
             storedMetadata = await task
         except Exception as exc:
             self._storeFileErr(exc, "DHT query for metadata failed")
-        return await maybe_await(
-                self._checkForExistingFileMetadata(storedMetadata))
+        return await self._checkForExistingFileMetadata(storedMetadata)
 
     # 4b: compare hashlists (locally encrypted vs. DHT -- if available).
     #     for lhash, dhash in zip(segHashesLocal, segHashesDHT):
@@ -1032,7 +1030,7 @@ class RetrieveFile:
             self.decodeData, self.mfname, list(self.fsmetas.values()),
             self.config.clientdir
         )
-        return await maybe_await(self._decodeDone(decoded, metadecoded))
+        return self._decodeDone(decoded, metadecoded)
 
     def decodeData(self, outfname, datafnames, datadir=None):
         logger.info(self.ctx("decoding %s to %s" % (datafnames, outfname)))
@@ -1391,11 +1389,8 @@ class RetrieveFilename:
                         % (filekey, self.filename))
         raise LookupError("no record of %s" % self.filename)
 
-    async def _gatherRecoveries(self, dlist):
-        results = await asyncio.gather(
-            *(maybe_await(d) for d in dlist),
-            return_exceptions=True,
-        )
+    async def _gatherRecoveries(self, operations):
+        results = await asyncio.gather(*operations, return_exceptions=True)
         gathered = []
         for result in results:
             if isinstance(result, Exception):

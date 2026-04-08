@@ -2,17 +2,17 @@
 
 """Helpers for standalone integration scripts in ``flud.test``."""
 
+import asyncio
 import socket
 import sys
 
 
-def normalize_failure(error, message=None):
-    """Convert deferred/failure objects into an exception instance."""
-    candidate = getattr(error, "value", error)
-    if isinstance(candidate, BaseException):
+def normalize_error(error, message=None):
+    """Convert a captured async error into an exception instance."""
+    if isinstance(error, BaseException):
         if message:
-            return RuntimeError(f"{message}: {candidate}")
-        return candidate
+            return RuntimeError(f"{message}: {error}")
+        return error
 
     text = str(error)
     if message:
@@ -29,7 +29,7 @@ class SuiteStatus:
         self.value = None
 
     def record_failure(self, error, message=None):
-        exc = normalize_failure(error, message)
+        exc = normalize_error(error, message)
         self.failed = True
         if self.error is None:
             self.error = exc
@@ -89,14 +89,24 @@ def suite_port(node, port=None):
     return node.config.port if port is None else port
 
 
-def attach_suite_status(deferred, suite_status):
-    deferred.addCallback(suite_status.record_success)
-    deferred.addErrback(lambda failure: suite_status.record_failure(failure))
-    return deferred
+def track_suite_task(task, suite_status):
+    def _record(done_task):
+        try:
+            suite_status.record_success(done_task.result())
+        except Exception as exc:
+            suite_status.record_failure(exc)
+    task.add_done_callback(_record)
+    return task
 
 
-def join_suite(node, deferred, cleanup, *cleanup_args):
-    deferred.addBoth(cleanup, node, *cleanup_args)
+def finalize_suite(node, task, cleanup, *cleanup_args):
+    async def _finalize():
+        try:
+            return await task
+        finally:
+            cleanup(node, *cleanup_args)
+
+    asyncio.run(_finalize())
     node.join()
 
 

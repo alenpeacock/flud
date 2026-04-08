@@ -11,7 +11,6 @@ import pytest
 pytest.importorskip("Cryptodome.Cipher")
 
 import flud.FludFileOperations as fileops
-from flud.async_runtime import maybe_await
 from flud.fencode import fdecode
 from flud.test._primitive_data import create_case_file
 
@@ -38,12 +37,12 @@ class FileOpCases:
 
 
 def _run(awaitable):
-    return asyncio.run(maybe_await(awaitable))
+    return asyncio.run(awaitable)
 
 
 def _gather(awaitables):
     async def _collect():
-        return await asyncio.gather(*(maybe_await(item) for item in awaitables))
+        return await asyncio.gather(*awaitables)
 
     return asyncio.run(_collect())
 

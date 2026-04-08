@@ -15,7 +15,6 @@ from zlib import crc32
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 from flud.FludNode import FludNode
-from flud.async_runtime import maybe_await
 from flud.fencode import fdecode
 from flud.FludCrypto import generateRandom
 from flud.FludFileOperations import *
@@ -30,14 +29,11 @@ def listMeta(config):
 
 
 def _run(awaitable):
-    return asyncio.run(maybe_await(awaitable))
+    return asyncio.run(awaitable)
 
 
 async def gather_results(awaitables):
-    results = await asyncio.gather(
-        *(maybe_await(item) for item in awaitables),
-        return_exceptions=True,
-    )
+    results = await asyncio.gather(*awaitables, return_exceptions=True)
     normalized = []
     for result in results:
         if isinstance(result, Exception):

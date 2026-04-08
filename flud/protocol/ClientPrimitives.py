@@ -471,33 +471,9 @@ def _save_retrieve_response(body, content_type, target_dir, filekey,
         f.write(body)
     return [filename]
 
-class REQUEST(object):
-    """
-    This is a parent class for generating http requests that follow the 
-    FludProtocol.
-    """
-    def __init__(self, host, port, node=None):
-        """
-        All children should inherit.  By convention, subclasses should 
-        create a URL and attempt to retrieve it in the constructor.
-        @param node the requestor's node object
-        """
-        self.host = host
-        self.port = port
-        self.dest = "%s:%d" % (host, port)
-        if node:
-            self.node = node
-            self.config = node.config
-        self.headers = {'Fludprotocol': PROTOCOL_VERSION,
-                'User-Agent': 'FludClient'}
-
-    async def _request(self, method, url, **kwargs):
-        return await self.node.async_http.request(method, url, **kwargs)
-
-
-aggDeferredMap = {}  # a map of maps, containing a list of deferreds.  The 
-                     # deferred(s) for file 'x' in tarball 'y' are accessed as
-                     # aggDeferredMap['y']['x']
+aggregate_waiters = {}  # a map of maps, containing waiter futures.  The
+                        # waiters for file 'x' in tarball 'y' are accessed as
+                        # aggregate_waiters['y']['x']
 aggTimeoutMap = {}   # a map of timout calls for a tarball.  The timeout for
                      # tarball 'y' is stored in aggTimeoutMap['y']
 aggStateLock = threading.Lock()
@@ -515,12 +491,12 @@ def _reject_waiter(waiter, failure):
 class AggregateStore:
 
     # XXX: if multiple guys store the same file, we're going to get into bad
-    # cb state (the except clause in errbackTarfiles).  Need to catch this
+    # completion state (the except clause in failTarfiles).  Need to catch this
     # as it happens... (this happens e.g. for small files with the same
     # filehash, e.g, 0-byte files, file copies etc).  Should fix this in
-    # FludClient -- non-agg store has a similar problem (encoded file chunks
-    # get deleted out from under successive STOR ops for the same chunk, i.e.
-    # from two concurrent STORs of the same file contents)
+    # FludClient -- non-aggregated store has a similar problem (encoded file
+    # chunks get deleted out from under successive STOR ops for the same
+    # chunk, i.e. from two concurrent STORs of the same file contents)
     def __init__(self, nKu, node, host, port, datafile, metadata):
         self.nKu = nKu
         self.node = node
@@ -533,17 +509,17 @@ class AggregateStore:
         tarfilename = tarbase + ".tar"
         loggerstoragg.debug("tarfile name is %s" % tarfilename)
         with aggStateLock:
-            if tarfilename in aggDeferredMap and not os.path.exists(tarfilename):
+            if tarfilename in aggregate_waiters and not os.path.exists(tarfilename):
                 tarfilename = "%s.%d.tar" % (tarbase, next(aggGeneration))
                 loggerstoragg.debug("using fresh tarfile generation %s",
                         tarfilename)
             create_tar = not os.path.exists(tarfilename) \
-                    or tarfilename not in aggDeferredMap
+                    or tarfilename not in aggregate_waiters
             if create_tar:
                 loggerstoragg.debug("creating tarfile %s to append %s"
                         % (tarfilename, datafile))
                 tar = tarfile.open(tarfilename, "w")
-                aggDeferredMap[tarfilename] = {}
+                aggregate_waiters[tarfilename] = {}
             else:
                 loggerstoragg.debug("opening tarfile %s to append %s"
                         % (tarfilename, datafile))
@@ -591,16 +567,16 @@ class AggregateStore:
             finally:
                 tar.close()
 
-            loggerstoragg.debug("prepping future")
+            loggerstoragg.debug("prepping waiter future")
             waiter = asyncio.get_running_loop().create_future()
             self.future = waiter
-            loggerstoragg.debug("adding deferred on %s for %s"
+            loggerstoragg.debug("adding waiter on %s for %s"
                     % (tarfilename, datafile))
             try:
-                aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
+                aggregate_waiters[tarfilename][os.path.basename(datafile)].append(
                         waiter)
             except KeyError:
-                aggDeferredMap[tarfilename][os.path.basename(datafile)] \
+                aggregate_waiters[tarfilename][os.path.basename(datafile)] \
                         = [waiter]
         self.resetTimeout(tarfilename, nKu, node, host, port)
 
@@ -656,36 +632,34 @@ class AggregateStore:
             gtarball = await asyncio.to_thread(self._prepareTarball, tarball)
             result = await _send_store_request(nKu, node, host, port, gtarball)
         except Exception as exc:
-            self.errbackTarfiles(exc, tarball)
+            self.failTarfiles(exc, tarball)
             return None
-        self.callbackTarfiles(result, tarball)
+        self.completeTarfiles(result, tarball)
         return result
 
     # XXX: make aggDeferredMap use a non-.tar key, so that we don't have to
     # keep passing 'tarball' around (since we removed it and are really only
     # interested in gtarball now, use gtarball at the least)
-    def callbackTarfiles(self, result, tarball):
-        loggerstoragg.debug("callbackTarfiles")
+    def completeTarfiles(self, result, tarball):
+        loggerstoragg.debug("completeTarfiles")
         gtarball = tarball+".gz"
         tar = tarfile.open(gtarball, "r:gz")
-        cbs = []
+        waiters = []
         try: 
             for tarinfo in tar:
                 if tarinfo.name[-5:] != '.meta':
-                    dlist = aggDeferredMap[tarball].pop(tarinfo.name) 
-                    loggerstoragg.debug("callingback for %s in %s"
-                            " (%d deferreds)" 
-                            % (tarinfo.name, tarball, len(dlist)))
-                    for d in dlist:
-                        cbs.append(d)
+                    waiter_list = aggregate_waiters[tarball].pop(tarinfo.name) 
+                    loggerstoragg.debug("completing %s in %s (%d waiters)" 
+                            % (tarinfo.name, tarball, len(waiter_list)))
+                    waiters.extend(waiter_list)
         except KeyError:
-            loggerstoragg.warning("aggDeferredMap has keys: %s" 
-                    % str(list(aggDeferredMap.keys())))
-            loggerstoragg.warning("aggDeferredMap[%s] has keys: %s" % (tarball, 
-                    str(list(aggDeferredMap[tarball].keys()))))
+            loggerstoragg.warning("aggregate_waiters has keys: %s" 
+                    % str(list(aggregate_waiters.keys())))
+            loggerstoragg.warning("aggregate_waiters[%s] has keys: %s" % (tarball, 
+                    str(list(aggregate_waiters[tarball].keys()))))
         tar.close()
         with aggStateLock:
-            aggDeferredMap.pop(tarball, None)
+            aggregate_waiters.pop(tarball, None)
             handle = aggTimeoutMap.pop(tarball, None)
         if handle is not None and hasattr(handle, "cancel"):
             try:
@@ -694,30 +668,28 @@ class AggregateStore:
                 pass
         loggerstoragg.debug("deleting tarball %s" % gtarball)
         os.remove(gtarball)
-        for cb in cbs:
-            _resolve_waiter(cb, result)
+        for waiter in waiters:
+            _resolve_waiter(waiter, result)
 
-    def errbackTarfiles(self, failure, tarball):
-        loggerstoragg.debug("errbackTarfiles")
+    def failTarfiles(self, failure, tarball):
+        loggerstoragg.debug("failTarfiles")
         gtarball = tarball+".gz"
         tar = tarfile.open(gtarball, "r:gz")
-        cbs = []
+        waiters = []
         try: 
             for tarinfo in tar:
-                dlist = aggDeferredMap[tarball].pop(tarinfo.name) 
-                loggerstoragg.debug("erringback for %s in %s" 
-                        " (%d deferreds)"
-                        % (tarinfo.name, tarball, len(dlist)))
-                for d in dlist:
-                    cbs.append(d)
+                waiter_list = aggregate_waiters[tarball].pop(tarinfo.name) 
+                loggerstoragg.debug("failing %s in %s (%d waiters)"
+                        % (tarinfo.name, tarball, len(waiter_list)))
+                waiters.extend(waiter_list)
         except KeyError:
-            loggerstoragg.warning("aggDeferredMap has keys: %s" 
-                    % str(list(aggDeferredMap.keys())))
-            loggerstoragg.warning("aggDeferredMap[%s] has keys: %s" % (tarball, 
-                    str(list(aggDeferredMap[tarball].keys()))))
+            loggerstoragg.warning("aggregate_waiters has keys: %s" 
+                    % str(list(aggregate_waiters.keys())))
+            loggerstoragg.warning("aggregate_waiters[%s] has keys: %s" % (tarball, 
+                    str(list(aggregate_waiters[tarball].keys()))))
         tar.close()
         with aggStateLock:
-            aggDeferredMap.pop(tarball, None)
+            aggregate_waiters.pop(tarball, None)
             handle = aggTimeoutMap.pop(tarball, None)
         if handle is not None and hasattr(handle, "cancel"):
             try:
@@ -726,8 +698,8 @@ class AggregateStore:
                 pass
         loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
         #os.remove(gtarball)
-        for cb in cbs:
-            _reject_waiter(cb, failure)
+        for waiter in waiters:
+            _reject_waiter(waiter, failure)
 
 def _normalize_challenge(challenge):
     if isinstance(challenge, bytes):

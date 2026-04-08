@@ -9,7 +9,6 @@ import inspect
 
 from flud.FludExceptions import FludException
 from flud.FludCrypto import FludRSA
-from flud.defer import failure
 
 
 """
@@ -28,13 +27,13 @@ CONNECT_TO_VAR = 5
 
 logger = logging.getLogger('flud.comm')
 
-class BadCASKeyException(failure.DefaultException):
+class BadCASKeyException(Exception):
     pass
 
-class NotFoundException(failure.DefaultException):
+class NotFoundException(Exception):
     pass
 
-class BadRequestException(failure.DefaultException):
+class BadRequestException(Exception):
     pass
 
 

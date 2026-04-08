@@ -6,7 +6,6 @@ Implements file storage and retrieval operations using flud primitives.
 """
 
 import asyncio
-import concurrent.futures
 import os, stat, sys, logging, binascii, random, time, shutil, threading
 from zlib import crc32
 from io import StringIO, BytesIO
@@ -17,7 +16,7 @@ from flud.FludCrypto import FludRSA, generateRandom, hashstring, hashfile
 from flud.protocol.FludCommUtil import *
 from flud.fencode import fencode, fdecode
 from flud.FludConfig import TrustDeltas
-from flud.async_runtime import maybe_await, concurrent_future_to_deferred
+from flud.async_runtime import maybe_await
 from . import fludfilefec
 
 logger = logging.getLogger('flud.fileops')
@@ -67,18 +66,6 @@ def _crc32_value(value):
         data = str(value).encode("utf-8")
     return crc32(data)
 
-def _add_timeout(deferred, seconds):
-    timer = threading.Timer(seconds, deferred.cancel)
-    timer.daemon = True
-    timer.start()
-    def _cancel_timeout(result):
-        if timer.is_alive():
-            timer.cancel()
-        return result
-    deferred.addBoth(_cancel_timeout)
-    return deferred
-
-
 def _failure_message(err):
     getter = getattr(err, "getErrorMessage", None)
     if callable(getter):
@@ -92,35 +79,28 @@ def _failure_traceback(err):
         return getter()
     return repr(err)
 
-
-def _failed_deferred(exc):
-    future = concurrent.futures.Future()
-    future.set_exception(exc)
-    return concurrent_future_to_deferred(future)
-
-
 async def store_file(node, filename):
-    operation = StoreFile(node, filename, start=False)
+    operation = StoreFile(node, filename)
     return await operation.run()
 
 
 async def retrieve_file(node, key, mkey=True):
-    operation = RetrieveFile(node, key, mkey, start=False)
+    operation = RetrieveFile(node, key, mkey)
     return await operation.run()
 
 
 async def retrieve_filename(node, filename):
-    operation = RetrieveFilename(node, filename, start=False)
+    operation = RetrieveFilename(node, filename)
     return await operation.run()
 
 
 async def retrieve_master_index(node):
-    operation = RetrieveMasterIndex(node, start=False)
+    operation = RetrieveMasterIndex(node)
     return await operation.run()
 
 
 async def update_master_index(node):
-    operation = UpdateMasterIndex(node, start=False)
+    operation = UpdateMasterIndex(node)
     return await operation.run()
 
 def pathsplit(fname):
@@ -201,7 +181,7 @@ class StoreFile:
     # XXX: should follow this currentOps model for the other FludFileOps
     currentOps = {}
 
-    def __init__(self, node, filename, start=True):
+    def __init__(self, node, filename):
         self.node = node
         self.filename = filename
         self.mkey = _crc32_value(self.filename)
@@ -218,11 +198,6 @@ class StoreFile:
 
         if _diag_enabled():
             logger.warning(self.ctx("StoreFile init %s", filename))
-        if start:
-            self.deferred = self._storeFile()
-
-    def _storeFile(self):
-        return self.node.async_runtime.deferred_from_coro(self.run())
 
     async def run(self):
         if not os.path.isfile(self.filename):
@@ -358,45 +333,23 @@ class StoreFile:
         if storedMetadata == None or isinstance(storedMetadata, dict):
             logger.info(self.ctx(
                 "metadata doesn't yet exist, storing all data"))
-            d = self._storeBlocks(storedMetadata)
-            #d = self._storeBlocksSKIP(storedMetadata)
-            return d
+            return self._storeBlocksAsync(storedMetadata)
         else:
             storedMetadata = fdecode(storedMetadata)
             logger.info(self.ctx("metadata exists, verifying all data"))
             if not self._compareMetadata(storedMetadata, self.sfiles):
                 logger.warning(self.ctx("stored/local metadata mismatch; "
                         "attaching metadata to existing blocks"))
-                return self._attachMetadata(storedMetadata)
+                return self._attachMetadataAsync(storedMetadata)
             logger.info(self.ctx("stored and local metadata match."))
             # XXX: need to check for diversity.  It could be that data stored
             # previously to a smaller network (<k+m nodes) and that we should
             # try to increase diversity and re-store the data.
             # XXX: also need to make sure we still trust all the nodes in the
             # metadata list.  If not, we should move those blocks elsewhere.
-            return self._verifyAndStoreBlocks(storedMetadata)
-
-    def _storeBlocksSKIP(self, storedMetadata):
-        # for testing -- skip stores so we can get to storeMeta
-        dlist = []
-        self.blockMetadata = {'k': code_k, 'n': code_n}
-        for i in range(len(self.segHashesLocal)):
-            hash = self.segHashesLocal[i]
-            sfile = self.sfiles[i]
-            node = random.choice(self.routing.knownExternalNodes())
-            host = node[0]
-            port = node[1]
-            nID = node[2]
-            nKu = FludRSA.importPublicKey(node[3])
-            self.blockMetadata[(i, hash)] = int(nKu.id(), 16)
-        return self._storeMetadata(None)
+            return self._verifyAndStoreBlocksAsync(storedMetadata)
 
     # 5a -- store all blocks
-    def _storeBlocks(self, storedMetadata):
-        return self.node.async_runtime.deferred_from_coro(
-            self._storeBlocksAsync(storedMetadata)
-        )
-
     async def _storeBlocksAsync(self, storedMetadata):
         self.blockMetadata = {'k': code_k, 'n': code_n}
         coros = []
@@ -439,62 +392,6 @@ class StoreFile:
             return await self._retryStoreBlockAsync(
                 exc, i, hash, location, sfile, mfile, nID, host, port, retry)
         return self._blockStored(result, nID, i, hash, location)
-
-    def _storeBlock(self, i, hash, sfile, mfile, retry=2):
-        if not self.nodeChoices:
-            #self.nodeChoices = self.routing.knownExternalNodes()
-            # XXX: instead of asking for code_k, ask for code_k - still needed
-            self.nodeChoices = self.config.getPreferredNodes(code_k, 
-                    list(self.usedNodes.keys()))
-            logger.warning(self.ctx("asked for more nodes, %d nodes found", 
-                len(self.nodeChoices)))
-        if not self.nodeChoices:
-            return _failed_deferred(RuntimeError(
-                "cannot store blocks to 0 nodes"))
-        node = random.choice(self.nodeChoices)
-        self.nodeChoices.remove(node)
-        host = node[0]
-        port = node[1]
-        nID = node[2]
-        nKu = FludRSA.importPublicKey(node[3])
-        location = int(nKu.id(), 16)
-        logger.info(self.ctx("STOREing under %s on %s:%d", fencode(hash), 
-            host, port))
-        logger.debug(self.ctx("mfile is %s", mfile))
-        deferred = self.node.async_runtime.deferred_from_coro(
-                self.node.client.store(sfile, (self.mkey, mfile), host, port, nKu))
-        deferred.addCallback(self._blockStored, nID, i, hash, location)
-        deferred.addErrback(self._retryStoreBlock, i, hash, location, 
-                sfile, mfile, nID, host, port, retry)
-        return deferred
-
-    def _retryStoreBlock(self, error, i, hash, location, sfile, mfile, 
-            nID, host, port, retry=None): 
-        retry = retry - 1
-        if retry > 0:
-            logger.warning(self.ctx("STORE to %s (%s:%d) failed, trying again", 
-                nID, host, port))
-            d = self._storeBlock(i, hash, sfile, mfile, retry)
-            d.addCallback(self._blockStored, nID, i, hash, location)
-            # This will fail the entire operation.  This is correct
-            # behavior because we've tried on at least N nodes and couldn't
-            # get the block to store -- the caller will have to try the entire
-            # op again.  If this proves to be a problem, up the default retry
-            # value in _storeBlock().
-            d.addErrback(self._storeFileErr, "couldn't store block %s" 
-                    % fencode(hash), lambda: self.config.modifyReputation(nID,
-                        TrustDeltas.PUT_FAIL))
-            return d
-        else:
-            self.usedNodes[nID] = True
-            logger.warning(self.ctx("STORE to %s (%s:%d) failed, giving up", 
-                nID, host, port))
-            d = _failed_deferred(RuntimeError(
-                    "couldn't store block %s" % fencode(hash)))
-            d.addErrback(self._storeFileErr, "couldn't store block %s"
-                    % fencode(hash), lambda: self.config.modifyReputation(nID,
-                        TrustDeltas.PUT_FAIL))
-            return d
 
     async def _retryStoreBlockAsync(self, error, i, hash, location, sfile,
             mfile, nID, host, port, retry=None):
@@ -558,7 +455,7 @@ class StoreFile:
             return False
         return True
 
-    def _piggybackStoreMetadata(self, piggybackMeta):
+    async def _piggybackStoreMetadata(self, piggybackMeta):
         # piggybackMeta is a (nodeID, {blockID: storingNodeID, })
         logger.debug(self.ctx("got piggyBackMeta data"))
         meta = piggybackMeta
@@ -576,16 +473,11 @@ class StoreFile:
             sortedKeys[i[0]] = i
         for i in range(k+n):
             self.sfiles.append(fencode(sortedKeys[i][1]))
-        return self._verifyAndStoreBlocks(meta, True)
+        return await self._verifyAndStoreBlocksAsync(meta, True)
 
     # 5b -- findnode on all stored blocks. 
-    def _verifyAndStoreBlocks(self, storedMetadata, noopVerify=False):
-        self.blockMetadata = storedMetadata
-        return self.node.async_runtime.deferred_from_coro(
-            self._verifyAndStoreBlocksAsync(storedMetadata, noopVerify)
-        )
-
     async def _verifyAndStoreBlocksAsync(self, storedMetadata, noopVerify=False):
+        self.blockMetadata = storedMetadata
         coros = []
         for i, sfile in enumerate(self.sfiles):
             with open(self.mfiles[i], "rb") as f:
@@ -616,18 +508,13 @@ class StoreFile:
             kdata, i, sfile, mfile, seg, segl, nID, noopVerify
         )
 
-    def _attachMetadata(self, storedMetadata):
+    async def _attachMetadataAsync(self, storedMetadata):
         """
         Attach per-file metadata to already-stored blocks when the DHT
         metadata exists but the locally-encoded blocks differ (e.g. duplicate
         stores where encryption is non-deterministic).
         """
         self.blockMetadata = storedMetadata
-        return self.node.async_runtime.deferred_from_coro(
-            self._attachMetadataAsync(storedMetadata)
-        )
-
-    async def _attachMetadataAsync(self, storedMetadata):
         coros = []
         for key in storedMetadata:
             if not isinstance(key, tuple) or len(key) != 2:
@@ -655,25 +542,6 @@ class StoreFile:
             self._attachMetadataErr(exc, nID, segl)
             return None
 
-    def _sendMetadataVerify(self, kdata, segl, mfile, nID):
-        node = None
-        for candidate in kdata.get('k', []):
-            if candidate[2] == nID:
-                node = candidate
-                break
-        if node is None and kdata.get('k'):
-            node = kdata['k'][0]
-        if node is None:
-            raise ValueError("couldn't find node %s" % ('%x' % nID))
-        host, port, id = node[0], node[1], node[2]
-        nKu = FludRSA.importPublicKey(node[3])
-        logger.info(self.ctx("attaching metadata for %s on %s:%d",
-                fencode(segl), host, port))
-        deferred = self.node.async_runtime.deferred_from_coro(
-                self.node.client.verify(
-                    fencode(segl), 0, 0, host, port, nKu, (self.mkey, mfile)))
-        return deferred
-
     async def _sendMetadataVerifyAsync(self, kdata, segl, mfile, nID):
         node = None
         for candidate in kdata.get('k', []):
@@ -698,58 +566,6 @@ class StoreFile:
         return failure
 
     # 5c -- verify all blocks, store any that fail verify.
-    def _verifyBlock(self, kdata, i, sfile, mfile, seg, segl, nID, noopVerify):
-        # XXX: looks like we occasionally get in here on timed out connections.
-        #      Should go to _storeFileErr instead, eh?
-        if isinstance(kdata, str):
-            logger.err(self.ctx("str kdata=%s", kdata))
-        #if len(kdata['k']) > 1:
-        #   #logger.debug(self.ctx("type kdata: %s" % type(kdata)))
-        #   #logger.debug(self.ctx("kdata=%s" % kdata))
-        #   #logger.debug(self.ctx("len(kdata['k'])=%d" % len(kdata['k'])))
-        #   raise ValueError("couldn't find node %s" % ('%x' % nID))
-        #   #raise ValueError("this shouldn't really be a ValueError..."
-        #   #       " should be a GotMoreKnodesThanIBargainedForError"
-        #   #       " (possibly caused when kFindNode fails (timeout) and"
-        #   #       " we just get our own list of known nodes?): k=%s"
-        #   #       % kdata['k'])
-        node = kdata['k'][0]
-        host = node[0]
-        port = node[1]
-        id = node[2]
-        if id != nID:
-            logger.debug(self.ctx("couldn't find node %s", ('%x' % nID)))
-            raise ValueError("couldn't find node %s" % ('%x' % nID))
-        nKu = FludRSA.importPublicKey(node[3])
-
-        logger.info(self.ctx("verifying %s on %s:%d", seg, host, port))
-        if noopVerify:
-            offset = length = 0
-            verhash = int(hashstring(''), 16)
-            self.sfiles = []
-        else:
-            fd = os.open(sfile, os.O_RDONLY)
-            fsize = os.fstat(fd)[stat.ST_SIZE]
-            if fsize > 20: # XXX: 20?
-                length = 20  # XXX: 20?
-                offset = random.randrange(fsize-length)
-            else:
-                length = fsize
-                offset = 0
-            os.lseek(fd, offset, 0)
-            data = os.read(fd, length)
-            os.close(fd)
-            verhash = int(hashstring(data), 16)
-        
-        deferred = self.node.async_runtime.deferred_from_coro(
-                self.node.client.verify(
-                    seg, offset, length, host, port, nKu, (self.mkey, mfile)))
-        deferred.addCallback(self._checkVerify, nKu, host, port, i, segl, 
-                sfile, mfile, verhash)
-        deferred.addErrback(self._checkVerifyErr, nID, i, segl, sfile, mfile,
-                verhash)
-        return deferred
-
     async def _verifyBlockAsync(self, kdata, i, sfile, mfile, seg, segl, nID,
             noopVerify):
         node = kdata['k'][0]
@@ -805,50 +621,6 @@ class StoreFile:
         logger.info(self.ctx("Couldn't VERIFY %s, performing STORE",
             fencode(seg)))
         return await self._storeBlockAsync(i, seg, sfile, mfile)
-
-    def _checkVerify(self, result, nKu, host, port, i, seg, sfile, mfile, hash):
-        if hash != int(result, 16):
-            logger.info(self.ctx(
-                "VERIFY hash didn't match for %s, performing STORE",
-                fencode(seg)))
-            d = self._storeBlock(i, seg, sfile, mfile)
-            return d
-        else:
-            #logger.debug(self.ctx("block passed verify (%s == %s)" 
-            #       % (hash, long(result,16))))
-            return fencode(seg)
-
-    def _checkVerifyErr(self, failure, nID, i, seg, sfile, mfile, hash):
-        self.config.modifyReputation(nID, TrustDeltas.VRFY_FAIL)
-        logger.debug(self.ctx("Couldn't VERIFY: %s", _failure_message(failure)))
-        logger.info(self.ctx("Couldn't VERIFY %s, performing STORE", 
-            fencode(seg)))
-        d = self._storeBlock(i, seg, sfile, mfile)
-        return d
-
-    # 6 - store the metadata.
-    def _storeMetadata(self, dlistresults):
-        # cleanup part of storeMetadata:
-        logger.debug(self.ctx("dlist=%s", str(dlistresults)))
-        # XXX: for any "False" in dlistresults, need to invoke _storeBlocks
-        #      again on corresponding entries in sfiles.
-        for i in dlistresults:
-            if not i[0] or i[1] == None or isinstance(i[1], Exception):
-                logger.info(self.ctx("failed store/verify"))
-                return False
-
-        # storeMetadata part of storeMetadata
-        # XXX: should sign metadata to prevent forged entries.
-        #for i in self.blockMetadata:
-        #   logger.debug(self.ctx("  %s: %s" 
-        #           % (fencode(i), fencode(self.blockMetadata[i]))))
-        logger.debug(self.ctx("storing metadata at %s", fencode(self.sK)))
-        logger.debug(self.ctx("len(segMetadata) = %d", len(self.blockMetadata)))
-        d = self.node.async_runtime.deferred_from_coro(
-                self.node.client.k_store(self.sK, self.blockMetadata))
-        d.addCallback(self._updateMaster, self.blockMetadata)
-        d.addErrback(self._storeFileErr, "couldn't store file metadata to DHT")
-        return d
 
     async def _storeMetadataAsync(self, dlistresults):
         logger.debug(self.ctx("dlist=%s", str(dlistresults)))
@@ -948,7 +720,7 @@ class RetrieveFile:
     until the complete file can be regenerated and saved locally.
     """
 
-    def __init__(self, node, key, mkey=True, start=True):
+    def __init__(self, node, key, mkey=True):
         # 1: Query DHT for sK
         # 2: Retrieve entries for sK, decoding until efile can be regenerated
         # 3: Retrieve eK from sK by eK=Kp(eKe).  Use eK to decrypt file.  Strip
@@ -957,12 +729,7 @@ class RetrieveFile:
 
         self.node = node
         self.mkey = mkey
-        try:
-            self.sK = fdecode(key)
-        except Exception as inst:
-            if start:
-                self.deferred = _failed_deferred(inst)
-            return
+        self.sK = fdecode(key)
         self.ctx = Ctx(_crc32_value(self.sK)).msg
         self.config = node.config
         self.Ku = node.config.Ku
@@ -980,14 +747,6 @@ class RetrieveFile:
         self.max_retries = 5
         self.retry_base_delay = 1
 
-        if start:
-            self.deferred = self._retrieveFile()
-        
-    def _retrieveFile(self):
-        return self.node.async_runtime.deferred_from_coro(
-            self._retrieveFileAsync()
-        )
-
     async def run(self):
         return await self._retrieveFileAsync()
 
@@ -997,7 +756,7 @@ class RetrieveFile:
             meta = await self.node.client.k_find_value(self.sK)
         except Exception as exc:
             return self._findFileErr(exc, "file retrieve failed")
-        return await maybe_await(self._retrieveFileBlocks(meta))
+        return await self._retrieveFileBlocks(meta)
 
     def _findFileErr(self, failure, message, raiseException=True):
         logger.error(self.ctx("%s: %s" % (message, _failure_message(failure))))
@@ -1005,7 +764,7 @@ class RetrieveFile:
         if raiseException:
             return failure
 
-    def _retrieveFileBlocks(self, meta):
+    async def _retrieveFileBlocks(self, meta):
         # 2: Retrieve entries for sK, decoding until efile can be regenerated
         if meta == None:
             raise LookupError("couldn't recover metadata for %s" % self.sK)
@@ -1024,7 +783,7 @@ class RetrieveFile:
             logger.warning(self.ctx(
                 "metadata has %d blocks; need %d, retrying",
                 len(self.meta), code_k))
-            return self._schedule_retry(
+            return await self._schedule_retry_async(
                 "insufficient metadata blocks (%d < %d)"
                 % (len(self.meta), code_k))
         if k != code_k or n != code_n:
@@ -1062,7 +821,7 @@ class RetrieveFile:
                     len(keys), preview))
         logger.info(self.ctx("got metadata %s" % self.meta))
         self.decoded = False
-        return self._getSomeBlocks(code_k)
+        return await self._getSomeBlocksAsync(code_k)
 
     def _orderNodes(self, meta):
         def score(k, node):
@@ -1095,11 +854,6 @@ class RetrieveFile:
         logger.debug(self.ctx("done scoring, now sorting"))
         r.sort(key=lambda item: item[1], reverse=True)
         return [item[0] for item in r]
-
-    def _getSomeBlocks(self, reqs=code_k):
-        return self.node.async_runtime.deferred_from_coro(
-            self._getSomeBlocksAsync(reqs)
-        )
 
     async def _getSomeBlocksAsync(self, reqs=code_k):
         tries = 0
@@ -1169,7 +923,7 @@ class RetrieveFile:
                 normalized.append((False, result))
             else:
                 normalized.append((True, result))
-        return await maybe_await(self._retrievedAll(normalized))
+        return await self._retrievedAll(normalized)
 
     async def _retrieveBlockChain(self, block, id, idx):
         try:
@@ -1187,37 +941,6 @@ class RetrieveFile:
         if idx is not None:
             self.requested_indices.discard(idx)
         self.bad_nodes.add(id)
-
-    def _retrieveBlock(self, kdata, block, id, idx):
-        #print type(kdata)
-        #print kdata
-        #if len(kdata['k']) > 1:
-        node = None
-        for candidate in kdata['k']:
-            if candidate[2] == id:
-                node = candidate
-                break
-        if node is None:
-            self.bad_nodes.add(id)
-            logger.info(self.ctx(
-                "node %s not in kFindNode response; using closest match",
-                fencode(id)))
-            node = kdata['k'][0]
-        #else:
-        #   print kdata['k']
-        host = node[0]
-        port = node[1]
-        id = node[2]
-        nKu = FludRSA.importPublicKey(node[3])
-        if not self.decoded:
-            d = self.node.async_runtime.deferred_from_coro(
-                    self.node.client.retrieve(block, host, port, nKu, self.mkey))
-            _add_timeout(d, 20)
-            d.addCallback(self._retrievedBlock, id, block, self.mkey, idx)
-            d.addErrback(self._retrieveBlockErr, id,
-                    "couldn't get block %s from %s" % (block, fencode(id)),
-                    host, port, id, idx)
-            return d
 
     async def _retrieveBlockAsync(self, kdata, block, id, idx):
         node = None
@@ -1275,7 +998,7 @@ class RetrieveFile:
         # don't propogate the error -- one block doesn't cause the file
         # retrieve to fail.
 
-    def _retrievedAll(self, success):
+    async def _retrievedAll(self, success):
         logger.info(self.ctx("tried retreiving %d blocks %s" 
             % (len(success), success)))
         logger.info(self.ctx("retrieved %d/%d blocks so far",
@@ -1283,21 +1006,17 @@ class RetrieveFile:
         if self.numBlocksRetrieved >= code_k:
             # XXX: need to make this try again with other blocks if decode
             # fails
-            return self._decodeData()
+            return await self._decodeDataAsync()
         elif len(self.meta) > 0:
             tries = 3  # XXX: magic number. Should derive from k & m 
             logger.info(self.ctx("requesting %d more blocks" % tries))
-            return self._getSomeBlocks(tries) 
+            return await self._getSomeBlocksAsync(tries) 
         else:
             logger.info(self.ctx("couldn't decode file after retreiving"
                     " all %d available blocks" % self.numBlocksRetrieved))
-            return self._schedule_retry(
+            return await self._schedule_retry_async(
                 "couldn't decode file after retreiving all %d available blocks"
                 % self.numBlocksRetrieved)
-
-    def _decodeData(self):
-        logger.debug(self.ctx("_decodeData"))
-        return self.node.async_runtime.deferred_from_coro(self._decodeDataAsync())
 
     async def _decodeDataAsync(self):
         self.fname = os.path.join(self.parentcodedir,fencode(self.sK))+".rec1"
@@ -1305,13 +1024,7 @@ class RetrieveFile:
             self.decodeData, self.fname, list(self.blocks.values()),
             self.config.clientdir
         )
-        return await maybe_await(self._decodeFsMetadata(decoded, self.blocks))
-
-    def _decodeFsMetadata(self, decoded, blockname):
-        logger.debug(self.ctx("_decodeFsMetadata"))
-        return self.node.async_runtime.deferred_from_coro(
-            self._decodeFsMetadataAsync(decoded, blockname)
-        )
+        return await self._decodeFsMetadataAsync(decoded, self.blocks)
 
     async def _decodeFsMetadataAsync(self, decoded, blockname):
         self.mfname = os.path.join(self.parentcodedir,fencode(self.sK))+".m"
@@ -1426,11 +1139,6 @@ class RetrieveFile:
         self.requested_indices = set()
         self.numBlocksRetrieved = 0
         self.bad_nodes = set()
-
-    def _schedule_retry(self, reason):
-        return self.node.async_runtime.deferred_from_coro(
-            self._schedule_retry_async(reason)
-        )
 
     async def _schedule_retry_async(self, reason):
         if self.retry_count >= self.max_retries:
@@ -1646,17 +1354,11 @@ class RetrieveFilename:
     index contains an entry for this filename.
     """
 
-    def __init__(self, node, filename, start=True):
+    def __init__(self, node, filename):
         self.node = node
         self.filename = filename
         self.metadir = self.node.config.metadir
         self.config = self.node.config
-
-        if start:
-            self.deferred = self._recoverFile()
-        
-    def _recoverFile(self):
-        return self.node.async_runtime.deferred_from_coro(self.run())
 
     async def run(self):
         fmeta = self.config.getFromMasterMeta(self.filename)
@@ -1744,16 +1446,11 @@ class VerifyFile:
 
 class RetrieveMasterIndex:
     
-    def __init__(self, node, start=True):
+    def __init__(self, node):
         self.node = node
         nodeID = int(self.node.config.nodeID, 16)
         logger.info("looking for key %x" % nodeID)
         self.nodeID = nodeID
-        if start:
-            self.deferred = self.node.async_runtime.deferred_from_coro(
-                self.run()
-            )
-
     async def run(self):
         return await self._retrieve_master_index(self.nodeID)
 
@@ -1793,15 +1490,10 @@ class RetrieveMasterIndex:
 
 class UpdateMasterIndex:
 
-    def __init__(self, node, start=True):
+    def __init__(self, node):
         self.node = node
         self.metamaster = os.path.join(self.node.config.metadir,
                 self.node.config.metamaster)
-        if start:
-            self.deferred = self.node.async_runtime.deferred_from_coro(
-                self.run()
-            )
-
     async def run(self):
         return await self._update_master_index()
 
@@ -1839,117 +1531,3 @@ class UpdateMasterIndex:
     def _updateMasterIndexErr(self, err, msg):
         logger.warning(msg)
         return err
-
-
-if __name__ == "__main__":
-    from .FludNode import FludNode
-
-    def successTest(res, fname, whatfor, nextStage=None):
-        logger.info("finished %s" % whatfor)
-
-    def errTest(failure):
-        logger.info("boom: %s" % failure.getErrorMessage())
-        raise failure
-
-    def fileKey(fname):
-        EK = hashfile(fname)
-        return fencode(int(hashstring(EK), 16))
-
-    def clearMeta(fname):
-        # delete any metadata that might exist for this file.
-        try:
-            SK = fileKey(fname)
-            os.remove(os.path.join(n.config.kstoredir,SK))
-            logger.info("test removed %s" % os.path.join(n.config.kstoredir,SK))
-        except:
-            pass
-    
-    def doStore(fname, msg=None, nextStage=successTest):
-        if msg != None:
-            logger.info("finished %s ------" % msg)
-            logger.info("---------------------------------------------------\n")
-        # do a store
-        logger.info("nextStage is %s" % nextStage)
-        d = StoreFile(n,fname).deferred
-        d.addCallback(nextStage, fname, 'store op', doCorruptSegAndStore)
-        d.addErrback(errTest)
-
-    def doDelSegAndStore(xxx_todo_changeme, fname, msg=None, nextStage=successTest):
-        # only works if stores are local
-        (key, meta) = xxx_todo_changeme
-        if msg != None:
-            logger.info("finished %s ------" % msg)
-            logger.info("---------------------------------------------------\n")
-        # delete a block and do a store
-        c = random.choice(list(meta.keys()))
-        logger.info("removing %s" % fencode(c))
-        os.remove(os.path.join(n.config.storedir,fencode(c)))
-        logger.info("test removed %s" % os.path.join(n.config.storedir,
-            fencode(c)))
-        d = StoreFile(n,fname).deferred
-        d.addCallback(nextStage, fname, 'lost block op')
-        d.addErrback(errTest)
-        
-    def doCorruptSegAndStore(xxx_todo_changeme1, fname, msg=None, 
-            nextStage=successTest):
-        # only works if stores are local
-        (key, meta) = xxx_todo_changeme1
-        if msg != None:
-            logger.info("finished %s ------" % msg)
-            logger.info("---------------------------------------------------\n")
-        # corrupt a block and do a store
-        c = random.choice(list(meta.keys()))
-        logger.info("corrupting %s" % fencode(c))
-        f = open(os.path.join(n.config.storedir,fencode(c)), 'r')
-        data = f.read()
-        f.close()
-        f = open(os.path.join(n.config.storedir,fencode(c)), 'w')
-        f.write('blah'+data)
-        f.close()
-        d = StoreFile(n,fname).deferred
-        d.addCallback(nextStage, fname, 'corrupted block op')
-        d.addErrback(errTest)
-
-    def doRetrieve(key, msg=None, nextStage=successTest):
-        if msg != None:
-            logger.info("finished %s ------" % msg)
-            logger.info("---------------------------------------------------\n")
-        d = RetrieveFile(n, key).deferred
-        d.addCallback(nextStage, key, 'retrieve op')
-        d.addErrback(errTest)
-
-    def doRetrieveName(filename, msg=None, nextStage=successTest):
-        if msg != None:
-            logger.info("finished %s ------" % msg)
-            logger.info("---------------------------------------------------\n")
-        d = RetrieveFilename(n, filename).deferred
-        d.addCallback(nextStage, filename, 'retrieve filename op')
-        d.addErrback(errTest)
-        
-    def runTests(dummy):
-            
-        # test against self -- all stores and queries go to self.
-        fname = "/tmp/nrpy.pdf"
-
-        #clearMeta(fname)
-        #doStore(fname, None, doDelSegAndStore)  # do all stages of testing
-        doStore(fname)  # only do one op (for manual testing)
-
-        #doRetrieve(fileKey(fname))
-
-        #doRetrieveName(fname)
-
-
-    n = FludNode()
-    n.run()
-
-    if len(sys.argv) == 3:
-        deferred = n.async_runtime.deferred_from_coro(
-                n.client.send_k_find_node(sys.argv[1], int(sys.argv[2]), 1))
-        deferred.addCallback(runTests)
-        deferred.addErrback(errTest)
-    else:
-        runTests(None)
-
-
-    n.join()

@@ -215,8 +215,9 @@ async def _send_store_request(nKu, node, host, port, datafile, metadata=None):
 
 
 async def aggregate_store(nKu, node, host, port, datafile, metadata=None):
-    request = AggregateStore(nKu, node, host, port, datafile, metadata)
-    return await maybe_await(request.deferred)
+    request = AggregateStore(
+            nKu, node, host, port, datafile, metadata, start=False)
+    return await request.run()
 
 
 async def send_retrieve(nKu, node, host, port, filekey, metakey=True):
@@ -778,7 +779,13 @@ class AggregateStore:
     # FludClient -- non-agg store has a similar problem (encoded file chunks
     # get deleted out from under successive STOR ops for the same chunk, i.e.
     # from two concurrent STORs of the same file contents)
-    def __init__(self, nKu, node, host, port, datafile, metadata):
+    def __init__(self, nKu, node, host, port, datafile, metadata, start=True):
+        self.nKu = nKu
+        self.node = node
+        self.host = host
+        self.port = port
+        self.datafile = datafile
+        self.metadata = metadata
         tarbase = os.path.join(node.config.clientdir, nKu.id()) \
                 + '-' + host + '-' + str(port)
         tarfilename = tarbase + ".tar"
@@ -844,16 +851,26 @@ class AggregateStore:
 
             loggerstoragg.debug("prepping deferred")
             # XXX: (re)set timeout for tarfilename
-            self.deferred = defer.Deferred()
+            if start:
+                self.deferred = defer.Deferred()
+                waiter = self.deferred
+                self.future_loop = None
+            else:
+                self.future_loop = asyncio.get_running_loop()
+                waiter = self.future_loop.create_future()
+                self.future = waiter
             loggerstoragg.debug("adding deferred on %s for %s"
                     % (tarfilename, datafile))
             try:
                 aggDeferredMap[tarfilename][os.path.basename(datafile)].append(
-                        self.deferred)
+                        waiter)
             except KeyError:
                 aggDeferredMap[tarfilename][os.path.basename(datafile)] \
-                        = [self.deferred]
+                        = [waiter]
         self.resetTimeout(tarfilename, nKu, node, host, port)
+
+    async def run(self):
+        return await self.future
 
     def resetTimeout(self, tarball, nKu, node, host, port):
         loggerstoragg.debug("in resetTimeout...")
@@ -907,7 +924,8 @@ class AggregateStore:
             gtar.write(src.read())
         gtar.close()
         os.remove(tarball)
-        self.deferred = SENDSTORE_ASYNC(nKu, node, host, port, gtarball).deferred
+        self.deferred = node.async_runtime.deferred_from_coro(
+                _send_store_request(nKu, node, host, port, gtarball))
         self.deferred.addCallback(self.callbackTarfiles, tarball)
         self.deferred.addErrback(self.errbackTarfiles, tarball)
 
@@ -917,8 +935,7 @@ class AggregateStore:
                 % (tarball, host, port))
         try:
             gtarball = await asyncio.to_thread(self._prepareTarball, tarball)
-            result = await maybe_await(
-                    SENDSTORE_ASYNC(nKu, node, host, port, gtarball).deferred)
+            result = await _send_store_request(nKu, node, host, port, gtarball)
         except Exception as exc:
             self.errbackTarfiles(exc, tarball)
             return None
@@ -959,7 +976,10 @@ class AggregateStore:
         loggerstoragg.debug("deleting tarball %s" % gtarball)
         os.remove(gtarball)
         for cb in cbs:
-            cb.callback(result)
+            if hasattr(cb, "callback"):
+                cb.callback(result)
+            else:
+                self.future_loop.call_soon_threadsafe(cb.set_result, result)
 
     def errbackTarfiles(self, failure, tarball):
         loggerstoragg.debug("errbackTarfiles")
@@ -991,7 +1011,10 @@ class AggregateStore:
         loggerstoragg.debug("NOT deleting tarball %s (for debug)" % gtarball)
         #os.remove(gtarball)
         for cb in cbs:
-            cb.errback(failure)
+            if hasattr(cb, "errback"):
+                cb.errback(failure)
+            else:
+                self.future_loop.call_soon_threadsafe(cb.set_exception, failure)
 
 class SENDRETRIEVE_ASYNC(REQUEST):
 

@@ -1073,4 +1073,4 @@ dev = ["pytest", "pytest-asyncio"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13"
-content-hash = "16d3d0984484f954897cf435e68aa392869b8dc41ce390a79024e04f00af9e35"
+content-hash = "fb9f4a909586243acc84890112ffe2321624ff9c32c12cf446fdbce8c321b946"
